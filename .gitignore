@@ -1,0 +1,21 @@
+# Private planning and local artifacts
+private/
+AGENTS.md
+STATE.md
+docs/workstreams/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# User media and generated output
+uploads/
+storage/
+media/
+
+.DS_Store

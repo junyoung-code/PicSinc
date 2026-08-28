@@ -1,0 +1,74 @@
+# Collaborative group-photo editing MVP
+
+## Goal
+
+Each participant selects their own face in a group photo, edits only that face/head region, and the server combines every accepted result over the immutable original.
+
+## MVP boundaries
+
+- Include face, skin, hair/head, makeup, and local facial-shape edits.
+- Exclude body reshaping because it can warp shared background and nearby people.
+- Use Meitu for detection, segmentation, and beautification behind server adapters.
+- Do not infer identity: a signed-in user manually claims a detected face.
+- Keep API keys, source images, masks, patches, and biometric data off the client where possible.
+
+## Flow
+
+`upload original -> detect faces/masks -> create PersonLayer -> claim face -> create EditRevision -> accept revision -> compose patches -> download result`
+
+## Shared contracts
+
+```ts
+type Box = { x: number; y: number; width: number; height: number };
+type EditStatus = "processing" | "preview" | "accepted" | "failed";
+
+type PersonLayer = {
+  personId: string;
+  faceBox: Box;
+  roi: Box;
+  maskKey: string;
+};
+
+type EditRevision = {
+  revisionId: string;
+  personId: string;
+  params: Record<string, number | string | boolean>;
+  patchKey: string;
+  status: EditStatus;
+};
+
+type CompositeResult = {
+  sessionId: string;
+  revisionIds: string[];
+  resultKey: string;
+};
+```
+
+## HTTP surface
+
+```text
+POST /photo-sessions                 upload original
+GET  /photo-sessions/{id}/people     list detected layers
+POST /people/{personId}/claim        bind user to layer
+POST /people/{personId}/edits        request beautification
+POST /edits/{revisionId}/accept      accept preview
+POST /photo-sessions/{id}/compose    compose accepted revisions
+GET  /photo-sessions/{id}/result     fetch final result
+```
+
+## Invariants
+
+- A user can read the shared preview but mutate only their claimed `personId`.
+- A patch is derived from the original ROI and blended through a soft mask.
+- Pixels outside allowed masks remain unchanged.
+- Composition uses explicit accepted revision IDs and is deterministic.
+- Failed vendor jobs never replace an accepted revision or the original.
+- Images have retention/deletion rules and require participant consent before external processing.
+
+## Acceptance
+
+- Detect and align layers for representative 1, 3, and 10-person fixtures.
+- Reject edits for unowned people and preserve concurrent revisions.
+- Produce seam-free hair/face boundaries and stable overlap handling.
+- Recover from Meitu timeout/error without data loss.
+- Pass the complete upload-to-download integration scenario.
