@@ -114,6 +114,18 @@ class OutlineTests(unittest.TestCase):
         segmenter._predict = Mock(return_value=result)
         self.assertEqual(len(segmenter.predict(self.photo)), 1)
 
+    def test_predict_refines_filtered_masks_using_original_photo(self):
+        segmenter = outline.Segmenter.__new__(outline.Segmenter)
+        result = Mock()
+        result.masks.data.cpu.return_value.numpy.return_value = np.stack([
+            self.mask(30, 60, 160, 210), self.mask(130, 60, 160, 210)])
+        result.boxes.conf.cpu.return_value.numpy.return_value = np.array([.8, .7])
+        segmenter._predict = Mock(return_value=result)
+        with patch.object(outline, 'resolve_overlaps', return_value=['refined']) as refine:
+            self.assertEqual(segmenter.predict(self.photo), ['refined'])
+            self.assertIs(refine.call_args.args[0], self.photo)
+            self.assertEqual(len(refine.call_args.args[1]), 2)
+
     def test_single_person_and_empty_mask(self):
         result, ids = outline.render_people(self.photo, [self.mask(50, 60), np.zeros((300, 400))])
         self.assertEqual(ids, ["person_001"])

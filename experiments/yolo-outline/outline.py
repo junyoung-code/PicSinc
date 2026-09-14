@@ -9,6 +9,8 @@ import cv2
 import numpy as np
 from PIL import Image, ImageOps
 
+from overlap import resolve_overlaps
+
 CACHE = Path(__file__).resolve().parent / ".cache"
 os.environ.setdefault("YOLO_CONFIG_DIR", str(CACHE / "ultralytics"))
 os.environ.setdefault("MPLCONFIGDIR", str(CACHE / "matplotlib"))
@@ -64,7 +66,8 @@ class Segmenter:
         if result.masks is None:
             return []
         masks = [mask.astype(bool) for mask in result.masks.data.cpu().numpy()]
-        return filter_duplicate_masks(masks, result.boxes.conf.cpu().numpy())
+        masks = filter_duplicate_masks(masks, result.boxes.conf.cpu().numpy())
+        return resolve_overlaps(photo, masks)
 
     def _predict(self, photo):
         return self.model.predict(
