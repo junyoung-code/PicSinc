@@ -72,3 +72,11 @@ GET  /photo-sessions/{id}/result     fetch final result
 - Produce seam-free hair/face boundaries and stable overlap handling.
 - Recover from Meitu timeout/error without data loss.
 - Pass the complete upload-to-download integration scenario.
+
+## Local YOLO outline demo
+
+- Standalone experiment in `experiments/yolo-outline/`; no connection to the Meitu editing flow.
+- Local Python/Gradio upload → YOLO26n-seg (`imgsz=1024`, `conf=0.25`, person class only) → full-resolution masks and result image. Reuse one model; prefer Apple MPS, fall back to CPU with a visible notice.
+- Analyze the entire image once. Every detected appearance has its own sequential ID, ordered by top then left; no cross-panel identity matching or automatic panel splitting.
+- Render a 25% purple fill, a different outline color per ID (approximately 3 px at 900 px display width), and a matching ID label. Preserve mask holes and the original file. IDs restart per analysis.
+- UI contains upload, analyze, result image, and detection count/status only. No manual selection/correction, database, extra training, SAM integration, or existing editor integration.
