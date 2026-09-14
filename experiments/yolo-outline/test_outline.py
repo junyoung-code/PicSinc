@@ -48,6 +48,72 @@ class OutlineTests(unittest.TestCase):
         self.assertEqual(ids, [])
         np.testing.assert_array_equal(result, self.photo)
 
+    def test_inner_hole_and_tiny_island_are_not_outlined(self):
+        mask = self.mask(30, 60, 180, 210)
+        mask[160:220, 70:120] = False
+        mask[230:233, 330:333] = True
+        before = mask.copy()
+        result, ids = outline.render_people(self.photo, [mask])
+        pixels = np.asarray(result)
+        # The hole stays background, including its edge; the island keeps fill only.
+        np.testing.assert_array_equal(pixels[190, 70], np.asarray(self.photo)[190, 70])
+        expected = np.rint(np.asarray(self.photo)[231, 331] * .75 + outline.PURPLE * .25).astype(np.uint8)
+        np.testing.assert_array_equal(pixels[231, 331], expected)
+        np.testing.assert_array_equal(mask, before)
+        self.assertEqual(ids, ['person_001'])
+
+    def test_large_detached_part_still_has_outline(self):
+        mask = self.mask(30, 60, 100, 210) | self.mask(220, 150, 40, 80)
+        result, _ = outline.render_people(self.photo, [mask])
+        np.testing.assert_array_equal(np.asarray(result)[190, 220], outline.color_for(0))
+
+    def test_duplicate_keeps_higher_score_and_ids_are_contiguous(self):
+        low, high = self.mask(30, 60), self.mask(32, 60)
+        other = self.mask(260, 70)
+        kept = outline.filter_duplicate_masks([low, high, other], [.4, .9, .8])
+        self.assertEqual(len(kept), 2)
+        self.assertIs(kept[0], high)
+        self.assertIs(kept[1], other)
+        _, ids = outline.render_people(self.photo, kept)
+        self.assertEqual(ids, ['person_001', 'person_002'])
+
+    def test_low_score_contained_fragment_is_removed(self):
+        person = self.mask(30, 60, 180, 210)
+        fragment = self.mask(60, 180, 60, 60)
+        kept = outline.filter_duplicate_masks([fragment, person], [.27, .86])
+        self.assertEqual(len(kept), 1)
+        self.assertIs(kept[0], person)
+
+    def test_contained_similar_sized_duplicates_are_removed(self):
+        person = self.mask(30, 60, 180, 210)
+        duplicate = self.mask(30, 60, 120, 210)
+        kept = outline.filter_duplicate_masks([person, duplicate], [.32, .39])
+        self.assertEqual(len(kept), 1)
+        self.assertIs(kept[0], duplicate)
+
+    def test_overlapping_people_and_separate_small_person_survive(self):
+        left = self.mask(30, 60, 160, 210)
+        right = self.mask(130, 60, 160, 210)
+        small = self.mask(330, 180, 30, 50)
+        masks = [left, right, small]
+        kept = outline.filter_duplicate_masks(masks, [.85, .4, .27])
+        self.assertEqual(len(kept), 3)
+        for actual, expected in zip(kept, masks):
+            self.assertIs(actual, expected)
+
+    def test_confident_contained_person_is_not_treated_as_fragment(self):
+        person = self.mask(30, 60, 180, 210)
+        small = self.mask(60, 180, 60, 60)
+        self.assertEqual(len(outline.filter_duplicate_masks([person, small], [.9, .8])), 2)
+
+    def test_predict_filters_duplicates_before_returning_masks(self):
+        segmenter = outline.Segmenter.__new__(outline.Segmenter)
+        result = Mock()
+        result.masks.data.cpu.return_value.numpy.return_value = np.stack([self.mask(30, 60)] * 2)
+        result.boxes.conf.cpu.return_value.numpy.return_value = np.array([.8, .3])
+        segmenter._predict = Mock(return_value=result)
+        self.assertEqual(len(segmenter.predict(self.photo)), 1)
+
     def test_single_person_and_empty_mask(self):
         result, ids = outline.render_people(self.photo, [self.mask(50, 60), np.zeros((300, 400))])
         self.assertEqual(ids, ["person_001"])

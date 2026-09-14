@@ -63,7 +63,8 @@ class Segmenter:
             result = self._predict(photo)
         if result.masks is None:
             return []
-        return [mask.astype(bool) for mask in result.masks.data.cpu().numpy()]
+        masks = [mask.astype(bool) for mask in result.masks.data.cpu().numpy()]
+        return filter_duplicate_masks(masks, result.boxes.conf.cpu().numpy())
 
     def _predict(self, photo):
         return self.model.predict(
@@ -77,6 +78,48 @@ def get_segmenter():
     return Segmenter()
 
 
+def filter_duplicate_masks(masks, scores):
+    """Keep confident distinct masks; do not merge or reshape their pixels."""
+    areas = [np.count_nonzero(mask) for mask in masks]
+    boxes = [cv2.boundingRect(mask.astype(np.uint8)) for mask in masks]
+    kept = []
+    for index in sorted(range(len(masks)), key=lambda i: (-float(scores[i]), i)):
+        if not areas[index]:
+            continue
+        duplicate = False
+        for other in kept:
+            x, y, w, h = boxes[index]
+            ox, oy, ow, oh = boxes[other]
+            x0, y0, x1, y1 = max(x, ox), max(y, oy), min(x + w, ox + ow), min(y + h, oy + oh)
+            if x0 >= x1 or y0 >= y1:
+                continue
+            intersection = np.count_nonzero(masks[index][y0:y1, x0:x1] & masks[other][y0:y1, x0:x1])
+            iou = intersection / (areas[index] + areas[other] - intersection)
+            coverage = intersection / min(areas[index], areas[other])
+            size_ratio = min(areas[index], areas[other]) / max(areas[index], areas[other])
+            almost_same = iou >= .70 or (coverage >= .95 and size_ratio >= .50)
+            small_fragment = (
+                coverage >= .95 and areas[index] <= areas[other] * .50
+                and scores[index] < .50 and scores[other] - scores[index] >= .20
+            )
+            if almost_same or small_fragment:
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(index)
+    return [masks[i] for i in sorted(kept)]
+
+
+def visible_contours(mask):
+    """Suppress inner boundaries and tiny islands in the drawing only."""
+    contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)
+    if not contours:
+        return []
+    minimum_area = max(4, cv2.contourArea(contours[0]) * .005)
+    return contours[:1] + [contour for contour in contours[1:] if cv2.contourArea(contour) >= minimum_area]
+
+
 def render_people(photo, masks):
     """Keep full-resolution masks (including holes); return a new image and IDs."""
     original = np.asarray(photo.convert("RGB"))
@@ -86,9 +129,10 @@ def render_people(photo, masks):
         mask = np.asarray(mask, dtype=bool)
         if mask.shape != (height, width):
             raise ValueError("마스크와 원본 사진의 크기가 다릅니다.")
-        ys, xs = np.nonzero(mask)
-        if len(xs):
-            people.append((int(ys.min()), int(xs.min()), mask))
+        contours = visible_contours(mask)
+        if contours:
+            left, top, _, _ = cv2.boundingRect(np.concatenate(contours))
+            people.append((top, left, mask, contours))
     people.sort(key=lambda person: person[:2])
 
     output = original.copy()
@@ -101,10 +145,9 @@ def render_people(photo, masks):
     scale = max(width / 900, .5)
     thickness = max(1, round(3 * scale))
     labels = []
-    for index, (top, left, mask) in enumerate(people):
+    for index, (top, left, mask, contours) in enumerate(people):
         person_id = f"person_{index + 1:03d}"
         color = color_for(index)
-        contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         cv2.drawContours(output, contours, -1, color, thickness, cv2.LINE_AA)
         labels.append((person_id, color, left, top))
 
