@@ -83,3 +83,12 @@ GET  /photo-sessions/{id}/result     fetch final result
 - After duplicate filtering, resolve two-person mask intersections using local original-image GrabCut with automatically eroded exclusive-interior seeds. Limit processing crops to a 640 px longest side and three iterations; update only originally shared pixels, preserving the union and all exclusive pixels. Leave intersections with insufficient seeds, three or more masks, or GrabCut errors unchanged. This is a color/edge heuristic, not guaranteed body ownership or depth estimation; no manual step or new model.
 - Draw external contours only; omit detached outlines smaller than 0.5% of the largest contour (minimum 4 px²), always retaining the largest. Preserve original mask pixels/holes for fill; anchor IDs to the displayed contours so hidden specks cannot move labels.
 - UI contains upload, analyze, result image, and detection count/status only. No manual selection/correction, database, extra training, SAM integration, or existing editor integration.
+
+## 추가 요구사항: 방 참여자의 수동 ROI 편집
+
+- 후속 구현 범위: 자동 검출이 부정확한 ROI를 참여자가 윤곽선의 점을 드래그해 수정한다. 현재 로컬 YOLO 데모의 기능 범위와 별도로 적용한다.
+- 방의 모든 참여자가 자신이 선택·점유한 ROI를 수정할 수 있다. 한 사람이 여러 ROI를 맡을 수 있으며, 같은 ROI의 동시 점유는 서버에서 막는다. 예: 16개 ROI를 4명이 각자 4개씩 선택.
+- 드래그 중의 표시는 각자의 브라우저에서 처리한다. 손을 놓으면 변경된 ROI 좌표를 저장하고 다른 참여자에게 반영한다. 드래그 중간 동작의 연속 공유는 초기 범위에 포함하지 않는다.
+- 좌표는 공통 원본 이미지 기준으로 저장하고 화면 확대·축소와 분리한다. 서버는 방 참여 여부, ROI 소유권, 저장 버전을 확인해 다른 사람의 영역이나 오래된 변경으로 덮어쓰지 않도록 한다.
+- 공용 서버가 방 ID로 여러 방을 처리한다. 방마다 별도 서버·GPU를 배정하지 않으며, 좌표 수정만으로 AI를 다시 실행하지 않는다.
+- 후속 합성 흐름: ROI 확정 → 각자 보정한 사진 업로드 → 해당 ROI 부분만 공통 원본 위에 합성. 원본 파일은 유지한다. 외부 보정 사진의 허용 조건, ROI 겹침 처리, 보정 이후 ROI 변경 처리 기준은 합성 구현 전에 결정한다.
