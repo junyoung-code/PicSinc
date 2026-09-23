@@ -1,0 +1,7 @@
+# Same inference versions verified locally; no Gradio UI in the production server.
+ultralytics==8.4.150
+torch==2.14.0
+torchvision==0.29.0
+numpy==2.5.3
+opencv-python==5.0.0.93
+pillow==12.3.0

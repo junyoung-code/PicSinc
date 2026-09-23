@@ -1,0 +1,16 @@
+.env*
+!.env.example
+.vercel/
+.next/
+node_modules/
+private/
+test-images/
+tests/
+supabase/
+deploy/
+scripts/
+worker-logs/
+**/*.test.ts
+AGENTS.md
+STATE.md
+docs/

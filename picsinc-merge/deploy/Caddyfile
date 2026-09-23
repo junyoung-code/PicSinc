@@ -1,0 +1,10 @@
+{$APP_DOMAIN} {
+	request_body {
+		max_size 22MB
+	}
+	reverse_proxy web:3000 {
+		transport http {
+			response_header_timeout 150s
+		}
+	}
+}
