@@ -130,6 +130,6 @@ flowchart LR
 
 ## 배포
 
-Next.js·Sharp·Python 3.12·YOLO를 한 Docker 서버 프로세스 구성으로 운영하며, Caddy가 HTTPS를 제공합니다. Supabase DB·비공개 Storage·24시간 정리는 기존 전용 프로젝트를 사용합니다. 이미지에 비밀 키·개인 사진을 포함하지 않습니다. 기존 방이 모두 만료된 뒤 모바일 흐름으로 전환하며 구버전을 병행하지 않습니다. 실제 공개 서버 계정·도메인은 배포 전에 필요합니다. 실행 방법은 [배포 안내](deploy/README.md)를 따릅니다.
+Vercel이 Next.js 화면·API와 HTTPS를 제공하며, Mac의 로그인 워커가 YOLO·Sharp 작업을 가져와 실행합니다. Supabase DB·비공개 Storage·24시간 정리는 기존 전용 프로젝트를 사용합니다. 비밀 키·개인 사진은 배포 소스와 Git에 포함하지 않습니다. 기존 방·검출 ID를 보존하며 새 대기열로 전환합니다. 실행 방법은 [배포 안내](deploy/README.md)를 따릅니다.
 
 현재 진행 상태와 미정 사항은 [STATE.md](STATE.md)에서 관리합니다.

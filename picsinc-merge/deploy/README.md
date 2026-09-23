@@ -36,7 +36,7 @@ launchctl print gui/$(id -u)/com.picsinc.photo-worker
 ```
 
 로그: `~/Library/Logs/PicSinc/worker.log`, `worker-error.log`.
-자동 실행은 Mac 로그인 세션에서 동작합니다. Mac의 전원·네트워크가 켜져 있고 잠자기 상태가 아니어야 처리합니다. 잠자기·종료 중에는 업로드가 대기하며 재연결 후 이어집니다. 공유기 포트·공개 IP·터널은 필요 없습니다. 프로젝트나 Node 경로를 옮기면 설치 스크립트를 다시 실행합니다.
+자동 실행 파일은 `~/Library/Application Support/PicSinc/worker`에 복사합니다. 바탕화면 폴더 권한에 의존하지 않으며, 사진과 Supabase 비밀 키는 복사하지 않습니다. 코드·인증값·모델을 바꾸면 설치 스크립트를 다시 실행해 복사본을 갱신합니다. 자동 실행은 Mac 로그인 세션에서 동작합니다. Mac의 전원·네트워크가 켜져 있고 잠자기 상태가 아니어야 처리합니다. 잠자기·종료 중에는 업로드가 대기하며 재연결 후 이어집니다. 공유기 포트·공개 IP·터널은 필요 없습니다. 프로젝트나 Node 경로를 옮기면 설치 스크립트를 다시 실행합니다.
 
 ```sh
 # 정지 / 다시 시작
@@ -55,6 +55,11 @@ PICSINC_REMOTE_HTTP_TEST=1 PICSINC_TEST_BASE_URL=https://picsinc-merge.vercel.ap
   node --env-file=.env.local --import tsx --test tests/integration/remote-processing.test.ts
 ```
 
-이 검사는 제어된 검출 프로세스와 실제 Sharp를 사용하며 생성 파일만 정리합니다. 실제 YOLO 추론·실기기 사진 앨범 저장 검사는 별도로 구분합니다.
+이 검사는 제어된 검출 프로세스와 실제 Sharp를 사용하며 생성 파일만 정리합니다. 실제 YOLO 추론·실기기 사진 앨범 저장 검사는 별도로 구분합니다. 자동 실행 워커의 실제 YOLO 검사는 다음 명령으로 확인합니다.
+
+```sh
+PICSINC_TEST_EXTERNAL_WORKER=1 PICSINC_TEST_BASE_URL=https://picsinc-merge.vercel.app \
+  node --env-file=.env.local --import tsx scripts/smoke-real-worker.ts
+```
 
 기존 Docker·Caddy 파일은 이전 단일 서버 배포 참고용이며 현재 공개 배포에서 사용하지 않습니다.
