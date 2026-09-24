@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createClient } from "@supabase/supabase-js";
 import { cleanupClaimsFixture, createClaimsFixture, FIXTURE_PROJECT, fixtureAdmin, fixtureBase } from "./region-claims-fixture";
+import { saveEditorSelection } from "../../src/features/mobile-flow/save-editor-selection";
+import { RequestError, type request } from "../../src/features/mobile-flow/client";
+import type { FlowSnapshot } from "../../src/features/mobile-flow/flow-state";
 
 test("region claims serialize first clicks and enforce ownership through RPC and authenticated API", {
   skip: process.env.PICSINC_CLAIMS_TEST !== "1", timeout: 120_000,
@@ -64,6 +67,23 @@ test("region claims serialize first clicks and enforce ownership through RPC and
     assert.equal(reacquire.status, 200); assert.equal((await reacquire.json()).claims[0].participantId, participants[loser].id);
     const saveFormerOwner = await save(winner, ["person_001"], await version());
     assert.equal(saveFormerOwner.error?.message, "Region claim conflict");
+
+    // Change only the other participant's saved work after the editor loaded.
+    // Exercise the actual API error code and automatic retry with one mask.
+    const staleSnapshot = await (await api("", loser)).json() as FlowSnapshot;
+    const otherSave = await save(winner, [], staleSnapshot.session.version);
+    assert.equal(otherSave.error, null);
+    const attempts: string[] = [];
+    const send = (async (url: string, init?: RequestInit) => {
+      attempts.push(init?.method ?? "GET");
+      const response = await fetch(url, { ...init, headers: { ...init?.headers, Cookie: cookie(loser) } });
+      const body = await response.json();
+      if (!response.ok) throw new RequestError(body.error, response.status, body.code);
+      return body;
+    }) as typeof request;
+    await saveEditorSelection({ base: route, snapshot: staleSnapshot, maskAssetId: participants[loser].maskAssetId, selectedRegionIds: ["person_001"], saveOriginal: true, submit: false }, send);
+    assert.deepEqual(attempts, ["PUT", "GET", "PUT"]);
+    assert.equal(await version(), staleSnapshot.session.version + 2);
 
     const anonList = await anon.rpc("list_region_claims", { p_session_id: sessionId });
     const anonSet = await anon.rpc("set_region_claim", { p_session_id: sessionId, p_participant_id: participants[winner].id, p_region_id: "person_001", p_selected: true });

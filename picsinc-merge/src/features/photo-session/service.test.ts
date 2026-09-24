@@ -61,6 +61,16 @@ async function setup() {
   return {db,files,service,created,auth,upload,version,prepare,submit};
 }
 
+test("only stale selection versions expose the automatic retry error code", async () => {
+  const { service, auth, prepare, version } = await setup();
+  const { edit, mask } = await prepare();
+  const isVersionConflict = (error: unknown) => error instanceof SessionError && error.status === 409 && error.code === "SESSION_VERSION_CONFLICT";
+  await assert.rejects(service.saveOriginalSelection({ ...auth, maskAssetId: mask.id, selectedRegionIds: [], expectedVersion: version() - 1 }), isVersionConflict);
+  await assert.rejects(service.saveSelection({ ...auth, editedAssetId: edit.id, maskAssetId: mask.id, expectedVersion: version() - 1 }), isVersionConflict);
+  const claimError = new RegionClaimConflict({ regionId: "person-1", participantId: "other", nickname: "other" });
+  assert.equal(claimError.code, undefined);
+});
+
 test("shared original detection is cached once across participants; private edit remains owned",async()=>{
   const {service,auth,created,upload}=await setup(); const b=await service.join(auth.inviteToken,"A"); const other={...auth,participantId:b.participant.id,sessionToken:b.sessionToken};
   const detected:DetectedRegions={width:10,height:10,previewPngBase64:"",regions:[{id:"person_001",box:{x:0,y:0,width:10,height:10},maskPngBase64:""}]}; let calls=0;

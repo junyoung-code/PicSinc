@@ -10,6 +10,7 @@ import { editedPhotoDisplay } from "@/features/photo-session/edited-photo-displa
 import { allowedStep, resumeStep, type FlowSnapshot, type Step } from "./flow-state";
 import { jsonRequest, photoError, rememberRecovery, request, RequestError, usePreview } from "./client";
 import { originalDetectionMonitor } from "./original-detection-monitor";
+import { saveEditorSelection } from "./save-editor-selection";
 import type { OriginalDetectionState } from "@/features/photo-session/original-detection-state";
 
 const labels: Record<Step, string> = { invite: "친구 초대하기", select: "내 얼굴 선택", guide: "내 사진 보정하기", upload: "보정본 올리기", review: "선택 영역 확인", status: "제출 현황", result: "최종 사진", overlap: "겹친 영역 확인" };
@@ -280,20 +281,10 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     setBusy(true); setMessage("");
     try {
       const uploaded = await uploadAsset(base, "mask", mask);
-      if (step === "select") {
-        const original = await request<{ version: number }>(`${base}/original-selection`, jsonRequest({ maskAssetId: uploaded.asset.id, selectedRegionIds, expectedVersion: data.session.version }, "PUT"));
-        if (!owner) {
-          if (!selectedEdit) throw new Error("보정본을 먼저 올려 주세요.");
-          await request(`${base}/selection`, jsonRequest({ maskAssetId: uploaded.asset.id, editedAssetId: selectedEdit.id, expectedVersion: original.version }, "PUT"));
-        }
-      }
-      else {
-        if (!selectedEdit) throw new Error("보정본을 먼저 올려 주세요.");
-        await request(`${base}/selection`, jsonRequest({ maskAssetId: uploaded.asset.id, editedAssetId: selectedEdit.id, expectedVersion: data.session.version }, "PUT"));
-      }
+      await saveEditorSelection({ base, snapshot: data, maskAssetId: uploaded.asset.id, selectedRegionIds, editedAssetId: selectedEdit?.id, saveOriginal: step === "select", submit: step !== "select" || !owner });
       setDirty(false); await refresh(); recordStep(step === "select" && owner ? "upload" : "status");
     } catch (error) {
-      if (error instanceof RequestError && error.status === 409) { await refresh(); throw new Error("다른 변경이 먼저 저장됐어요. 선택 영역은 유지됩니다. 확인한 뒤 한 번 더 저장해 주세요."); }
+      if (error instanceof RequestError && error.code === "SESSION_VERSION_CONFLICT") { await refresh(); throw new Error("변경이 계속되고 있어요. 선택 영역은 유지됩니다. 잠시 후 다시 제출해주세요."); }
       report(error); throw error;
     } finally { setBusy(false); }
   }

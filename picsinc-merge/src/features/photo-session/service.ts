@@ -143,7 +143,7 @@ export class PhotoSessionService {
     }
     if (!await this.hasSelectedPixels(session, input.participantId, input.maskAssetId)) fail(400, "자신의 영역을 먼저 선택해 주세요.");
     const version = await this.database.replaceOriginalSelection({ ...input, sessionId: session.id, selectedRegionIds: [...new Set(input.selectedRegionIds)] });
-    if (version === null) fail(409, "다른 변경이 먼저 저장되었습니다. 다시 불러오세요.");
+    if (version === null) fail(409, "다른 변경이 먼저 저장되었습니다. 다시 불러오세요.", "SESSION_VERSION_CONFLICT");
     return version;
   }
 
@@ -155,7 +155,7 @@ export class PhotoSessionService {
     const snapshot = await this.database.snapshot(session.id);
     if (!snapshot?.originalSelections.some(selection => selection.participantId === input.participantId)) fail(400, "원본에서 자신의 영역을 먼저 저장해 주세요.");
     const version = await this.database.replaceSelection({ ...input, sessionId: session.id, submitted });
-    if (version === null) fail(409, "다른 변경이 먼저 저장되었습니다. 다시 불러오세요.");
+    if (version === null) fail(409, "다른 변경이 먼저 저장되었습니다. 다시 불러오세요.", "SESSION_VERSION_CONFLICT");
     return version;
   }
 

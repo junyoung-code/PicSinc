@@ -1,11 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 
-export class RequestError extends Error { constructor(message: string, public status: number) { super(message); } }
+export class RequestError extends Error { constructor(message: string, public status: number, public code?: string) { super(message); } }
 export async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, cache: "no-store" });
   const body = await response.json().catch(() => null);
-  if (!response.ok) throw new RequestError(body?.error ?? "요청을 처리하지 못했어요. 다시 시도해 주세요.", response.status);
+  if (!response.ok) throw new RequestError(body?.error ?? "요청을 처리하지 못했어요. 다시 시도해 주세요.", response.status, body?.code);
   return body as T;
 }
 export const jsonRequest = (body: unknown, method = "POST"): RequestInit => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

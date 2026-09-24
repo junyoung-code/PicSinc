@@ -1,7 +1,7 @@
 import type { RegionClaim } from "./types";
 
 export class SessionError extends Error {
-  constructor(public readonly status: number, message: string) {
+  constructor(public readonly status: number, message: string, public readonly code?: string) {
     super(message);
   }
 }
@@ -12,6 +12,6 @@ export class RegionClaimConflict extends SessionError {
   }
 }
 
-export function fail(status: number, message: string): never {
-  throw new SessionError(status, message);
+export function fail(status: number, message: string, code?: string): never {
+  throw new SessionError(status, message, code);
 }

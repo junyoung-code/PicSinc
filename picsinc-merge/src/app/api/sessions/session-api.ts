@@ -25,7 +25,7 @@ export function apiError(error: unknown) {
   if (error instanceof RegionClaimConflict) return NextResponse.json({ error: error.message, claim: error.claim }, { status: 409 });
   if (error instanceof CompositionError) return NextResponse.json({ error: error.message }, { status: 400 });
   if (error instanceof SyntaxError) return NextResponse.json({ error: "요청 형식이 올바르지 않습니다." }, { status: 400 });
-  if (error instanceof SessionError) return NextResponse.json({ error: error.message }, { status: error.status });
+  if (error instanceof SessionError) return NextResponse.json({ error: error.message, ...(error.code ? { code: error.code } : {}) }, { status: error.status });
   console.error("photo session request failed", error instanceof Error ? error.name : "UnknownError");
   return NextResponse.json({ error: "요청을 처리하지 못했습니다." }, { status: 500 });
 }
