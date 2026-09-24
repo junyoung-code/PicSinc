@@ -8,7 +8,7 @@ import RegionEditor from "@/features/region-editor/RegionEditor";
 import type { DetectedRegions } from "@/features/region-editor/detected-regions";
 import { editedPhotoDisplay } from "@/features/photo-session/edited-photo-display";
 import { allowedStep, resumeStep, type FlowSnapshot, type Step } from "./flow-state";
-import { jsonRequest, photoError, rememberRecovery, request, RequestError, savedRecovery, usePreview } from "./client";
+import { jsonRequest, photoError, rememberRecovery, request, RequestError, usePreview } from "./client";
 import { originalDetectionMonitor } from "./original-detection-monitor";
 import type { OriginalDetectionState } from "@/features/photo-session/original-detection-state";
 
@@ -41,7 +41,11 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   const detectionError = detectionState.error ?? "";
   const [loadingDetection, setLoadingDetection] = useState(false);
   const detecting = loadingDetection || ["idle", "queued", "running"].includes(detectionState.status);
-  const [recovery, setRecovery] = useState("");
+  const [toast, setToast] = useState("");
+  const [mergeDelayed, setMergeDelayed] = useState(false);
+  const [claims, setClaims] = useState<{ regionId: string; participantId: string; nickname: string }[] | null>(null);
+  const claimRequest = useRef(0);
+  const initialClaims = useRef<typeof claims>(null);
   const [shareUrl, setShareUrl] = useState("");
   const editingStarted = useRef(false);
   const detectionLoaded = useRef(false);
@@ -95,7 +99,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   }
   useEffect(() => {
     let cancelled = false;
-    setRecovery(savedRecovery(inviteToken)); setShareUrl(`${location.origin}/sessions/${inviteToken}`);
+    setShareUrl(`${location.origin}/sessions/${inviteToken}`);
     void request<FlowSnapshot>(base).then(snapshot => {
       if (cancelled) return;
       const requestedPhoto = new URL(location.href).searchParams.get("photo");
@@ -189,6 +193,52 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     };
   }, [base, original?.id, step, expired]);
 
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(""), 2500);
+    return () => clearTimeout(timer);
+  }, [toast]);
+  useEffect(() => {
+    setMergeDelayed(false);
+    if (!merging) return;
+    const timer = window.setTimeout(() => setMergeDelayed(true), 30_000);
+    return () => clearTimeout(timer);
+  }, [merging]);
+
+  // Fetch only ownership; polling must never replace the editor's unsaved mask.
+  useEffect(() => {
+    if (!data || !["select", "review"].includes(step) || expired) return;
+    let active = true;
+    initialClaims.current = null; setClaims(null);
+    const poll = async () => {
+      if (document.visibilityState !== "visible") return;
+      const generation = ++claimRequest.current;
+      try {
+        const result = await request<{ claims: NonNullable<typeof claims> }>(`${base}/region-claims`);
+        if (active && generation === claimRequest.current) { initialClaims.current ??= result.claims; setClaims(result.claims); }
+      } catch (error) { if (active) report(error); }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 3000);
+    const focus = () => void poll();
+    window.addEventListener("focus", focus); document.addEventListener("visibilitychange", focus);
+    return () => { active = false; clearInterval(timer); window.removeEventListener("focus", focus); document.removeEventListener("visibilitychange", focus); };
+  }, [Boolean(data), base, step, expired]);
+
+  async function toggleClaim(regionId: string, selected: boolean): Promise<{ ok: true } | { ok: false; nickname: string }> {
+    ++claimRequest.current;
+    const response = await fetch(`${base}/region-claims`, jsonRequest({ regionId, selected }, "PUT"));
+    const result = await response.json();
+    ++claimRequest.current;
+    if (response.status === 409 && result.claim) {
+      setClaims(previous => [...(previous ?? []).filter(c => c.regionId !== regionId), result.claim]);
+      return { ok: false, nickname: result.claim.nickname };
+    }
+    if (!response.ok) throw new Error(result.error || "선택 상태를 저장하지 못했어요. 다시 시도해 주세요.");
+    setClaims(result.claims);
+    return { ok: true };
+  }
+
   function editorDirty(value: boolean) {
     if (value) editingStarted.current = true;
     setDirty(value);
@@ -200,7 +250,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     const form = new FormData(); form.set("nickname", nickname.trim());
     try {
       const body = await request<{ recoveryUrl: string }>(`${base}/participants`, { method: "POST", body: form });
-      rememberRecovery(inviteToken, body.recoveryUrl); setRecovery(savedRecovery(inviteToken));
+      rememberRecovery(inviteToken, body.recoveryUrl);
       const snapshot = await refresh(); setCanJoin(false); recordStep(resumeStep(snapshot), true);
     } catch (error) { report(error); } finally { setBusy(false); }
   }
@@ -254,51 +304,39 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     catch (error) { report(error); if (error instanceof RequestError && error.status === 409) await refresh().catch(report); }
     finally { setBusy(false); setMerging(false); }
   }
-  async function share() {
-    try { if (navigator.share) await navigator.share({ title: "PicSync 보정방", text: "각자 보정한 얼굴을 한 장으로 합쳐요.", url: shareUrl }); else { await navigator.clipboard.writeText(shareUrl); setMessage("초대 링크를 복사했어요."); } }
-    catch (error) { if (!(error instanceof DOMException && error.name === "AbortError")) setMessage("아래 링크를 길게 누르거나 선택해서 복사해 주세요."); }
-  }
-  async function copy() { try { await navigator.clipboard.writeText(shareUrl); setMessage("초대 링크를 복사했어요."); } catch { setMessage("링크를 선택해서 복사해 주세요."); } }
-  async function shareResult() {
-    if (!data?.result) return;
-    setBusy(true);
-    try {
-      const response = await fetch(assetUrl(data.result.resultAssetId));
-      if (!response.ok) throw new Error("결과를 불러오지 못했어요.");
-      const file = new File([await response.blob()], "PicSync.png", { type: "image/png" });
-      if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: "PicSync" });
-      else setMessage("이 브라우저에서는 ‘사진 저장하기’를 사용해 주세요.");
-    } catch (error) { if (!(error instanceof DOMException && error.name === "AbortError")) report(error); }
-    finally { setBusy(false); }
+  async function copy() {
+    try { await navigator.clipboard.writeText(shareUrl); setToast("초대 링크를 복사했어요."); }
+    catch { setMessage("링크를 선택해서 복사해 주세요."); }
   }
 
   if (expired) return <MobileShell title="보정방 만료"><h1>보정방이 만료됐어요</h1><p className="description">사진은 방을 만든 뒤 24시간 동안 보관됩니다. 새 보정방에서 다시 시작해 주세요.</p><a className="primary-button" href="/sessions/new">새 보정방 만들기</a></MobileShell>;
-  if (!data) return <MobileShell title="PicSync" progress={10} footer={canJoin ? <button className="primary-button" disabled={busy || !nickname.trim()} onClick={() => void join()}>{busy ? "참여하는 중…" : "참여하기"}</button> : undefined}>
+  if (!data) return <MobileShell title="PicSync" helpTopic={canJoin ? "join" : undefined} progress={10} footer={canJoin ? <button className="primary-button" disabled={busy || !nickname.trim()} onClick={() => void join()}>{busy ? "참여하는 중…" : "참여하기"}</button> : undefined}>
     {canJoin ? <><div className="intro"><p className="eyebrow">{inviter} 님의 초대</p><h1>함께 찍은 사진을<br />각자 보정해요</h1><p className="description">평소 쓰는 앱에서 내 얼굴을 보정한 뒤<br />사진을 올리면 한 장으로 합쳐드려요.</p></div><form onSubmit={event => { event.preventDefault(); void join(); }}><label className="name-field">내 이름<input required autoComplete="nickname" maxLength={40} value={nickname} onChange={event => setNickname(event.target.value)} placeholder="친구들이 알아볼 이름" /></label></form></> : <div className="loading-screen"><div className="spinner" /><p>보정방을 불러오고 있어요.</p></div>}
     <StatusMessage message={message} />{message && !canJoin && <button className="secondary-button" onClick={() => location.reload()}>다시 불러오기</button>}
   </MobileShell>;
-  if (merging) return <MobileShell title="사진 합치는 중" progress={81}><div className="loading-screen"><div className="spinner" /><h1>각자의 보정을<br />한 장에 담고 있어요</h1><p className="description">{message || "선택한 얼굴만 원본 사진에 자연스럽게 합치는 중이에요."}</p></div></MobileShell>;
+  if (merging) return <MobileShell title="사진 합치는 중" progress={81}><div className="loading-screen merging-screen"><img className="figma-spinner" src="/images/figma/processing-spinner.svg" alt="" /><h1>{mergeDelayed ? <>평소보다 오래<br />걸리고 있어요</> : <>각자의 보정을<br />한 장에 담고 있어요</>}</h1><p className="description">{mergeDelayed ? <>사진을 안전하게 합치고 있어요.<br />최대 3분 정도 걸릴 수 있어요.</> : message || "선택한 얼굴만 원본 사진에 자연스럽게 합치는 중이에요."}</p></div></MobileShell>;
 
-  const roster = <ul className="participant-list">{photoDisplay.participants.map(person => <li key={person.id}><span className="avatar" aria-hidden="true" /><span className="participant-name">{person.nickname}{person.id === me?.id ? " (나)" : ""}</span><span className={`badge ${person.submitted ? "complete" : ""}`}>{person.submitted ? "제출 완료" : person.id === data.session.ownerParticipantId && step === "invite" ? "대표자" : "업로드 중"}</span></li>)}</ul>;
+  const roster = <ul className="participant-list">{photoDisplay.participants.map(person => <li key={person.id}><span className="avatar" aria-hidden="true" /><span className="participant-name">{person.nickname}{person.id === me?.id ? " (나)" : ""}</span><span className={`badge ${person.submitted ? "complete" : ""}`}>{person.submitted ? "제출 완료" : person.id === data.session.ownerParticipantId && step === "invite" ? "대표자" : "보정 중"}</span></li>)}</ul>;
   const shareField = <div className="share-field"><input aria-label="친구에게 보낼 초대 링크" value={shareUrl} readOnly onFocus={event => event.currentTarget.select()} /><button className="small-button" onClick={() => void copy()}>복사</button></div>;
   let content: ReactNode, footer: ReactNode;
   if (step === "invite") {
-    content = <><h1>보정방이 만들어졌어요</h1><p className="description">링크를 보내면 친구들이 앱 설치 없이 참여할 수 있어요.</p>{shareField}<p role="status" className="status-message">{detectionState.status === "ready" ? "사람 영역 분석 완료" : detectionState.status === "failed" ? detectionError : "사람 영역 분석 중 · 다른 앱을 사용해도 계속 진행돼요."}</p>{detectionState.status === "failed" && <button className="text-button" onClick={() => retryDetection.current()}>분석 다시 시도</button>}<div className="room-time"><span>보정방 유지 시간</span><strong>{now ? remainingTime(data.session.expiresAt, now) : "계산 중"}</strong></div><h2>참여자</h2>{roster}<details className="extra-actions"><summary>초대 링크 공유하기</summary><button className="secondary-button" onClick={() => void share()}>친구에게 링크 공유</button></details></>;
-    footer = <button className="primary-button" onClick={() => navigate(resumeStep(data))}>시작하기</button>;
+    content = <><h1>보정방이 만들어졌어요</h1><p className="description">링크를 보내면 친구들이 앱 설치 없이 참여할 수 있어요.</p>{shareField}<>{detectionState.status === "failed" && <StatusMessage message={detectionError} />}</>{detectionState.status === "failed" && <button className="text-button" onClick={() => retryDetection.current()}>분석 다시 시도</button>}<div className="room-time"><span>보정방 유지 시간</span><strong>{now ? remainingTime(data.session.expiresAt, now) : "계산 중"}</strong></div><h2>참여자</h2>{roster}</>;
+    footer = <><a className="text-button restart-link" href="/sessions/new">처음부터 다시 하기</a><button className="primary-button" onClick={() => navigate(resumeStep(data))}>시작하기</button></>;
   } else if (step === "select" || step === "review") {
     const review = step === "review";
-    const maskId = review ? savedSelection?.maskAssetId ?? initialSelection?.maskAssetId : initialSelection?.maskAssetId;
-    content = <><h1>{review ? <>보정한 사진과<br />선택 영역을 확인해주세요</> : <>사진 속 내 얼굴을<br />모두 선택해주세요</>}</h1><p className="description">{review ? "윤곽이 달라졌다면 영역을 조정한 뒤 제출해 주세요." : owner ? "보정 영역을 선택해서 편집할 수 있어요." : "본인이 보정한 부분에 속하는 영역을 선택해주세요."}</p>
+    const ownIds = (initialClaims.current ?? []).filter(c => c.participantId === data.currentParticipantId).map(c => c.regionId);
+    const savedIdsMatch = (initialSelection?.selectedRegionIds ?? []).every(id => ownIds.includes(id)) && ownIds.every(id => initialSelection?.selectedRegionIds.includes(id));
+    const maskId = !savedIdsMatch ? undefined : review ? savedSelection?.maskAssetId ?? initialSelection?.maskAssetId : initialSelection?.maskAssetId;
+    content = <><h1>{review ? <>보정한 사진과<br />선택 영역을 확인해주세요</> : <>사진 속 내 얼굴을<br />모두 선택해주세요</>}</h1><p className="description">{review ? "윤곽이 달라졌다면 영역을 조정한 뒤 제출해 주세요." : "보정 영역을 선택해서 편집할 수 있어요."}</p>
       {review && ownEdits.length > 0 && <div className="thumbs" aria-label="내 보정본 선택">{ownEdits.map(edit => <button className="thumb" key={edit.id} aria-pressed={edit.id === selectedEdit?.id} onClick={() => { if (!dirty || window.confirm("저장하지 않은 수정을 버리고 다른 보정본을 열까요?")) { setDirty(false); chooseEdit(edit.id); } }}><img src={assetUrl(edit.id)} alt={photoDisplay.labels[edit.id]} />{photoDisplay.labels[edit.id]}</button>)}</div>}
-      {detecting && <p role="status" className="status-message">AI가 사람 영역을 찾고 있어요. 다른 앱을 사용해도 계속 진행돼요.</p>}
-      {original && <MobileRegionEditor key={review || !owner ? selectedEdit?.id : "original"} imageUrl={assetUrl((review || !owner) && selectedEdit ? selectedEdit.id : original.id)} width={original.width} height={original.height} detection={detection} initialMaskUrl={maskId ? assetUrl(maskId) : undefined} initialSelectedIds={initialSelection?.selectedRegionIds} participantNickname={me?.nickname} saveActionLabel={owner && !review ? "다음" : "제출"} busy={busy || (detecting && !editingStarted.current)} detectionError={detectionError} onRetryDetection={() => retryDetection.current()} onDirtyChange={editorDirty} onDetailOpen={openDetailEditor} onSave={save} saveLabel={owner && !review ? "다음" : "선택한 얼굴 제출하기"} />}
-      <Notice>선택하지 않은 영역은 원본 그대로 나와요.</Notice>
+      {claims === null && <p role="status" className="description">선택 상태를 불러오고 있어요.</p>}
+      {original && claims !== null && <MobileRegionEditor key={review || !owner ? selectedEdit?.id : "original"} imageUrl={assetUrl((review || !owner) && selectedEdit ? selectedEdit.id : original.id)} width={original.width} height={original.height} detection={detection} initialMaskUrl={maskId ? assetUrl(maskId) : undefined} initialSelectedIds={ownIds} regionClaims={claims ?? []} currentParticipantId={data.currentParticipantId} onRegionToggle={toggleClaim} participantNickname={me?.nickname} saveActionLabel={owner && !review ? "다음" : "제출"} busy={busy || (detecting && !editingStarted.current)} detecting={detecting && !editingStarted.current} detectionError={detectionError} onRetryDetection={() => retryDetection.current()} onDirtyChange={editorDirty} onDetailOpen={openDetailEditor} onSave={save} saveLabel={owner && !review ? "이대로 진행하기" : "선택한 얼굴 제출하기"} />}
       {review && <button className="text-button" onClick={() => navigate("upload")}>다른 보정본 올리기</button>}{!me?.submitted && currentResult && <button className="text-button" onClick={() => navigate("result")}>현재 병합 결과 보기</button>}</>;
   } else if (step === "guide") {
     content = <><h1>평소 하던 대로<br />내 얼굴을 보정해주세요</h1><ol className="guide-list"><li><span className="step-number">1</span><div><strong>원본 사진 저장</strong><p>같은 원본을 휴대폰에 저장해요.</p></div></li><li><span className="step-number">2</span><div><strong>평소 쓰던 앱에서 보정</strong><p>Meitu, SNOW, EPIK 등을 사용해요.</p></div></li><li><span className="step-number">3</span><div><strong>보정한 사진 업로드</strong><p>다시 이 링크로 돌아와 사진 전체를 올려요.</p></div></li></ol><Notice>웹페이지를 닫아도 괜찮아요. 초대 링크로 돌아오면 이어서 진행할 수 있어요.</Notice>{currentResult && <button className="text-button" onClick={() => navigate("result")}>현재 병합 결과 보기</button>}</>;
-    footer = <>{original && <a className="secondary-button" href={assetUrl(original.id)} download>원본 사진 저장하기</a>}<button className="primary-button" onClick={() => navigate("upload")}>이미 보정했어요</button></>;
+    footer = <><button className="primary-button" onClick={() => navigate("upload")}>이미 보정했어요</button></>;
   } else if (step === "upload") {
-    content = <><h1>보정이 끝난 사진을<br />올려주세요</h1><p className="description">내 얼굴만 보정한 전체 사진을 선택해주세요.</p><PhotoPicker file={file} preview={preview} label="보정한 사진 선택" busy={busy} onChange={next => { const error = next ? photoError(next) : ""; setMessage(error); setFile(error ? null : next); }} /><Notice>사진을 자르거나 회전했다면 원본과 맞지 않을 수 있어요.</Notice>{owner && original && <a className="text-button original-download" href={assetUrl(original.id)} download>원본 사진 저장하기</a>}{owner && !me?.submitted && (selectedEdit || pendingEditId) && !file && <p className="description">업로드한 보정본이 있어요. 다시 올리지 않고 제출을 이어갈 수 있어요.</p>}{!owner && currentResult && <button className="text-button" onClick={() => navigate("result")}>현재 병합 결과 보기</button>}</>;
+    content = <><h1>보정이 끝난 사진을<br />올려주세요</h1><p className="description">내 얼굴만 보정한 전체 사진을 선택해주세요.</p><PhotoPicker file={file} preview={preview} label="보정한 사진 선택" busy={busy} onChange={next => { const error = next ? photoError(next) : ""; setMessage(error); setFile(error ? null : next); }} /><Notice>사진을 자르거나 회전했다면 원본과 맞지 않을 수 있어요.</Notice>{owner && !me?.submitted && (selectedEdit || pendingEditId) && !file && <p className="description">업로드한 보정본이 있어요. 다시 올리지 않고 제출을 이어갈 수 있어요.</p>}{!owner && currentResult && <button className="text-button" onClick={() => navigate("result")}>현재 병합 결과 보기</button>}</>;
     footer = <button className="primary-button" disabled={(!file && !(owner && (selectedEdit || pendingEditId) && !me?.submitted)) || busy} onClick={() => void upload()}>{busy ? "처리 중…" : owner && !file && (selectedEdit || pendingEditId) && !me?.submitted ? "업로드한 보정본 제출하기" : "계속"}</button>;
   } else if (step === "status") {
     content = <><h1>{owner ? <>{data.participants.length}명 중 {submittedCount}명이<br />보정을 마쳤어요</> : me?.submitted ? <>이제 친구들의 보정을<br />기다리고 있어요</> : <>내 얼굴을 선택해<br />제출해주세요</>}</h1><p className="description">페이지를 닫아도 진행 상황이 유지돼요.{!owner && <><br />같은 링크에서 다시 확인할 수 있어요.</>}</p>{roster}<Notice>{owner ? "제출된 보정본으로만 합쳐지며, 미제출자의 얼굴은 원본으로 유지돼요." : "대표자가 ‘사진 합치기’ 버튼을 누르면 병합이 시작돼요."}</Notice></>;
@@ -313,8 +351,8 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     footer = <>{data.result && <a className="primary-button" href={assetUrl(data.result.resultAssetId)} download>사진 저장하기</a>}<a className="text-button restart-link" href="/sessions/new">처음부터 다시 만들기</a></>;
   }
   const previous: Partial<Record<Step, Step>> = { select: owner ? "invite" : "upload", upload: owner ? "select" : "guide", review: "upload", status: owner ? "upload" : "select", result: "status", overlap: "result" };
-  return <MobileShell title={step === "status" && !owner && me?.submitted ? "제출 완료" : labels[step]} progress={progress[step]} onBack={previous[step] ? () => navigate(previous[step]!) : undefined} footer={footer}>
+  return <MobileShell helpTopic={step === "invite" ? "invite" : step === "select" || step === "review" ? "select" : step === "upload" ? "upload" : step === "guide" ? "guide" : step === "status" && owner ? "status" : undefined} title={step === "status" && !owner && me?.submitted ? "제출 완료" : labels[step]} progress={progress[step]} onBack={step === "invite" ? () => location.assign("/sessions/new") : previous[step] ? () => navigate(previous[step]!) : undefined} footer={footer}>
     {content}<StatusMessage message={message} />
-    {["invite", "guide", "status"].includes(step) && recovery && <details className="recovery-panel"><summary>다른 기기에서 내 작업 이어가기</summary><p>이 링크는 내 수정 권한을 되찾는 개인 링크예요. 친구에게 보내지 말고 본인만 보관해 주세요.</p><input aria-label="개인 복구 링크" readOnly value={recovery} onFocus={event => event.currentTarget.select()} /></details>}
+    {toast && <div className="copy-toast" role="status">{toast}</div>}
   </MobileShell>;
 }

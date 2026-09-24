@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import sharp from "sharp";
 import { PhotoSessionService } from "./service";
-import { SessionError } from "./errors";
+import { RegionClaimConflict, SessionError } from "./errors";
 import { decodeMask, MAX_PHOTO_BYTES, verifyPhoto, verifyPhotoBytes } from "./image-validation";
-import type { CredentialRecord, NewAsset, PhotoSessionStore, PrivateFileStore, SessionRecord, SessionSnapshot } from "./types";
+import type { CredentialRecord, NewAsset, PhotoSessionStore, PrivateFileStore, RegionClaim, SessionRecord, SessionSnapshot } from "./types";
 import type { CompositeResult, OriginalSelection, OverlapAssignment, Participant, PhotoAsset, Selection } from "@/core/contracts";
 import type { DetectedRegions } from "@/features/region-editor/detected-regions";
 
@@ -18,6 +18,16 @@ class MemoryDatabase implements PhotoSessionStore {
   sessions = new Map<string, SessionRecord>(); participants: Participant[] = []; credentials: CredentialRecord[] = []; assets: PhotoAsset[] = [];
   selections: (Selection & {sessionId: string})[] = []; originals: (OriginalSelection & {sessionId: string})[] = []; overlaps: OverlapAssignment[] = [];
   detections = new Map<string, DetectedRegions>(); results = new Map<string, CompositeResult>();
+  claims: (RegionClaim & { sessionId: string })[] = [];
+  async listRegionClaims(sessionId: string) { return this.claims.filter(c => c.sessionId === sessionId).map(({ sessionId: _, ...claim }) => claim); }
+  async setRegionClaim(input: Parameters<PhotoSessionStore["setRegionClaim"]>[0]) {
+    if (!this.detections.get(input.sessionId)?.regions.some(region => region.id === input.regionId)) throw new SessionError(400, "원본에서 검출된 ID를 선택해 주세요.");
+    const claim = this.claims.find(c => c.sessionId === input.sessionId && c.regionId === input.regionId);
+    if (claim && claim.participantId !== input.participantId) return { claims: await this.listRegionClaims(input.sessionId), conflict: (await this.listRegionClaims(input.sessionId)).find(c => c.regionId === input.regionId)! };
+    if (input.selected && !claim) this.claims.push({ sessionId: input.sessionId, regionId: input.regionId, participantId: input.participantId, nickname: this.participants.find(p => p.id === input.participantId)!.nickname });
+    if (!input.selected) this.claims = this.claims.filter(c => !(c.sessionId === input.sessionId && c.regionId === input.regionId));
+    return { claims: await this.listRegionClaims(input.sessionId) };
+  }
   async createSession(input: Parameters<PhotoSessionStore["createSession"]>[0]) { this.sessions.set(input.session.id, input.session); this.participants.push(input.participant); this.credentials.push(input.credentials); this.assets.push({ ...input.original, uploadOrder: null }); }
   async findSessionByInvite(token: string) { return [...this.sessions.values()].find(s => s.inviteToken === token) ?? null; }
   async findCredentials(sessionId: string, participantId: string) { return this.credentials.find(c => c.sessionId === sessionId && c.participantId === participantId) ?? null; }
@@ -262,4 +272,58 @@ test("missing process state resumes from stored original; expired rooms fail bef
   await assert.rejects(service.detectAsset(input,async () => { db.sessions.get(created.session.id)!.expiresAt = "2020-01-01T00:00:00Z"; return result; }),errorStatus(410));
   assert.equal(reads,1); assert.equal(db.detections.size,0);
   await assert.rejects(service.detectAsset(input,async () => { assert.fail("expired image analyzed"); }),errorStatus(410));
+});
+
+test("first region click has one owner, conflicting select or release identifies that participant", async () => {
+  const { service, auth, db, created, version } = await setup();
+  const joined = await service.join(auth.inviteToken, "B");
+  const other = { ...auth, participantId: joined.participant.id, sessionToken: joined.sessionToken };
+  db.detections.set(created.session.id, { width: 10, height: 10, previewPngBase64: "", regions: [{ id: "person_001", box: { x: 0, y: 0, width: 10, height: 10 }, maskPngBase64: "" }] });
+  const before = version();
+  const outcomes = await Promise.allSettled([
+    service.setRegionClaim({ ...auth, regionId: "person_001", selected: true }),
+    service.setRegionClaim({ ...other, regionId: "person_001", selected: true }),
+  ]);
+  assert.equal(outcomes.filter(outcome => outcome.status === "fulfilled").length, 1);
+  const claims = await service.regionClaims(other);
+  assert.equal(claims.length, 1);
+  assert.deepEqual(claims[0], { regionId: "person_001", participantId: auth.participantId, nickname: "A" });
+  await assert.rejects(service.setRegionClaim({ ...other, regionId: "person_001", selected: false }), error => error instanceof RegionClaimConflict && error.claim.nickname === "A");
+  await service.setRegionClaim({ ...auth, regionId: "person_001", selected: true });
+  assert.equal((await service.regionClaims(auth)).length, 1);
+  assert.equal(version(), before, "draft claims must not invalidate another participant's mask save");
+  await service.setRegionClaim({ ...auth, regionId: "person_001", selected: false });
+  await service.setRegionClaim({ ...other, regionId: "person_001", selected: true });
+  assert.equal((await service.regionClaims(auth))[0].participantId, other.participantId);
+});
+
+test("region claims reject unknown regions, invalid credentials and expired rooms, survive recovery", async () => {
+  const { service, auth, db, files, created } = await setup();
+  db.detections.set(created.session.id, { width: 10, height: 10, previewPngBase64: "", regions: [{ id: "person_001", box: { x: 0, y: 0, width: 10, height: 10 }, maskPngBase64: "" }] });
+  db.findOriginalDetection = async () => { throw new Error("Claim toggles must not fetch the full detection payload"); };
+  await assert.rejects(service.setRegionClaim({ ...auth, regionId: "missing", selected: true }), errorStatus(400));
+  await assert.rejects(service.setRegionClaim({ ...auth, regionId: "person_001", selected: "yes" as unknown as boolean }), errorStatus(400));
+  await assert.rejects(service.regionClaims({ ...auth, sessionToken: "wrong" }), errorStatus(403));
+  await service.setRegionClaim({ ...auth, regionId: "person_001", selected: true });
+  const recovered = await service.recover(auth.inviteToken, created.recoveryToken);
+  assert.equal((await service.regionClaims({ ...auth, ...recovered }))[0].participantId, auth.participantId);
+  const expired = new PhotoSessionService(db, files, () => new Date("2026-09-19T00:00:01Z"));
+  await assert.rejects(expired.regionClaims({ ...auth, ...recovered }), errorStatus(410));
+  await assert.rejects(expired.setRegionClaim({ ...auth, ...recovered, regionId: "person_001", selected: false }), errorStatus(410));
+});
+
+test("original mask save requires selected IDs to be owned while manual mask overlap remains allowed", async () => {
+  const { service, auth, db, created, upload, version } = await setup();
+  const joined = await service.join(auth.inviteToken, "B");
+  const other = { ...auth, participantId: joined.participant.id, sessionToken: joined.sessionToken };
+  db.detections.set(created.session.id, { width: 10, height: 10, previewPngBase64: "", regions: [{ id: "person_001", box: { x: 0, y: 0, width: 10, height: 10 }, maskPngBase64: "" }] });
+  const mask = await upload("mask");
+  await assert.rejects(service.saveOriginalSelection({ ...auth, maskAssetId: mask.id, selectedRegionIds: ["person_001"], expectedVersion: version() }), errorStatus(409));
+  await service.setRegionClaim({ ...other, regionId: "person_001", selected: true });
+  await assert.rejects(service.saveOriginalSelection({ ...auth, maskAssetId: mask.id, selectedRegionIds: ["person_001"], expectedVersion: version() }), error => error instanceof RegionClaimConflict && error.claim.participantId === other.participantId);
+  await service.saveOriginalSelection({ ...auth, maskAssetId: mask.id, selectedRegionIds: [], expectedVersion: version() });
+  await service.setRegionClaim({ ...other, regionId: "person_001", selected: false });
+  await service.setRegionClaim({ ...auth, regionId: "person_001", selected: true });
+  await service.saveOriginalSelection({ ...auth, maskAssetId: mask.id, selectedRegionIds: ["person_001"], expectedVersion: version() });
+  assert.deepEqual(db.originals[0].selectedRegionIds, ["person_001"]);
 });

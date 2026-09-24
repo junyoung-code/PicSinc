@@ -1,7 +1,7 @@
 import { CompositionError } from "@/features/composition/compose";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { SessionError } from "@/features/photo-session/errors";
+import { RegionClaimConflict, SessionError } from "@/features/photo-session/errors";
 import { PhotoSessionService } from "@/features/photo-session/service";
 import { SupabasePhotoSessionStore, SupabasePrivateFileStore } from "@/integrations/storage/supabase-photo-session-store";
 
@@ -22,6 +22,7 @@ export function setCredentials(response: NextResponse, inviteToken: string, part
 }
 
 export function apiError(error: unknown) {
+  if (error instanceof RegionClaimConflict) return NextResponse.json({ error: error.message, claim: error.claim }, { status: 409 });
   if (error instanceof CompositionError) return NextResponse.json({ error: error.message }, { status: 400 });
   if (error instanceof SyntaxError) return NextResponse.json({ error: "요청 형식이 올바르지 않습니다." }, { status: 400 });
   if (error instanceof SessionError) return NextResponse.json({ error: error.message }, { status: error.status });

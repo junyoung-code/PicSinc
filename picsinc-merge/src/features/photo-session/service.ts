@@ -3,7 +3,7 @@ import type { DetectedRegions } from "@/features/region-editor/detected-regions"
 import { composePhoto } from "@/features/composition/compose";
 import { randomUUID } from "node:crypto";
 import type { AssetKind, CompositeResult, OverlapAssignment, Participant, PhotoAsset } from "@/core/contracts";
-import { fail } from "./errors";
+import { fail, RegionClaimConflict } from "./errors";
 import { decodeMask } from "./image-validation";
 import { createSecretToken, tokenHash } from "./tokens";
 import type { CredentialRecord, NewAsset, PhotoSessionStore, PrivateFileStore, SessionRecord, SessionSnapshot } from "./types";
@@ -113,6 +113,20 @@ export class PhotoSessionService {
     return original ? step("cache-save", () => this.database.cacheOriginalDetection(session.id, detected, requestId)) : detected;
   }
 
+  async regionClaims(input: { inviteToken: string; participantId: string; sessionToken: string }) {
+    const session = await this.authorize(input.inviteToken, input.participantId, input.sessionToken);
+    return this.database.listRegionClaims(session.id);
+  }
+
+  async setRegionClaim(input: { inviteToken: string; participantId: string; sessionToken: string; regionId: string; selected: boolean }) {
+    const session = await this.authorize(input.inviteToken, input.participantId, input.sessionToken);
+    if (typeof input.regionId !== "string" || !input.regionId || input.regionId.length > 80 || typeof input.selected !== "boolean") fail(400, "선택 ID가 올바르지 않습니다.");
+    // The store validates the detected ID in the same transaction as the claim.
+    const result = await this.database.setRegionClaim({ sessionId: session.id, participantId: input.participantId, regionId: input.regionId, selected: input.selected });
+    if (result.conflict) throw new RegionClaimConflict(result.conflict);
+    return result.claims;
+  }
+
   async saveOriginalSelection(input: { inviteToken: string; participantId: string; sessionToken: string; maskAssetId: string; selectedRegionIds: string[]; expectedVersion: number }) {
     const session = await this.authorize(input.inviteToken, input.participantId, input.sessionToken);
     assertVersion(input.expectedVersion);
@@ -120,6 +134,12 @@ export class PhotoSessionService {
     if (input.selectedRegionIds.length) {
       const detection = await this.database.findOriginalDetection(session.id);
       if (!detection || input.selectedRegionIds.some(id => !detection.regions.some(region => region.id === id))) fail(400, "원본에서 검출된 ID를 선택해 주세요.");
+      const claims = await this.database.listRegionClaims(session.id);
+      for (const id of input.selectedRegionIds) {
+        const claim = claims.find(item => item.regionId === id);
+        if (claim && claim.participantId !== input.participantId) throw new RegionClaimConflict(claim);
+        if (!claim) fail(409, "선택 상태가 바뀌었어요. 얼굴을 다시 선택해주세요.");
+      }
     }
     if (!await this.hasSelectedPixels(session, input.participantId, input.maskAssetId)) fail(400, "자신의 영역을 먼저 선택해 주세요.");
     const version = await this.database.replaceOriginalSelection({ ...input, sessionId: session.id, selectedRegionIds: [...new Set(input.selectedRegionIds)] });

@@ -143,6 +143,7 @@ test("remote upload, automatic detection, local processing, ownership, lease rec
       const credential = credentials[i];
       const mask = await upload("mask", masks[i], credential); maskAssets.push(mask);
       const version = (await snapshot()).session.version;
+      await expect(await fetch(`${route}/region-claims`, json({ regionId: `person_00${i + 1}`, selected: true }, credential, "PUT")), 200);
       const selectionBody = { maskAssetId: mask.id, selectedRegionIds: [`person_00${i + 1}`], expectedVersion: version };
       await expect(await fetch(`${route}/original-selection`, json(selectionBody, credential, "PUT")), 200);
       assert.equal((await fetch(`${route}/original-selection`, json(selectionBody, credential, "PUT"))).status, 409);

@@ -1,8 +1,8 @@
 import type { DetectedRegions } from "@/features/region-editor/detected-regions";
 import "server-only";
-import { SessionError } from "@/features/photo-session/errors";
+import { RegionClaimConflict, SessionError } from "@/features/photo-session/errors";
 import type { CompositeResult, OverlapAssignment, Participant, PhotoAsset, Selection } from "@/core/contracts";
-import type { CredentialRecord, NewAsset, PhotoSessionStore, SessionRecord, SessionSnapshot } from "@/features/photo-session/types";
+import type { CredentialRecord, NewAsset, PhotoSessionStore, RegionClaim, SessionRecord, SessionSnapshot } from "@/features/photo-session/types";
 import { supabaseServer } from "./supabase-server";
 
 const bucket = () => process.env.SUPABASE_STORAGE_BUCKET || "picsinc-merge";
@@ -16,6 +16,10 @@ export class SupabasePhotoSessionStore implements PhotoSessionStore {
   private check(error: any) {
     if (!error) return;
     if (error.message === "Session expired") throw new SessionError(410, "이 작업의 보관 기간이 끝났습니다.");
+    if (error.message === "Region claim conflict" && error.details) throw new RegionClaimConflict(JSON.parse(error.details));
+    if (error.message === "Region claim required") throw new SessionError(409, "선택 상태가 바뀌었어요. 얼굴을 다시 선택해주세요.");
+    if (error.message === "Invalid region") throw new SessionError(400, "원본에서 검출된 ID를 선택해 주세요.");
+    if (error.message === "Forbidden") throw new SessionError(403, "이 작업을 수정할 권한이 없습니다.");
     throw new Error(error.message);
   }
 
@@ -51,6 +55,14 @@ export class SupabasePhotoSessionStore implements PhotoSessionStore {
     const { data, error } = await this.db().rpc("replace_original_selection", { p_session_id: input.sessionId, p_participant_id: input.participantId, p_mask_asset_id: input.maskAssetId, p_selected_region_ids: input.selectedRegionIds, p_expected_version: input.expectedVersion }); this.check(error); return data === null ? null : Number(data);
   }
   async findOriginalDetection(sessionId: string): Promise<DetectedRegions | null> { const { data, error } = await this.db().from("original_detections").select("detection").eq("session_id", sessionId).maybeSingle(); this.check(error); return data?.detection ?? null; }
+  async listRegionClaims(sessionId: string): Promise<RegionClaim[]> {
+    const { data, error } = await this.db().rpc("list_region_claims", { p_session_id: sessionId });
+    this.check(error); return data;
+  }
+  async setRegionClaim(input: { sessionId: string; participantId: string; regionId: string; selected: boolean }): Promise<{ claims: RegionClaim[]; conflict?: RegionClaim }> {
+    const { data, error } = await this.db().rpc("set_region_claim", { p_session_id: input.sessionId, p_participant_id: input.participantId, p_region_id: input.regionId, p_selected: input.selected });
+    this.check(error); return data;
+  }
   async cacheOriginalDetection(sessionId: string, detection: DetectedRegions, requestId?: string): Promise<DetectedRegions> {
     const { data, error, status } = await this.db().rpc("cache_original_detection", { p_session_id: sessionId, p_detection: detection });
     if (error) console.error("photo region cache RPC failed", JSON.stringify({

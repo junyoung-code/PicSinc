@@ -12,6 +12,12 @@ export interface SessionRecord extends PhotoSession {
   inviteToken: string;
 }
 
+export interface RegionClaim {
+  regionId: string;
+  participantId: string;
+  nickname: string;
+}
+
 export interface SessionSnapshot {
   session: SessionRecord;
   participants: Participant[];
@@ -48,6 +54,8 @@ export interface PhotoSessionStore {
   replaceSelection(input: { sessionId: string; participantId: string; editedAssetId: string; maskAssetId: string; expectedVersion: number; submitted: boolean }): Promise<number | null>;
   replaceOverlapAssignments(input: { sessionId: string; participantId: string; assignments: OverlapAssignment[]; expectedVersion: number }): Promise<number | null>;
   replaceOriginalSelection(input: { sessionId: string; participantId: string; maskAssetId: string; selectedRegionIds: string[]; expectedVersion: number }): Promise<number | null>;
+  listRegionClaims(sessionId: string): Promise<RegionClaim[]>;
+  setRegionClaim(input: { sessionId: string; participantId: string; regionId: string; selected: boolean }): Promise<{ claims: RegionClaim[]; conflict?: RegionClaim }>;
   findOriginalDetection(sessionId: string): Promise<DetectedRegions | null>;
   cacheOriginalDetection(sessionId: string, detection: DetectedRegions, requestId?: string): Promise<DetectedRegions>;
   findExpired(now: string): Promise<SessionSnapshot[]>;
