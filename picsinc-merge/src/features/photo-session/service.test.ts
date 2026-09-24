@@ -19,6 +19,7 @@ class MemoryDatabase implements PhotoSessionStore {
   selections: (Selection & {sessionId: string})[] = []; originals: (OriginalSelection & {sessionId: string})[] = []; overlaps: OverlapAssignment[] = [];
   detections = new Map<string, DetectedRegions>(); results = new Map<string, CompositeResult>();
   claims: (RegionClaim & { sessionId: string })[] = [];
+  deletedInvites = new Set<string>();
   async listRegionClaims(sessionId: string) { return this.claims.filter(c => c.sessionId === sessionId).map(({ sessionId: _, ...claim }) => claim); }
   async setRegionClaim(input: Parameters<PhotoSessionStore["setRegionClaim"]>[0]) {
     if (!this.detections.get(input.sessionId)?.regions.some(region => region.id === input.regionId)) throw new SessionError(400, "원본에서 검출된 ID를 선택해 주세요.");
@@ -30,6 +31,14 @@ class MemoryDatabase implements PhotoSessionStore {
   }
   async createSession(input: Parameters<PhotoSessionStore["createSession"]>[0]) { this.sessions.set(input.session.id, input.session); this.participants.push(input.participant); this.credentials.push(input.credentials); this.assets.push({ ...input.original, uploadOrder: null }); }
   async findSessionByInvite(token: string) { return [...this.sessions.values()].find(s => s.inviteToken === token) ?? null; }
+  async isSessionDeleted(token: string) { return this.deletedInvites.has(token); }
+  async markSessionDeleted(sessionId: string, participantId: string) {
+    const session = this.sessions.get(sessionId)!;
+    if (session.ownerParticipantId !== participantId) throw new SessionError(403, "Forbidden");
+    this.deletedInvites.add(session.inviteToken);
+    session.expiresAt = "1970-01-01T00:00:00.000Z";
+    session.version++;
+  }
   async findCredentials(sessionId: string, participantId: string) { return this.credentials.find(c => c.sessionId === sessionId && c.participantId === participantId) ?? null; }
   async findCredentialsByRecovery(sessionId: string, hash: string) { return this.credentials.find(c => c.sessionId === sessionId && c.recoveryTokenHash === hash) ?? null; }
   async replaceSessionToken(sessionId: string, participantId: string, hash: string) { (await this.findCredentials(sessionId, participantId))!.sessionTokenHash = hash; }
@@ -227,6 +236,67 @@ test("overlap masks reject intersecting pixels",async()=>{
 test("expiry blocks access and removes expired room files",async()=>{
   const {created,auth,db,files}=await setup(); const later=new PhotoSessionService(db,files,()=>new Date("2026-09-19T00:00:01Z"));
   await assert.rejects(later.authorize(auth.inviteToken,auth.participantId,auth.sessionToken),errorStatus(410)); assert.equal(await later.deleteExpired(),1); assert.equal(files.entries.size,0); assert.equal(db.sessions.has(created.session.id),false);
+});
+
+test("only the authenticated owner can delete a room; deletion blocks every participant", async () => {
+  const { service, auth, created, db, files, prepare, upload, version } = await setup();
+  const joined = await service.join(auth.inviteToken, "B");
+  const other = { ...auth, participantId: joined.participant.id, sessionToken: joined.sessionToken };
+  const { edit, mask } = await prepare(other);
+  const beforeVersion = version(), beforeFiles = files.entries.size;
+  await assert.rejects(service.deleteRoom(auth.inviteToken, other.participantId, other.sessionToken), errorStatus(403));
+  await assert.rejects(service.deleteRoom(auth.inviteToken, auth.participantId, other.sessionToken), errorStatus(403));
+  assert.deepEqual(await service.roomStatus(auth.inviteToken), { active: true });
+  assert.equal(db.deletedInvites.size, 0);
+
+  await service.deleteRoom(auth.inviteToken, auth.participantId, auth.sessionToken);
+  assert.equal(version(), beforeVersion + 1);
+  assert.equal(files.entries.size, beforeFiles, "existing expiry cleanup owns file removal");
+  const deleted = (error: unknown) => error instanceof SessionError && error.status === 410 && error.code === "SESSION_DELETED";
+  for (const action of [
+    () => service.roomStatus(auth.inviteToken),
+    () => service.invitation(auth.inviteToken),
+    () => service.join(auth.inviteToken, "late"),
+    () => service.recover(auth.inviteToken, joined.recoveryToken),
+    () => service.snapshot(auth.inviteToken, other.participantId, other.sessionToken),
+    () => service.download(auth.inviteToken, other.participantId, other.sessionToken, created.session.originalAssetId),
+    () => upload("edited", 150, other),
+    () => service.setRegionClaim({ ...other, regionId: "person-1", selected: true }),
+    () => service.saveOriginalSelection({ ...other, maskAssetId: mask.id, selectedRegionIds: [], expectedVersion: beforeVersion }),
+    () => service.saveSelection({ ...other, editedAssetId: edit.id, maskAssetId: mask.id, expectedVersion: beforeVersion }),
+    () => service.composeResult({ ...auth, expectedVersion: beforeVersion }),
+    () => service.deleteRoom(auth.inviteToken, auth.participantId, auth.sessionToken),
+  ]) await assert.rejects(action, deleted);
+
+  assert.equal(await service.deleteExpired(), 1);
+  assert.equal(files.entries.size, 0);
+  assert.equal(db.sessions.has(created.session.id), false);
+  await assert.rejects(service.roomStatus(auth.inviteToken), deleted);
+  await assert.rejects(service.join(auth.inviteToken, "late"), deleted);
+});
+
+test("natural expiry and unknown invitations are not reported as deleted rooms", async () => {
+  const { auth, db, files } = await setup();
+  const later = new PhotoSessionService(db, files, () => new Date("2026-09-19T00:00:01Z"));
+  await assert.rejects(later.roomStatus(auth.inviteToken), (error: unknown) => error instanceof SessionError && error.status === 410 && error.code === undefined);
+  await assert.rejects(later.roomStatus("unknown"), errorStatus(404));
+  await later.deleteExpired();
+  await assert.rejects(later.roomStatus(auth.inviteToken), errorStatus(404));
+});
+
+test("deletion during composition prevents publishing and cleans unpublished output files", async () => {
+  const { service, auth, submit, db, files, version } = await setup();
+  await submit();
+  const fileCount = files.entries.size, assetCount = db.assets.length;
+  const composer = new PhotoSessionService(db, files, now, async () => {
+    await service.deleteRoom(auth.inviteToken, auth.participantId, auth.sessionToken);
+    const bytes = await pixels(150);
+    return { png: bytes, previewPng: bytes, width: 10, height: 10, previewWidth: 10, previewHeight: 10, unassignedOverlapPixels: 0 };
+  });
+  await assert.rejects(composer.composeResult({ ...auth, expectedVersion: version() }), (error: unknown) => error instanceof SessionError && error.code === "SESSION_DELETED");
+  assert.equal(files.entries.size, fileCount);
+  assert.equal(db.assets.length, assetCount);
+  assert.equal(db.results.size, 0);
 });
 
 test("JPEG preserves bytes with EXIF display coordinates and masks require grayscale",async()=>{

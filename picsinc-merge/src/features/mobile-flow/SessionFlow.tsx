@@ -9,6 +9,7 @@ import type { DetectedRegions } from "@/features/region-editor/detected-regions"
 import { editedPhotoDisplay } from "@/features/photo-session/edited-photo-display";
 import { allowedStep, resumeStep, type FlowSnapshot, type Step } from "./flow-state";
 import { jsonRequest, photoError, rememberRecovery, request, RequestError, usePreview } from "./client";
+import { DeletedRoomScreen, DeleteRoomDialog } from "./room-deletion";
 import { originalDetectionMonitor } from "./original-detection-monitor";
 import { saveEditorSelection } from "./save-editor-selection";
 import type { OriginalDetectionState } from "@/features/photo-session/original-detection-state";
@@ -28,6 +29,8 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   const [message, setMessage] = useState("");
   const [canJoin, setCanJoin] = useState(false);
   const [expired, setExpired] = useState(false);
+  const [deleted, setDeleted] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [nickname, setNickname] = useState("");
   const [inviter, setInviter] = useState("");
   const [now, setNow] = useState(0);
@@ -94,8 +97,20 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     const snapshot = await request<FlowSnapshot>(base);
     setData(snapshot); return snapshot;
   }
+  function markDeleted() {
+    current.current.dirty = false;
+    editorBack.current = null;
+    setDirty(false); setConfirmDelete(false); setDeleted(true); setExpired(true);
+  }
   function report(error: unknown) {
-    if (error instanceof RequestError && error.status === 410) setExpired(true);
+    if (error instanceof RequestError && error.code === "SESSION_DELETED") { markDeleted(); return; }
+    if (error instanceof RequestError && error.status === 410) {
+      // A mutation already in flight can see expiry before its API sees the deletion marker.
+      void request(`${base}/lifecycle`).catch(reason => {
+        if (reason instanceof RequestError && reason.code === "SESSION_DELETED") markDeleted();
+        else setExpired(true);
+      });
+    }
     setMessage(error instanceof Error ? error.message : "연결을 확인하고 다시 시도해 주세요.");
   }
   useEffect(() => {
@@ -117,6 +132,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     return () => { cancelled = true; };
   }, [base, inviteToken]);
   useEffect(() => {
+    if (expired) return;
     const unload = (event: BeforeUnloadEvent) => { if (current.current.dirty || merging || busy) { event.preventDefault(); event.returnValue = ""; } };
     const pop = (event: PopStateEvent) => {
       if (editorBack.current) {
@@ -139,7 +155,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     };
     window.addEventListener("beforeunload", unload); window.addEventListener("popstate", pop);
     return () => { window.removeEventListener("beforeunload", unload); window.removeEventListener("popstate", pop); };
-  }, [merging, busy]);
+  }, [merging, busy, expired]);
 
   // Only status screens poll. Never reinitialize the editor's draft from polling.
   useEffect(() => {
@@ -156,6 +172,24 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     const focus = () => void poll(); window.addEventListener("focus", focus); document.addEventListener("visibilitychange", focus);
     return () => { active = false; clearInterval(timer); window.removeEventListener("focus", focus); document.removeEventListener("visibilitychange", focus); };
   }, [Boolean(data), step, merging, expired, base]);
+
+  // Screens without snapshot/claim polling only check whether the room still exists.
+  useEffect(() => {
+    if (expired || (!data && !canJoin) || (!merging && data && ["invite", "status", "select", "review"].includes(step))) return;
+    let active = true, pending = false;
+    const poll = async () => {
+      if (document.visibilityState !== "visible" || pending) return;
+      pending = true;
+      try { await request(`${base}/lifecycle`); }
+      catch (error) { if (active && error instanceof RequestError && [404, 410].includes(error.status)) report(error); }
+      finally { pending = false; }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 3000);
+    const focus = () => void poll();
+    window.addEventListener("focus", focus); document.addEventListener("visibilitychange", focus);
+    return () => { active = false; clearInterval(timer); window.removeEventListener("focus", focus); document.removeEventListener("visibilitychange", focus); };
+  }, [base, Boolean(data), canJoin, step, merging, expired]);
 
   function showNewResult(snapshot: FlowSnapshot) {
     if (!snapshot.result) return;
@@ -181,7 +215,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
       canApply: () => step !== "invite" && !editingStarted.current && !detectionLoaded.current,
       onState: setDetectionState,
       onResult: result => { detectionLoaded.current = true; setDetection(result); },
-      onError: error => { if (error instanceof RequestError && error.status === 410) setExpired(true); },
+      onError: error => { if (error instanceof RequestError && error.status === 410) report(error); },
     });
     const check = () => { if (document.visibilityState === "visible") void monitor.check(); };
     retryDetection.current = () => { setDetectionState({ status: "queued" }); void monitor.check(true); };
@@ -235,7 +269,10 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
       setClaims(previous => [...(previous ?? []).filter(c => c.regionId !== regionId), result.claim]);
       return { ok: false, nickname: result.claim.nickname };
     }
-    if (!response.ok) throw new Error(result.error || "선택 상태를 저장하지 못했어요. 다시 시도해 주세요.");
+    if (!response.ok) {
+      const error = new RequestError(result.error || "선택 상태를 저장하지 못했어요. 다시 시도해 주세요.", response.status, result.code);
+      report(error); throw error;
+    }
     setClaims(result.claims);
     return { ok: true };
   }
@@ -300,6 +337,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     catch { setMessage("링크를 선택해서 복사해 주세요."); }
   }
 
+  if (deleted) return <DeletedRoomScreen />;
   if (expired) return <MobileShell title="보정방 만료"><h1>보정방이 만료됐어요</h1><p className="description">사진은 방을 만든 뒤 24시간 동안 보관됩니다. 새 보정방에서 다시 시작해 주세요.</p><a className="primary-button" href="/sessions/new">새 보정방 만들기</a></MobileShell>;
   if (!data) return <MobileShell title="PicSync" helpTopic={canJoin ? "join" : undefined} progress={10} footer={canJoin ? <button className="primary-button" disabled={busy || !nickname.trim()} onClick={() => void join()}>{busy ? "참여하는 중…" : "참여하기"}</button> : undefined}>
     {canJoin ? <><div className="intro"><p className="eyebrow">{inviter} 님의 초대</p><h1>함께 찍은 사진을<br />각자 보정해요</h1><p className="description">평소 쓰는 앱에서 내 얼굴을 보정한 뒤<br />사진을 올리면 한 장으로 합쳐드려요.</p></div><form onSubmit={event => { event.preventDefault(); void join(); }}><label className="name-field">내 이름<input required autoComplete="nickname" maxLength={40} value={nickname} onChange={event => setNickname(event.target.value)} placeholder="친구들이 알아볼 이름" /></label></form></> : <div className="loading-screen"><div className="spinner" /><p>보정방을 불러오고 있어요.</p></div>}
@@ -312,7 +350,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   let content: ReactNode, footer: ReactNode;
   if (step === "invite") {
     content = <><h1>보정방이 만들어졌어요</h1><p className="description">링크를 보내면 친구들이 앱 설치 없이 참여할 수 있어요.</p>{shareField}<>{detectionState.status === "failed" && <StatusMessage message={detectionError} />}</>{detectionState.status === "failed" && <button className="text-button" onClick={() => retryDetection.current()}>분석 다시 시도</button>}<div className="room-time"><span>보정방 유지 시간</span><strong>{now ? remainingTime(data.session.expiresAt, now) : "계산 중"}</strong></div><h2>참여자</h2>{roster}</>;
-    footer = <><a className="text-button restart-link" href="/sessions/new">처음부터 다시 하기</a><button className="primary-button" onClick={() => navigate(resumeStep(data))}>시작하기</button></>;
+    footer = <><button className="text-button restart-link" onClick={() => setConfirmDelete(true)}>처음부터 다시 하기</button><button className="primary-button" onClick={() => navigate(resumeStep(data))}>시작하기</button></>;
   } else if (step === "select" || step === "review") {
     const review = step === "review";
     const ownIds = (initialClaims.current ?? []).filter(c => c.participantId === data.currentParticipantId).map(c => c.regionId);
@@ -344,6 +382,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   const previous: Partial<Record<Step, Step>> = { select: owner ? "invite" : "upload", upload: owner ? "select" : "guide", review: "upload", status: owner ? "upload" : "select", result: "status", overlap: "result" };
   return <MobileShell helpTopic={step === "invite" ? "invite" : step === "select" || step === "review" ? "select" : step === "upload" ? "upload" : step === "guide" ? "guide" : step === "status" && owner ? "status" : undefined} title={step === "status" && !owner && me?.submitted ? "제출 완료" : labels[step]} progress={progress[step]} onBack={step === "invite" ? () => location.assign("/sessions/new") : previous[step] ? () => navigate(previous[step]!) : undefined} footer={footer}>
     {content}<StatusMessage message={message} />
+    {confirmDelete && <DeleteRoomDialog base={base} onCancel={() => setConfirmDelete(false)} onDeleted={() => { current.current.dirty = false; editorBack.current = null; location.replace("/sessions/new"); }} />}
     {toast && <div className="copy-toast" role="status">{toast}</div>}
   </MobileShell>;
 }

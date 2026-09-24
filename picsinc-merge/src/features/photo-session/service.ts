@@ -49,6 +49,17 @@ export class PhotoSessionService {
     return { ownerNickname: owner.nickname };
   }
 
+  async roomStatus(inviteToken: string) {
+    await this.requireActiveInvite(inviteToken);
+    return { active: true };
+  }
+
+  async deleteRoom(inviteToken: string, participantId: string, sessionToken: string) {
+    const session = await this.authorize(inviteToken, participantId, sessionToken);
+    if (session.ownerParticipantId !== participantId) fail(403, "대표자만 보정방을 삭제할 수 있습니다.");
+    await this.database.markSessionDeleted(session.id, participantId);
+  }
+
   async recover(inviteToken: string, recoveryToken: string) {
     const session = await this.requireActiveInvite(inviteToken);
     const credentials = await this.database.findCredentialsByRecovery(session.id, tokenHash(recoveryToken));
@@ -255,8 +266,11 @@ export class PhotoSessionService {
 
   private async requireActiveInvite(inviteToken: string) {
     const session = await this.database.findSessionByInvite(inviteToken);
-    if (!session) fail(404, "공유 작업을 찾을 수 없습니다.");
-    if (new Date(session.expiresAt).getTime() <= this.now().getTime()) fail(410, "이 작업의 보관 기간이 끝났습니다.");
+    if (!session || new Date(session.expiresAt).getTime() <= this.now().getTime()) {
+      if (await this.database.isSessionDeleted(inviteToken)) fail(410, "대표자가 보정방을 삭제했습니다.", "SESSION_DELETED");
+      if (!session) fail(404, "공유 작업을 찾을 수 없습니다.");
+      fail(410, "이 작업의 보관 기간이 끝났습니다.");
+    }
     return session;
   }
 

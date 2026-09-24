@@ -43,6 +43,8 @@ export interface NewAsset {
 export interface PhotoSessionStore {
   createSession(input: { session: SessionRecord; participant: Participant; credentials: CredentialRecord; original: NewAsset }): Promise<void>;
   findSessionByInvite(inviteToken: string): Promise<SessionRecord | null>;
+  isSessionDeleted(inviteToken: string): Promise<boolean>;
+  markSessionDeleted(sessionId: string, participantId: string): Promise<void>;
   findCredentials(sessionId: string, participantId: string): Promise<CredentialRecord | null>;
   findCredentialsByRecovery(sessionId: string, recoveryTokenHash: string): Promise<CredentialRecord | null>;
   replaceSessionToken(sessionId: string, participantId: string, sessionTokenHash: string): Promise<void>;

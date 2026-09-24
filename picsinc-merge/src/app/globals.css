@@ -108,3 +108,23 @@ p { line-height: 1.6; margin: 0 0 16px; }
 @media (prefers-reduced-motion: reduce) { .progress-track > div { transition: none; } .spinner { animation-duration: 2s; } }
 
 @media (prefers-reduced-motion: reduce) { .help-sheet[open] { animation-duration: 1ms; transition: none; } }
+
+.host-name-field { margin-top: 14px; }
+.delete-room-dialog { width: calc(100% - 56px); max-width: 346px; max-height: calc(100dvh - 32px); border: 0; border-radius: 20px; padding: 24px 20px 20px; color: #17152b; background: white; text-align: center; box-shadow: 0 10px 28px #08081438; }
+.delete-room-dialog::backdrop { background: rgb(15 15 20 / 46%); }
+.delete-room-icon { width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 12px; display: grid; place-items: center; color: #e02e38; background: #ffeded; font-size: 24px; font-weight: 700; }
+.delete-room-dialog h2 { font-size: 20px; line-height: 28px; margin: 0 0 10px; }
+.delete-room-dialog p { font-size: 13px; line-height: 21px; color: var(--muted); margin: 0 0 8px; word-break: keep-all; }
+.delete-room-warning { display: block; max-width: 200px; margin: 0 auto; padding: 4px 6px; border-radius: 10px; background: #fff2f2; color: #c7242e; font-size: 12px; line-height: 18px; }
+.delete-room-buttons { display: flex; gap: 10px; margin-top: 21px; }
+.delete-room-buttons button { min-height: 48px; border-radius: 12px; font-size: 14px; font-weight: 700; padding: 8px; }
+.delete-room-buttons button:first-child { flex: 118; border: 1px solid var(--line); background: #f4f2fb; color: #17152b; }
+.delete-room-buttons button:last-child { flex: 178; border: 0; background: #e02e38; color: white; }
+.delete-room-dialog .delete-room-error { color: #c7242e; margin-top: 12px; }
+.deleted-room { text-align: center; padding-top: min(105px, 14dvh); }
+.deleted-room > img { display: block; margin: 0 auto 24px; }
+.deleted-room h1 { font-size: 25px; line-height: 36px; margin: 0 0 12px; }
+.deleted-room > p { color: var(--muted); font-size: 14px; line-height: 22px; margin: 0 0 24px; }
+.deleted-room-notice { max-width: 338px; margin: 0 auto; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: #e7e3ff; }
+.deleted-room-notice strong { display: block; color: var(--primary); font-size: 14px; margin-bottom: 11px; }
+.deleted-room-notice p { font-size: 13px; line-height: 20px; color: var(--muted); margin: 0; }

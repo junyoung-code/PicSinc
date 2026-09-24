@@ -33,6 +33,14 @@ export class SupabasePhotoSessionStore implements PhotoSessionStore {
     }); this.check(error);
   }
   async findSessionByInvite(inviteToken: string) { const { data, error } = await this.db().from("photo_sessions").select("*").eq("invite_token", inviteToken).maybeSingle(); this.check(error); return data ? rowSession(data) : null; }
+  async isSessionDeleted(inviteToken: string) {
+    const { data, error } = await this.db().from("photo_session_deletions").select("invite_token").eq("invite_token", inviteToken).maybeSingle();
+    this.check(error); return Boolean(data);
+  }
+  async markSessionDeleted(sessionId: string, participantId: string) {
+    const { error } = await this.db().rpc("delete_photo_session", { p_session_id: sessionId, p_participant_id: participantId });
+    this.check(error);
+  }
   async findCredentials(sessionId: string, participantId: string) { const { data, error } = await this.db().from("participant_credentials").select("*").eq("session_id", sessionId).eq("participant_id", participantId).maybeSingle(); this.check(error); return data ? rowCredentials(data) : null; }
   async findCredentialsByRecovery(sessionId: string, recoveryTokenHash: string) { const { data, error } = await this.db().from("participant_credentials").select("*").eq("session_id", sessionId).eq("recovery_token_hash", recoveryTokenHash).maybeSingle(); this.check(error); return data ? rowCredentials(data) : null; }
   async replaceSessionToken(sessionId: string, participantId: string, sessionTokenHash: string) { const { error } = await this.db().from("participant_credentials").update({ session_token_hash: sessionTokenHash }).eq("session_id", sessionId).eq("participant_id", participantId); this.check(error); }

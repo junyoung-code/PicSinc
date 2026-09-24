@@ -24,8 +24,11 @@ function check(error: { message: string } | null) {
 export async function authorizeProcessing(auth: Auth) {
   const store = new SupabasePhotoSessionStore();
   const session = await store.findSessionByInvite(auth.inviteToken);
-  if (!session) throw new SessionError(404,"보정방을 찾을 수 없습니다.");
-  if (Date.parse(session.expiresAt)<=Date.now()) throw new SessionError(410,"이 작업의 보관 기간이 끝났습니다.");
+  if (!session || Date.parse(session.expiresAt)<=Date.now()) {
+    if (await store.isSessionDeleted(auth.inviteToken)) throw new SessionError(410,"대표자가 보정방을 삭제했습니다.","SESSION_DELETED");
+    if (!session) throw new SessionError(404,"보정방을 찾을 수 없습니다.");
+    throw new SessionError(410,"이 작업의 보관 기간이 끝났습니다.");
+  }
   const credential = await store.findCredentials(session.id,auth.participantId);
   if (!credential || credential.sessionTokenHash!==hash(auth.sessionToken).toString("hex")) throw new SessionError(403,"이 브라우저의 참여증이 올바르지 않습니다.");
   return session;

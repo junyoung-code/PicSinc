@@ -1,9 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { DeletedRoomScreen } from "@/features/mobile-flow/room-deletion";
 import MobileShell from "@/components/mobile-shell";
 import { rememberRecovery } from "@/features/mobile-flow/client";
 export default function RecoveryPage({ params }: { params: Promise<{ inviteToken: string }> }) {
   const [message, setMessage] = useState("복구 중입니다.");
+  const [deleted, setDeleted] = useState(false);
   const [busy, setBusy] = useState(false);
   const started = useRef(false);
   const recovery = useRef<{ inviteToken: string; token: string } | null>(null);
@@ -14,6 +16,7 @@ export default function RecoveryPage({ params }: { params: Promise<{ inviteToken
     try {
       const response = await fetch(`/api/sessions/${inviteToken}/recover`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
       const body = await response.json();
+      if (body.code === "SESSION_DELETED") { setDeleted(true); return; }
       if (!response.ok) throw new Error(body.error);
       rememberRecovery(inviteToken, `${location.origin}/sessions/${inviteToken}/recover#token=${token}`);
       location.assign(`/sessions/${inviteToken}`);
@@ -29,5 +32,6 @@ export default function RecoveryPage({ params }: { params: Promise<{ inviteToken
       recovery.current = { inviteToken, token }; void recover();
     });
   }, [params]);
+  if (deleted) return <DeletedRoomScreen />;
   return <MobileShell title="내 작업 이어가기"><h1>저장한 작업으로<br />돌아가고 있어요</h1><p className="status-message" role="status">{message}</p>{recovery.current && !busy && <button className="primary-button" onClick={() => void recover()}>복구 다시 시도</button>}</MobileShell>;
 }

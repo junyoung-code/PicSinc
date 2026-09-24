@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { helpContent, type HelpTopic } from "@/features/mobile-flow/help-content";
 
-export default function MobileShell({ title, progress = 0, onBack, children, footer, helpTopic }: {
-  title: string; progress?: number; onBack?: () => void; children: ReactNode; footer?: ReactNode; helpTopic?: HelpTopic;
+export default function MobileShell({ title, progress = 0, onBack, children, footer, helpTopic, showProgress = true }: {
+  title: string; progress?: number; onBack?: () => void; children: ReactNode; footer?: ReactNode; helpTopic?: HelpTopic; showProgress?: boolean;
 }) {
   const [help, setHelp] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -31,7 +31,7 @@ export default function MobileShell({ title, progress = 0, onBack, children, foo
       <span>{title}</span>
       {content ? <button ref={helpButton} className="icon-button" aria-label="도움말" aria-haspopup="dialog" aria-expanded={help} onClick={() => setHelp(true)}>?</button> : <span className="top-spacer" />}
     </header>
-    <div className="progress-track" role="progressbar" aria-label="진행 단계" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><div style={{ width: `${progress}%` }} /></div>
+    {showProgress && <div className="progress-track" role="progressbar" aria-label="진행 단계" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><div style={{ width: `${progress}%` }} /></div>}
     {content && <dialog ref={dialog} className={`help-sheet${closing ? " is-closing" : ""}${dragging ? " is-dragging" : ""}`} style={{ "--sheet-y": `${dragY}px`, transform: `translateY(${dragY}px)` } as CSSProperties} aria-labelledby="help-title" onCancel={event => { event.preventDefault(); setClosing(true); }} onClose={() => setHelp(false)} onAnimationEnd={event => { if (event.animationName === "help-sheet-out") setHelp(false); }}>
       <button type="button" className="sheet-handle" aria-label="도움말 닫기" onClick={() => { if (!dragged.current) setClosing(true); }} onKeyDown={() => { dragged.current = false; }}
         onPointerDown={event => { if (closing) return; dragStart.current = event.clientY; dragged.current = false; setDragging(true); event.currentTarget.setPointerCapture(event.pointerId); }}
