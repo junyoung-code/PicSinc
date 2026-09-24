@@ -83,6 +83,7 @@ p { line-height: 1.6; margin: 0 0 16px; }
 .sheet-handle:active { cursor: grabbing; }
 .sheet-handle span { width: 48px; height: 4px; margin-top: 12px; border-radius: 999px; background: var(--line); }
 .help-sheet h2 { font-size: 19px; line-height: 28px; margin: 0 0 24px; flex-shrink: 0; word-break: keep-all; }
+.help-sheet h2:focus { outline: none; }
 .help-copy { color: var(--muted); font-size: 14px; line-height: 23px; margin-bottom: 24px; }
 .help-copy p { margin: 0; line-height: 23px; word-break: keep-all; overflow-wrap: anywhere; }
 .help-sheet .primary-button { margin-top: auto; flex-shrink: 0; font-size: 15px; }

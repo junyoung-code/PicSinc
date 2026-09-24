@@ -7,7 +7,7 @@
 .identity { font-size:13px; line-height:1.6; margin:10px 0; overflow-wrap:anywhere; }
 .identity strong { color:#5143d1; }
 .canvasFrame { position:relative; background:white; overflow:hidden; min-height:100px; }
-.canvas { display:block; width:100%; height:auto; min-height:100px; max-height:55dvh; touch-action:none; }
+.canvas { display:block; width:100%; height:auto; min-height:100px; max-height:55dvh; touch-action:pan-y pinch-zoom; }
 .tools { display:flex; gap:8px; margin:0; font-size:13px; }
 .tools button { flex:1; min-width:0; height:46px; padding:6px; font-weight:700; border-radius:13px; }
 .brush { display:flex; align-items:center; gap:12px; font-size:13px; }
@@ -25,7 +25,7 @@
 .editHint strong { font-size:15px; }
 .editHint p { color:#ffffffad; font-size:11px; margin:3px 0 0; }
 .expanded .canvasFrame { flex:1; min-height:100px; background:#262626; }
-.expanded .canvas { height:100%; max-height:none; }
+.expanded .canvas { height:100%; max-height:none; touch-action:none; }
 .expanded .hint { color:#bab9c4; margin:6px 0; }
 .expanded .scrollControls { flex-shrink:0; max-height:30dvh; overflow:auto; background:#13151c; border:1px solid #414451; border-radius:20px; padding:15px 12px 12px; margin-top:24px; }
 .expanded button { background:#1e2029; color:#fff; border-color:#414451; }

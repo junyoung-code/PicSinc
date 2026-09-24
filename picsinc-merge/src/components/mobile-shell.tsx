@@ -13,11 +13,13 @@ export default function MobileShell({ title, progress = 0, onBack, children, foo
   const dragStart = useRef<number | null>(null);
   const dragged = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
+  const helpTitle = useRef<HTMLHeadingElement>(null);
   const helpButton = useRef<HTMLButtonElement>(null);
   useEffect(() => { setHelp(false); }, [helpTopic]);
   useEffect(() => {
     if (!help || !helpTopic) { dialog.current?.close(); setClosing(false); setDragY(0); setDragging(false); dragStart.current = null; return; }
     dialog.current?.showModal();
+    helpTitle.current?.focus({ preventScroll: true });
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = overflow; dialog.current?.close(); helpButton.current?.focus(); };
@@ -36,7 +38,7 @@ export default function MobileShell({ title, progress = 0, onBack, children, foo
         onPointerMove={event => { if (dragStart.current === null) return; const distance = Math.max(0, event.clientY - dragStart.current); if (distance > 4) dragged.current = true; setDragY(distance); }}
         onPointerUp={event => { if (dragStart.current === null) return; const distance = Math.max(0, event.clientY - dragStart.current); dragStart.current = null; setDragging(false); if (distance >= 70) setClosing(true); else setDragY(0); event.currentTarget.releasePointerCapture(event.pointerId); }}
         onPointerCancel={() => { dragStart.current = null; setDragging(false); setDragY(0); }}><span aria-hidden="true" /></button>
-      <h2 id="help-title">{content.title}</h2>
+      <h2 ref={helpTitle} id="help-title" tabIndex={-1}>{content.title}</h2>
       <div className="help-copy">{content.lines.map(line => <p key={line}>{line}</p>)}</div>
       <button className="primary-button" onClick={() => setClosing(true)}>확인</button>
     </dialog>}

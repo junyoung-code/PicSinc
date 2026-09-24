@@ -319,6 +319,7 @@ export default function MobileRegionEditor({ imageUrl, width, height, detection,
   function down(event: React.PointerEvent<HTMLCanvasElement>) {
     if (locked || !imageRef.current) return;
     event.currentTarget.setPointerCapture(event.pointerId); const p = local(event); pointers.current.set(event.pointerId, p);
+    if (!expanded && pointers.current.size > 1) { gesture.current = null; return; }
     if (pointers.current.size === 2) {
       if (gesture.current) { maskRef.current = gesture.current.before; refreshMask(false); } gesture.current = null;
       const [a, b] = [...pointers.current.values()]; pinch.current = { distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), midpoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, view: { ...viewRef.current } }; return;
