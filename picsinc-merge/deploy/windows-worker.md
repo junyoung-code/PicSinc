@@ -17,21 +17,11 @@ cd ..\..\picsinc-merge
 npm ci --include=dev
 ```
 
-`picsinc-merge/.env.worker`를 만들고 공개 서버 URL, 서버와 같은 `WORKER_TOKEN`, 아래 Windows 절대 경로를 입력한다. 파일은 전용 계정만 읽게 보관한다. Supabase 비밀 키는 Windows에 두지 않는다. 값이나 파일 원문을 시험 결과에 붙여 보내지 않는다.
-
-```dotenv
-WORKER_BASE_URL=https://<배포주소>
-WORKER_TOKEN=<서버와 같은 32자 이상 비밀값>
-YOLO_DEVICE=cuda:0
-YOLO_RUNTIME_DIR=C:\<저장소>\experiments\yolo-outline
-YOLO_PYTHON=C:\<저장소>\experiments\yolo-outline\.venv\Scripts\python.exe
-```
-
 ```powershell
 powershell -NoProfile -File .\scripts\check-windows-worker.ps1
 ```
 
-출력에서 GTX 1060, 약 3GB VRAM, `cuda=True`, CUDA 지원 아키텍처, 모델 SHA-256을 확인한다. `torch.cuda.is_available()`만으로 충분하지 않으므로 아래 실제 YOLO 시험도 통과해야 한다. 모델, `imgsz=1024`, `retina_masks=True`, 중복 제거·겹침 보정은 변경하지 않는다. 3GB에서 실패하면 해상도를 낮추거나 CPU로 돌리지 않고 Windows 상시 운영을 보류한다.
+이 점검과 2절의 오프라인 화질 비교에는 `.env.worker`와 `WORKER_TOKEN`이 필요 없다. 출력에서 GTX 1060, 약 3GB VRAM, `cuda=True`, CUDA 지원 아키텍처, 모델 SHA-256을 확인한다. `torch.cuda.is_available()`만으로 충분하지 않으므로 아래 실제 YOLO 시험도 통과해야 한다. 모델, `imgsz=1024`, `retina_masks=True`, 중복 제거·겹침 보정은 변경하지 않는다. 3GB에서 실패하면 해상도를 낮추거나 CPU로 돌리지 않고 Windows 상시 운영을 보류한다.
 
 ## 2. 비공개 사진 화질 비교
 
@@ -56,7 +46,17 @@ Mac·Windows JSON을 같은 PC에 모아 `compare-worker-quality.py detection <M
 
 ## 3. 상시 실행과 대기열
 
-화질 검증 후 `scripts/start-windows-worker.cmd`를 수동 실행해 생성 사진 1건의 실제 CUDA 처리와 결과를 확인한다. Windows 작업 스케줄러에 **컴퓨터 시작 시** 실행, 전용 계정, **로그온 여부와 관계없이 실행**, 동시 인스턴스 금지, 실패 시 1분 간격 재시도 3회로 등록한다. 실행 프로그램은 이 `.cmd` 파일이다. 장시간 실행 자동 중지·절전 조건을 해제하고 Windows 절전도 끈다. 재부팅 후 로그인 없이 작업이 처리되고 CUDA가 사용되는지 시험한다.
+분리된 Vercel·Supabase 시험 환경과 화질 검증을 준비한 뒤 `picsinc-merge/.env.worker`를 만든다. 시험 서버에 새로 만든 32자 이상의 `WORKER_TOKEN`을 설정하고 Windows 파일에도 **같은 값**을 넣는다. 운영 서버의 토큰이나 URL을 시험에 사용하지 않는다. 파일은 전용 계정만 읽게 보관한다. Supabase 비밀 키는 Windows에 두지 않는다. 값이나 파일 원문을 시험 결과에 붙여 보내지 않는다.
+
+```dotenv
+WORKER_BASE_URL=https://<시험 Vercel 배포주소>
+WORKER_TOKEN=<시험 서버와 같은 32자 이상 비밀값>
+YOLO_DEVICE=cuda:0
+YOLO_RUNTIME_DIR=C:\<저장소>\experiments\yolo-outline
+YOLO_PYTHON=C:\<저장소>\experiments\yolo-outline\.venv\Scripts\python.exe
+```
+
+`scripts/start-windows-worker.cmd`를 수동 실행해 생성 사진 1건의 실제 CUDA 처리와 결과를 확인한다. Windows 작업 스케줄러에 **컴퓨터 시작 시** 실행, 전용 계정, **로그온 여부와 관계없이 실행**, 동시 인스턴스 금지, 실패 시 1분 간격 재시도 3회로 등록한다. 실행 프로그램은 이 `.cmd` 파일이다. 장시간 실행 자동 중지·절전 조건을 해제하고 Windows 절전도 끈다. 재부팅 후 로그인 없이 작업이 처리되고 CUDA가 사용되는지 시험한다.
 
 로그는 `picsinc-merge/worker-logs/`에 기록된다. `node --env-file=.env.worker scripts/worker-status.mjs --watch`는 서버에서 대기·진행·최근 실패 수만 읽으며 사진이나 Supabase 키를 가져오지 않는다. 대기 3건 이상 또는 최장 대기 60초 초과가 2분 지속되면 Mac 수동 추가를 검토한다. CUDA 불가·GPU 메모리 오류가 나면 Windows 워커는 해당 작업을 다시 대기시키고 새 작업 접수를 멈춘다. 원인 해결 뒤 작업 스케줄러에서 워커를 재시작한다. 급하면 기존 Mac 워커를 수동으로 켠다.
 

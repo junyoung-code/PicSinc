@@ -6,8 +6,6 @@ $model = Join-Path $yolo '.cache\yolo26n-seg.pt'
 
 if (-not (Test-Path $python)) { throw "Python venv missing: $python" }
 if (-not (Test-Path $model)) { throw "YOLO model missing: $model" }
-if (-not (Test-Path (Join-Path $project '.env.worker'))) { throw 'Create .env.worker in picsinc-merge' }
-
 node --version
 if ($LASTEXITCODE -ne 0) { throw 'Node.js is unavailable' }
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
