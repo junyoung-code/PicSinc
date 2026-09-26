@@ -17,7 +17,8 @@ function check(error: { message: string } | null) {
   const known: Record<string, [number,string]> = { "Session expired": [410,"이 작업의 보관 기간이 끝났습니다."], "Forbidden": [403,"요청할 권한이 없습니다."], "Version changed": [409,"사진이나 선택이 바뀌었어요. 다시 불러와 주세요."], "No submissions": [400,"한 명 이상 제출해야 병합할 수 있습니다."] };
   const mapped = known[error.message];
   if (mapped) throw new SessionError(...mapped);
-  console.error("processing database error", error.message.slice(0,120));
+  // Database messages may include query values; keep tokens and file paths out of logs.
+  console.error("processing database error");
   throw new SessionError(503,"작업 상태를 저장하지 못했어요. 잠시 후 다시 시도해 주세요.");
 }
 
@@ -76,6 +77,24 @@ export function authenticateWorker(request: Request) {
   const expected=process.env.WORKER_TOKEN;
   const value=request.headers.get('authorization')?.replace(/^Bearer /,'') || '';
   if(!expected || expected.length<32 || !value || !timingSafeEqual(hash(value),hash(expected))) throw new SessionError(401,"Worker authentication required");
+}
+
+export async function workerStatus() {
+  const recent = new Date(Date.now() - 60 * 60_000).toISOString();
+  const [queued, running, failed, oldest] = await Promise.all([
+    db().from('processing_jobs').select('id', { count: 'exact', head: true }).eq('status', 'queued'),
+    db().from('processing_jobs').select('id', { count: 'exact', head: true }).eq('status', 'running'),
+    db().from('processing_jobs').select('id', { count: 'exact', head: true }).eq('status', 'failed').gte('updated_at', recent),
+    db().from('processing_jobs').select('created_at').eq('status', 'queued').order('created_at').limit(1).maybeSingle(),
+  ]);
+  for (const result of [queued, running, failed, oldest]) check(result.error);
+  return {
+    queued: queued.count ?? 0,
+    running: running.count ?? 0,
+    failedLastHour: failed.count ?? 0,
+    oldestQueuedSeconds: oldest.data ? Math.max(0, Math.floor((Date.now() - Date.parse(oldest.data.created_at)) / 1000)) : null,
+    sampledAt: new Date().toISOString(),
+  };
 }
 
 export async function claimWorker(): Promise<WorkerAssignment | null> {

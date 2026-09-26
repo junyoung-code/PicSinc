@@ -42,6 +42,23 @@ def read_photo(path):
         raise ValueError("사진을 읽지 못했습니다. 다른 JPG 또는 PNG 파일을 올려 주세요.") from error
 
 
+class CudaUnavailableError(RuntimeError):
+    pass
+
+
+def select_device(torch):
+    requested = os.environ.get("YOLO_DEVICE", "auto").lower()
+    if requested == "auto":
+        return "mps" if torch.backends.mps.is_available() else "cpu"
+    if requested == "cuda:0":
+        if not torch.cuda.is_available():
+            raise CudaUnavailableError("CUDA is unavailable")
+        return requested
+    if requested in {"mps", "cpu"}:
+        return requested
+    raise ValueError("YOLO_DEVICE must be auto, cuda:0, mps, or cpu")
+
+
 class Segmenter:
     def __init__(self):
         Path(os.environ["YOLO_CONFIG_DIR"]).mkdir(parents=True, exist_ok=True)
@@ -50,7 +67,7 @@ class Segmenter:
 
         CACHE.mkdir(parents=True, exist_ok=True)
         settings.update({"sync": False})
-        self.device = "mps" if torch.backends.mps.is_available() else "cpu"
+        self.device = select_device(torch)
         self.model = YOLO(str(CACHE / "yolo26n-seg.pt"))
 
     def predict(self, photo):

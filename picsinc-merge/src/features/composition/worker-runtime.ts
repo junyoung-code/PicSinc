@@ -1,4 +1,4 @@
-import { fork } from "node:child_process";
+import { fork, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -8,6 +8,9 @@ import type { WorkerAssignment, WorkerCompletion } from "@/core/processing";
 import { boundedBody, safeUrl, WorkerError } from "./worker-io";
 
 export interface WorkerConfig { baseUrl: string; token: string }
+export function assertWorkerDevice(platform: NodeJS.Platform, device?: string) {
+  if (platform === "win32" && device !== "cuda:0") throw new Error("Windows worker requires YOLO_DEVICE=cuda:0");
+}
 export class WorkerApiError extends Error {
   constructor(public status: number) { super("Worker API request failed"); }
 }
@@ -45,32 +48,39 @@ function spawnTask(job: WorkerAssignment, signal: AbortSignal, directory: string
   });
   let finished = false;
   let result: WorkerCompletion["result"] | undefined;
+  let metrics: { downloadMs: number; processingMs: number; uploadMs: number; inputBytes: number; outputBytes: number } | undefined;
   let failure: Error | undefined;
   const stop = () => {
     if (!child.pid) return;
-    try { if (process.platform === "win32") child.kill("SIGKILL"); else process.kill(-child.pid, "SIGKILL"); } catch { /* Process already exited. */ }
+    try {
+      if (process.platform === "win32") spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore", timeout: 5_000 });
+      else process.kill(-child.pid, "SIGKILL");
+    } catch { /* Process already exited. */ }
   };
   const cleanup = () => { signal.removeEventListener("abort", abort); clearTimeout(timeout); };
   const abort = () => { failure = new WorkerError("transient"); stop(); };
   const timeout = setTimeout(() => { failure = new WorkerError("processing_failed"); stop(); }, 10 * 60_000);
   signal.addEventListener("abort", abort, { once: true });
   child.once("error", () => { if (!finished) { finished = true; cleanup(); stop(); reject(new WorkerError("processing_failed")); } });
-  child.on("message", (message: { result?: WorkerCompletion["result"]; errorCode?: WorkerError["code"] }) => {
-    if (message?.result) result = message.result;
-    else failure = new WorkerError(["transient", "invalid_input", "processing_failed"].includes(message?.errorCode ?? "") ? message.errorCode! : "processing_failed");
+  child.on("message", (message: { result?: WorkerCompletion["result"]; metrics?: typeof metrics; errorCode?: WorkerError["code"] }) => {
+    if (message?.result) { result = message.result; metrics = message.metrics; }
+    else failure = new WorkerError(["transient", "invalid_input", "processing_failed", "gpu_unavailable"].includes(message?.errorCode ?? "") ? message.errorCode! : "processing_failed");
   });
   child.once("exit", (code) => {
     if (finished) return;
     finished = true; cleanup(); stop();
     if (failure || code !== 0 || !result) reject(failure ?? new WorkerError("processing_failed"));
-    else resolve(result);
+    else {
+      if (metrics) console.info("worker measurement", JSON.stringify({ jobId: job.id, kind: job.kind, ...metrics }));
+      resolve(result);
+    }
   });
   child.send(job, (error) => { if (error) { failure = new WorkerError("processing_failed"); stop(); } });
 }); }
 
 /** Keep ownership alive while computing; a lost lease can never publish a result. */
 export async function processAssignment(job: WorkerAssignment, post: Post, shutdown: AbortSignal,
-  options: { runTask?: RunTask; heartbeatMs?: number; leaseSafetyMs?: number; retryMs?: number } = {}): Promise<void> {
+  options: { runTask?: RunTask; heartbeatMs?: number; leaseSafetyMs?: number; retryMs?: number } = {}): Promise<boolean> {
   const controller = new AbortController();
   const signal = AbortSignal.any([shutdown, controller.signal]);
   const heartbeatStop = new AbortController();
@@ -90,33 +100,43 @@ export async function processAssignment(job: WorkerAssignment, post: Post, shutd
   try {
     const result = await (options.runTask ?? runChildTask)(job, signal);
     heartbeatStop.abort(); await heartbeat;
-    if (signal.aborted) return;
+    if (signal.aborted) return false;
     await post("heartbeat", auth, signal);
     completing = true;
     // Completion is idempotent. A dropped response may mean it was already committed.
     for (let attempt = 0; attempt < 3; attempt++) {
-      try { await post("complete", { ...auth, result } satisfies WorkerCompletion, shutdown); return; }
+      try { await post("complete", { ...auth, result } satisfies WorkerCompletion, shutdown); return false; }
       catch (error) {
-        if (shutdown.aborted || (error instanceof WorkerApiError && error.status < 500 && error.status !== 429)) return;
+        if (shutdown.aborted || (error instanceof WorkerApiError && error.status < 500 && error.status !== 429)) return false;
         if (attempt < 2) await delay(options.retryMs ?? 2_000, undefined, { signal: shutdown });
       }
     }
     // Let the lease expire after uncertain completion; never overwrite a committed result as failed.
+    return false;
   } catch (error) {
-    if (signal.aborted || completing) return;
+    if (signal.aborted || completing) return false;
     const errorCode = error instanceof WorkerError ? error.code : "processing_failed";
-    try { await post("fail", { ...auth, errorCode, error: "사진 처리에 실패했습니다. 다시 시도해 주세요." }, shutdown); } catch { /* Lease recovery handles an unreachable API. */ }
+    try { await post("fail", { ...auth, errorCode: errorCode === "gpu_unavailable" ? "transient" : errorCode, error: "사진 처리에 실패했습니다. 다시 시도해 주세요." }, shutdown); } catch { /* Lease recovery handles an unreachable API. */ }
+    return errorCode === "gpu_unavailable";
   } finally { heartbeatStop.abort(); await heartbeat; }
 }
 
 export async function runWorker(config: WorkerConfig, signal: AbortSignal): Promise<void> {
+  assertWorkerDevice(process.platform, process.env.YOLO_DEVICE);
   const post = createWorkerClient(config);
   let backoff = 5_000;
   while (!signal.aborted) {
     try {
       const { job } = await post<{ job: WorkerAssignment | null }>("claim", {}, signal);
       backoff = 5_000;
-      if (job) { await processAssignment(job, post, signal); continue; }
+      if (job) {
+        if (await processAssignment(job, post, signal)) {
+          console.error("Worker GPU unavailable; claiming paused until operator restart.");
+          await new Promise<void>(resolve => signal.addEventListener("abort", () => resolve(), { once: true }));
+          break;
+        }
+        continue;
+      }
     } catch (error) {
       if (signal.aborted) break;
       if (error instanceof WorkerApiError && [401, 403].includes(error.status)) throw new Error("Worker authentication failed");

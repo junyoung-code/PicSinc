@@ -3,12 +3,13 @@ import base64
 from contextlib import redirect_stdout
 from io import BytesIO
 import json
+import os
 from pathlib import Path
 import sys
 
 import numpy as np
 from PIL import Image
-from outline import get_segmenter, read_photo, visible_contours, render_people
+from outline import CudaUnavailableError, get_segmenter, read_photo, visible_contours, render_people
 
 
 def export_regions(photo, masks):
@@ -36,7 +37,18 @@ def export_regions(photo, masks):
 
 if __name__ == "__main__":
     # Keep model diagnostics out of the machine-readable output file.
-    with redirect_stdout(sys.stderr):
-        photo = read_photo(sys.argv[1])
-        result = export_regions(photo, get_segmenter().predict(photo))
-    Path(sys.argv[2]).write_text(json.dumps(result), encoding="utf-8")
+    try:
+        with redirect_stdout(sys.stderr):
+            photo = read_photo(sys.argv[1])
+            result = export_regions(photo, get_segmenter().predict(photo))
+        Path(sys.argv[2]).write_text(json.dumps(result), encoding="utf-8")
+    except CudaUnavailableError:
+        raise SystemExit(78)
+    except RuntimeError as error:
+        if os.environ.get("YOLO_DEVICE", "").startswith("cuda"):
+            reason = str(error).lower()
+            if "out of memory" in reason:
+                raise SystemExit(75) from None
+            if any(marker in reason for marker in ("cuda", "cudnn", "device-side assert", "no kernel image")):
+                raise SystemExit(78) from None
+        raise

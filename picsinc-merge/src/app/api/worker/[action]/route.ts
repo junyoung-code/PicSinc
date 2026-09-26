@@ -1,5 +1,5 @@
 import { apiError } from "@/app/api/sessions/session-api";
-import { authenticateWorker,claimWorker,completeWorker,updateWorker } from "@/features/photo-session/processing-service";
+import { authenticateWorker,claimWorker,completeWorker,updateWorker,workerStatus } from "@/features/photo-session/processing-service";
 export const runtime='nodejs';
 export const maxDuration=60;
 export async function POST(request:Request,{params}:{params:Promise<{action:string}>}) {
@@ -7,6 +7,7 @@ export async function POST(request:Request,{params}:{params:Promise<{action:stri
     authenticateWorker(request);
     const {action}=await params;
     if(action==='claim') return Response.json({job:await claimWorker()},{headers:{'Cache-Control':'no-store'}});
+    if(action==='status') return Response.json(await workerStatus(),{headers:{'Cache-Control':'no-store'}});
     const bytes=await request.text();
     if(bytes.length>128_000) return Response.json({error:'Request too large'},{status:413});
     const body=JSON.parse(bytes);

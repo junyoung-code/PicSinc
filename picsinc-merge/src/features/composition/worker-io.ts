@@ -1,5 +1,5 @@
 export class WorkerError extends Error {
-  constructor(public code: "transient" | "invalid_input" | "processing_failed", message = "Worker task failed") { super(message); }
+  constructor(public code: "transient" | "invalid_input" | "processing_failed" | "gpu_unavailable", message = "Worker task failed") { super(message); }
 }
 
 export function safeUrl(value: string): URL {

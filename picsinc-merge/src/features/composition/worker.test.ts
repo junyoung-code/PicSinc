@@ -7,7 +7,7 @@ import test from "node:test";
 import sharp from "sharp";
 import type { WorkerAssignment } from "@/core/processing";
 import { boundedBody, safeUrl, WorkerError } from "./worker-io";
-import { createWorkerClient, processAssignment, runChildTask, WorkerApiError } from "./worker-runtime";
+import { assertWorkerDevice, createWorkerClient, processAssignment, runChildTask, WorkerApiError } from "./worker-runtime";
 
 function job(base = "http://127.0.0.1"): WorkerAssignment {
   return {
@@ -32,6 +32,13 @@ test("worker rejects insecure remote URLs and bounds streamed responses without 
   assert.equal(safeUrl("http://127.0.0.1:3000/input").hostname, "127.0.0.1");
   const stream = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(5)); controller.enqueue(new Uint8Array(5)); controller.close(); } });
   await assert.rejects(boundedBody(new Response(stream), 9), WorkerError);
+});
+
+test("Windows worker requires explicit CUDA before claiming jobs", () => {
+  assert.throws(() => assertWorkerDevice("win32", undefined), /cuda:0/);
+  assert.throws(() => assertWorkerDevice("win32", "cpu"), /cuda:0/);
+  assert.doesNotThrow(() => assertWorkerDevice("win32", "cuda:0"));
+  assert.doesNotThrow(() => assertWorkerDevice("darwin", undefined));
 });
 
 test("isolated worker composes using signed input/output URLs and reports only metadata", async () => {
@@ -134,6 +141,18 @@ test("worker reports sanitized failure codes without sensitive exception message
   assert.equal(reports.length, 1);
   assert(JSON.stringify(reports).includes("invalid_input"));
   assert(!JSON.stringify(reports).includes("secret"));
+});
+
+test("GPU failure requeues the job and suspends this worker", async () => {
+  const reports: unknown[] = [];
+  const suspend = await processAssignment(job(), async <T>(route: string, body: unknown) => {
+    reports.push({ route, body }); return {} as T;
+  }, new AbortController().signal, {
+    runTask: async () => { throw new WorkerError("gpu_unavailable"); },
+  });
+  assert.equal(suspend, true);
+  assert.equal(reports.length, 1);
+  assert.deepEqual(reports[0], { route: "fail", body: { id: "job", leaseToken: "lease", errorCode: "transient", error: "사진 처리에 실패했습니다. 다시 시도해 주세요." } });
 });
 
 test("repeated uncertain completion leaves recovery to the lease rather than sending fail", async () => {

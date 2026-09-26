@@ -161,6 +161,15 @@ class OutlineTests(unittest.TestCase):
         finally:
             outline.get_segmenter.cache_clear()
 
+    def test_explicit_cuda_never_falls_back_to_cpu(self):
+        torch = SimpleNamespace(cuda=SimpleNamespace(is_available=Mock(return_value=False)))
+        with patch.dict("os.environ", {"YOLO_DEVICE": "cuda:0"}):
+            with self.assertRaises(outline.CudaUnavailableError):
+                outline.select_device(torch)
+        torch.cuda.is_available.return_value = True
+        with patch.dict("os.environ", {"YOLO_DEVICE": "cuda:0"}):
+            self.assertEqual(outline.select_device(torch), "cuda:0")
+
     def test_mps_failure_retries_on_cpu(self):
         segmenter = outline.Segmenter.__new__(outline.Segmenter)
         segmenter.device = "mps"
