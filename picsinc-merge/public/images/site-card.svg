@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7165ee"/>
+      <stop offset="1" stop-color="#5041c7"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#241b80" flood-opacity=".25"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="630" fill="#f4f2fb"/>
+  <rect x="36" y="36" width="1128" height="558" rx="42" fill="url(#background)"/>
+  <circle cx="1150" cy="66" r="165" fill="#ffffff" opacity=".07"/>
+  <circle cx="806" cy="576" r="145" fill="#ffffff" opacity=".06"/>
+
+  <text x="108" y="152" fill="#ffffff" font-family="Apple SD Gothic Neo, sans-serif" font-size="48" font-weight="800" letter-spacing="-2">PicSync</text>
+  <text x="108" y="286" fill="#ffffff" font-family="Apple SD Gothic Neo, sans-serif" font-size="62" font-weight="800" letter-spacing="-3">함께 보정한 사진을</text>
+  <text x="108" y="368" fill="#ffffff" font-family="Apple SD Gothic Neo, sans-serif" font-size="62" font-weight="800" letter-spacing="-3">한 장으로 모아요</text>
+  <text x="110" y="452" fill="#e8e4ff" font-family="Apple SD Gothic Neo, sans-serif" font-size="28" font-weight="500" letter-spacing="-.5">친구와 함께 사진 보정방을 만들어보세요</text>
+  <rect x="110" y="501" width="168" height="45" rx="22.5" fill="#ffffff" opacity=".17"/>
+  <text x="137" y="531" fill="#ffffff" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" font-weight="700">보정방 만들기</text>
+
+  <g transform="rotate(-11 904 336)" filter="url(#shadow)">
+    <rect x="790" y="130" width="233" height="336" rx="20" fill="#fff"/>
+    <rect x="808" y="148" width="197" height="258" rx="10" fill="#d4e5fa"/>
+    <circle cx="908" cy="239" r="45" fill="#f3cab0"/>
+    <path d="M863 235c0-62 92-71 92 1-24-20-63-22-92-1Z" fill="#34304d"/>
+    <path d="M833 398c5-83 38-111 74-111 41 0 76 31 76 111Z" fill="#8aa8df"/>
+    <rect x="849" y="426" width="111" height="13" rx="6.5" fill="#e7e3ff"/>
+  </g>
+  <g transform="rotate(10 1010 350)" filter="url(#shadow)">
+    <rect x="892" y="162" width="233" height="336" rx="20" fill="#fff"/>
+    <rect x="910" y="180" width="197" height="258" rx="10" fill="#f8dcd7"/>
+    <circle cx="1008" cy="274" r="45" fill="#e4b695"/>
+    <path d="M964 270c-4-57 78-73 91-9 1 12-1 25-5 31-9-25-49-35-86-22Z" fill="#5e3e3c"/>
+    <path d="M934 429c3-84 39-115 73-115 43 0 76 36 76 115Z" fill="#dd9099"/>
+    <rect x="950" y="458" width="111" height="13" rx="6.5" fill="#e7e3ff"/>
+  </g>
+  <circle cx="1080" cy="112" r="8" fill="#fff" opacity=".8"/>
+  <path d="M1062 100v-15m0 30v15m-15-30h-15m30 0h15" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".75"/>
+</svg>
