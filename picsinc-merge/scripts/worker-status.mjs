@@ -17,7 +17,13 @@ async function sample() {
   const busy = value.queued >= 3 || (value.oldestQueuedSeconds ?? 0) > 60;
   busySince = busy ? (busySince ?? Date.now()) : null;
   const suggestMac = busySince !== null && Date.now() - busySince >= 120_000;
-  console.log(`${value.sampledAt} queued=${value.queued} running=${value.running} oldest=${value.oldestQueuedSeconds ?? "-"}s failed_1h=${value.failedLastHour}${suggestMac ? " | Mac 보조 워커를 켤 기준에 도달했습니다." : ""}`);
+  const workers = value.workers ?? {};
+  const label = (name) => {
+    const worker = workers[name];
+    const age = worker?.lastSeenAt ? Math.max(0, Math.floor((Date.now() - Date.parse(worker.lastSeenAt)) / 1000)) : null;
+    return `${name}=${worker?.online ? 'online' : 'offline'}${age === null ? '' : `(${age}s ago)`}`;
+  };
+  console.log(`${value.sampledAt} queued=${value.queued} running=${value.running} oldest=${value.oldestQueuedSeconds ?? "-"}s failed_1h=${value.failedLastHour} ${label('windows')} ${label('mac')}${suggestMac ? " | Mac 보조 워커를 켤 기준에 도달했습니다." : ""}`);
 }
 
 do {

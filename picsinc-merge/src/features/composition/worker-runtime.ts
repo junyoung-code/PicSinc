@@ -1,10 +1,12 @@
 import { fork, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { WorkerAssignment, WorkerCompletion } from "@/core/processing";
+import type { WorkerName } from "@/core/worker-presence";
 import { boundedBody, safeUrl, WorkerError } from "./worker-io";
 
 export interface WorkerConfig { baseUrl: string; token: string }
@@ -121,28 +123,56 @@ export async function processAssignment(job: WorkerAssignment, post: Post, shutd
   } finally { heartbeatStop.abort(); await heartbeat; }
 }
 
+/** A separate heartbeat keeps an idle or busy worker visible to the operator. */
+export async function reportWorkerPresence(post: Post, workerName: WorkerName, signal: AbortSignal, intervalMs = 30_000): Promise<void> {
+  const instanceId = randomUUID();
+  let lastSuccess: boolean | null = null;
+  while (!signal.aborted) {
+    try {
+      await post("presence", { workerName, instanceId }, signal);
+      if (lastSuccess !== true) console.info(`Worker online: ${workerName}`);
+      lastSuccess = true;
+    } catch {
+      if (signal.aborted) break;
+      if (lastSuccess !== false) console.error(`Worker presence unavailable: ${workerName}`);
+      lastSuccess = false;
+    }
+    try { await delay(intervalMs, undefined, { signal }); }
+    catch { break; }
+  }
+}
+
 export async function runWorker(config: WorkerConfig, signal: AbortSignal): Promise<void> {
   assertWorkerDevice(process.platform, process.env.YOLO_DEVICE);
   const post = createWorkerClient(config);
+  const workerName: WorkerName | null = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "mac" : null;
+  const presenceStop = new AbortController();
+  const presence = workerName ? reportWorkerPresence(post, workerName, AbortSignal.any([signal, presenceStop.signal])) : Promise.resolve();
   let backoff = 5_000;
-  while (!signal.aborted) {
-    try {
-      const { job } = await post<{ job: WorkerAssignment | null }>("claim", {}, signal);
-      backoff = 5_000;
-      if (job) {
-        if (await processAssignment(job, post, signal)) {
-          console.error("Worker GPU unavailable; claiming paused until operator restart.");
-          await new Promise<void>(resolve => signal.addEventListener("abort", () => resolve(), { once: true }));
-          break;
+  try {
+    while (!signal.aborted) {
+      try {
+        const { job } = await post<{ job: WorkerAssignment | null }>("claim", {}, signal);
+        backoff = 5_000;
+        if (job) {
+          if (await processAssignment(job, post, signal)) {
+            presenceStop.abort();
+            console.error("Worker GPU unavailable; claiming paused until operator restart.");
+            await new Promise<void>(resolve => signal.addEventListener("abort", () => resolve(), { once: true }));
+            break;
+          }
+          continue;
         }
-        continue;
+      } catch (error) {
+        if (signal.aborted) break;
+        if (error instanceof WorkerApiError && [401, 403].includes(error.status)) throw new Error("Worker authentication failed");
+        console.error("Worker connection unavailable; retrying.");
+        backoff = Math.min(backoff * 2, 30_000);
       }
-    } catch (error) {
-      if (signal.aborted) break;
-      if (error instanceof WorkerApiError && [401, 403].includes(error.status)) throw new Error("Worker authentication failed");
-      console.error("Worker connection unavailable; retrying.");
-      backoff = Math.min(backoff * 2, 30_000);
+      await delay(backoff, undefined, { signal }).catch(() => undefined);
     }
-    await delay(backoff, undefined, { signal }).catch(() => undefined);
+  } finally {
+    presenceStop.abort();
+    await presence;
   }
 }

@@ -7,7 +7,7 @@ import test from "node:test";
 import sharp from "sharp";
 import type { WorkerAssignment } from "@/core/processing";
 import { boundedBody, safeUrl, WorkerError } from "./worker-io";
-import { assertWorkerDevice, createWorkerClient, processAssignment, runChildTask, WorkerApiError } from "./worker-runtime";
+import { assertWorkerDevice, createWorkerClient, processAssignment, reportWorkerPresence, runChildTask, WorkerApiError } from "./worker-runtime";
 
 function job(base = "http://127.0.0.1"): WorkerAssignment {
   return {
@@ -39,6 +39,21 @@ test("Windows worker requires explicit CUDA before claiming jobs", () => {
   assert.throws(() => assertWorkerDevice("win32", "cpu"), /cuda:0/);
   assert.doesNotThrow(() => assertWorkerDevice("win32", "cuda:0"));
   assert.doesNotThrow(() => assertWorkerDevice("darwin", undefined));
+});
+
+test("worker reports its platform and a stable process instance until shutdown", async () => {
+  const shutdown = new AbortController();
+  const reports: Array<{ workerName: string; instanceId: string }> = [];
+  await reportWorkerPresence(async <T>(route: string, body: unknown) => {
+    assert.equal(route, 'presence');
+    reports.push(body as typeof reports[number]);
+    if (reports.length === 2) shutdown.abort();
+    return { ok: true } as T;
+  }, 'mac', shutdown.signal, 1);
+  assert.equal(reports.length, 2);
+  assert.equal(reports[0].workerName, 'mac');
+  assert.match(reports[0].instanceId, /^[0-9a-f-]{36}$/);
+  assert.equal(reports[0].instanceId, reports[1].instanceId);
 });
 
 test("isolated worker composes using signed input/output URLs and reports only metadata", async () => {

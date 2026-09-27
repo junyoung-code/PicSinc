@@ -2,6 +2,7 @@ import "server-only";
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { CompositionInput } from "@/core/contracts";
 import type { JobView, WorkerAssignment, WorkerCompletion } from "@/core/processing";
+import { workerPresenceView, type WorkerName } from "@/core/worker-presence";
 import { supabaseServer } from "@/integrations/storage/supabase-server";
 import { SupabasePhotoSessionStore } from "@/integrations/storage/supabase-photo-session-store";
 import { SessionError } from "./errors";
@@ -81,20 +82,35 @@ export function authenticateWorker(request: Request) {
 
 export async function workerStatus() {
   const recent = new Date(Date.now() - 60 * 60_000).toISOString();
-  const [queued, running, failed, oldest] = await Promise.all([
+  const [queued, running, failed, oldest, presence] = await Promise.all([
     db().from('processing_jobs').select('id', { count: 'exact', head: true }).eq('status', 'queued'),
     db().from('processing_jobs').select('id', { count: 'exact', head: true }).eq('status', 'running'),
     db().from('processing_jobs').select('id', { count: 'exact', head: true }).eq('status', 'failed').gte('updated_at', recent),
     db().from('processing_jobs').select('created_at').eq('status', 'queued').order('created_at').limit(1).maybeSingle(),
+    db().from('worker_presence').select('worker_name,last_seen_at'),
   ]);
-  for (const result of [queued, running, failed, oldest]) check(result.error);
+  for (const result of [queued, running, failed, oldest, presence]) check(result.error);
   return {
     queued: queued.count ?? 0,
     running: running.count ?? 0,
     failedLastHour: failed.count ?? 0,
     oldestQueuedSeconds: oldest.data ? Math.max(0, Math.floor((Date.now() - Date.parse(oldest.data.created_at)) / 1000)) : null,
+    workers: workerPresenceView(presence.data ?? []),
     sampledAt: new Date().toISOString(),
   };
+}
+
+export async function markWorkerPresent(body: { workerName?: unknown; instanceId?: unknown } | null) {
+  if (!body || (body.workerName !== 'mac' && body.workerName !== 'windows') ||
+      typeof body.instanceId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.instanceId)) {
+    throw new SessionError(400, 'Invalid worker presence');
+  }
+  const { error } = await db().rpc('mark_worker_present', {
+    p_worker_name: body.workerName as WorkerName,
+    p_instance_id: body.instanceId,
+  });
+  check(error);
+  return { ok: true };
 }
 
 export async function claimWorker(): Promise<WorkerAssignment | null> {
