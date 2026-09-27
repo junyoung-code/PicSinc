@@ -11,7 +11,9 @@ Supabase 프로젝트: `picsinc-merge` (`zogtpmolcmpiipwbysck`)
 서버 환경변수: `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_STORAGE_BUCKET`, `UPLOAD_SIGNING_SECRET`, `WORKER_TOKEN`.
 마지막 두 값은 각각 별도의 32자 이상 난수입니다. `NEXT_PUBLIC_`로 등록하지 않습니다. `UPLOAD_SIGNING_SECRET` 변경은 진행 중 업로드의 재완료에 영향을 줍니다. 워커 토큰을 바꾸면 Mac도 함께 갱신합니다.
 
-현재 로컬 앱 디렉터리에서 CLI로 배포합니다. 상위 저장소의 과거 앱이 잘못 배포되지 않도록 Git 자동 배포는 연결하지 않았습니다.
+Vercel 프로젝트는 GitHub `junyoung-code/PicSinc` 저장소에 연결되어 있습니다. Production 브랜치는 `main`, Root Directory는 `picsinc-merge`입니다. `main`에 push하면 앱이 자동 배포되고, 다른 브랜치의 변경은 Preview 배포로 확인합니다. 배포 결과는 Vercel Deployments에서 확인합니다.
+
+Git 배포가 실패했을 때만 다음 명령으로 같은 앱 디렉터리에서 수동 배포합니다.
 
 ```sh
 cd picsinc-merge
