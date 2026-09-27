@@ -9,7 +9,7 @@
     "start": "next start",
     "worker": "node --env-file=.env.worker --import tsx src/features/composition/worker-main.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test src/core/*.test.ts src/features/photo-session/*.test.ts src/features/region-editor/*.test.ts src/features/composition/*.test.ts src/features/mobile-flow/*.test.ts tests/integration/*.test.ts"
+    "test": "node --import tsx --test scripts/*.test.mjs src/core/*.test.ts src/features/photo-session/*.test.ts src/features/region-editor/*.test.ts src/features/composition/*.test.ts src/features/mobile-flow/*.test.ts tests/integration/*.test.ts"
   },
   "engines": {
     "node": "22.x"
