@@ -64,6 +64,70 @@ function simplifyLine(points: Point[], tolerance: number): Point[] {
 // Keep the exact boundary behind each simplified handle list. Weak keys follow
 // the editor's lifetime without changing its public Point[][] representation.
 const sourceContours = new WeakMap<Point[], Point[]>();
+const contourAreas = new WeakMap<Point[], { source: Point[]; area: number }>();
+const smoothedContours = new WeakMap<Point[], { source: Point[]; display: Point[] }>();
+
+function sampleContour(ring: Point[], origin: number, signedDistance: number): Point {
+  const direction = Math.sign(signedDistance);
+  let remaining = Math.abs(signedDistance), index = origin;
+  for (let visited = 0; visited < ring.length && remaining > 0; visited++) {
+    const next = (index + direction + ring.length) % ring.length;
+    const a = ring[index], b = ring[next];
+    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    if (length >= remaining) {
+      const fraction = remaining / length;
+      return { x: a.x + (b.x - a.x) * fraction, y: a.y + (b.y - a.y) * fraction };
+    }
+    remaining -= length; index = next;
+  }
+  return ring[index];
+}
+
+/** Smooth only the colored selection stroke; handles and saved pixels use the original boundary. */
+export function smoothedDisplayContour(ring: Point[]): Point[] {
+  const source = sourceContours.get(ring) ?? ring;
+  if (source.length < 5) return source;
+  const cached = smoothedContours.get(ring);
+  if (cached?.source === source) return cached.display;
+  const display = source.map((point, index) => {
+    const samples = [-28, -14, 0, 14, 28].map(offset => sampleContour(source, index, offset));
+    const x = (samples[0].x + 4 * samples[1].x + 6 * samples[2].x + 4 * samples[3].x + samples[4].x) / 16;
+    const y = (samples[0].y + 4 * samples[1].y + 6 * samples[2].y + 4 * samples[3].y + samples[4].y) / 16;
+    const shift = Math.hypot(x - point.x, y - point.y);
+    const fraction = shift > 8 ? 8 / shift : 1;
+    return { x: point.x + (x - point.x) * fraction, y: point.y + (y - point.y) * fraction };
+  });
+  smoothedContours.set(ring, { source, display });
+  return display;
+}
+
+/** Filter drawing/handle targets only. Keep exact mask pixels and ring identities. */
+export function visibleContours(rings: Point[][]): Point[][] {
+  const areas = rings.map(ring => {
+    const source = sourceContours.get(ring) ?? ring;
+    let cached = contourAreas.get(ring);
+    if (!cached || cached.source !== source) {
+      cached = { source, area: signedArea(source) };
+      contourAreas.set(ring, cached);
+    }
+    return cached.area;
+  });
+  const largest = areas.reduce((best, area, index) => area > (areas[best] ?? 0) ? index : best, -1);
+  const minimum = Math.max(4, (areas[largest] ?? 0) * .005);
+  return rings.filter((_, index) => index === largest || Math.abs(areas[index]) >= minimum);
+}
+
+/** Use the same visible rings and spaced handles for drawing and pointer hits. */
+export function findContourHandle(rings: Point[][], point: Point, scale: number): PendingContour | null {
+  let distance = 22 / scale;
+  let hit: PendingContour | null = null;
+  for (const ring of visibleContours(rings)) for (const index of spacedHandleIndices(ring, scale, 8)) {
+    const target = ring[index], next = Math.hypot(target.x - point.x, target.y - point.y);
+    if (next < distance) { distance = next; hit = { ring, index, target }; }
+  }
+  return hit;
+}
+
 export function editableContours(mask: Uint8Array, width: number, height: number): Point[][] {
   return traceContours(mask, width, height).map(ring => {
     if (ring.length < 5) return ring;

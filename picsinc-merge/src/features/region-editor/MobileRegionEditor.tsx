@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DetectedRegions } from "./detected-regions";
 import { paintBrush, type Point } from "./mask-geometry";
-import { editableContours, finishContourGesture, spacedHandleIndices, viewportToImage, zoomAround, type PendingContour, type ViewTransform } from "./contour-geometry";
+import { editableContours, visibleContours, smoothedDisplayContour, findContourHandle, finishContourGesture, spacedHandleIndices, viewportToImage, zoomAround, type PendingContour, type ViewTransform } from "./contour-geometry";
 import styles from "./mobile-editor.module.css";
 
 export interface MobileRegionEditorProps {
@@ -267,10 +267,11 @@ export default function MobileRegionEditor({ imageUrl, width, height, detection,
       if (conflict) {
         context.beginPath();
         for (const ring of region.contours) { ring.forEach((p, index) => index ? context.lineTo(p.x, p.y) : context.moveTo(p.x, p.y)); context.closePath(); }
-        context.fillStyle = "#df263866"; context.fill("evenodd"); context.stroke();
-      } else for (const ring of region.contours) { path(ring); context.stroke(); }
+        context.fillStyle = "#df263866"; context.fill("evenodd");
+      }
+      for (const ring of visibleContours(region.contours)) { path(smoothedDisplayContour(ring)); context.stroke(); }
     }
-    if (tool === "points") for (const ring of contoursRef.current) {
+    if (tool === "points") for (const ring of visibleContours(contoursRef.current)) {
       const pending = gesture.current?.pending; const display = pending?.ring === ring ? ring.map((p, i) => i === pending.index ? pending.target : p) : ring;
       context.save(); context.strokeStyle = "#6558e8"; context.lineWidth = 1 / view.scale;
       context.setLineDash([3 / view.scale, 3 / view.scale]); path(display); context.stroke(); context.restore();
@@ -326,14 +327,7 @@ export default function MobileRegionEditor({ imageUrl, width, height, detection,
     }
     if (pointers.current.size !== 1) return;
     const hit = viewportToImage(p, viewRef.current);
-    let pending: PendingContour | null = null;
-    if (tool === "points") {
-      let distance = 22 / viewRef.current.scale;
-      for (const ring of contoursRef.current) for (const index of spacedHandleIndices(ring, viewRef.current.scale, 8)) {
-        const point = ring[index], d = Math.hypot(point.x - hit.x, point.y - hit.y);
-        if (d < distance) { distance = d; pending = { ring, index, target: point }; }
-      }
-    }
+    const pending = tool === "points" ? findContourHandle(contoursRef.current, hit, viewRef.current.scale) : null;
     gesture.current = { start: p, last: p, before: (tool === "brush" || tool === "erase") ? maskRef.current.slice() : maskRef.current, pending, moved: false };
     if (tool === "brush" || tool === "erase") { paintBrush(maskRef.current, width, height, hit, hit, brushSize / viewRef.current.scale, tool === "erase" ? 0 : 1); refreshMask(false); }
   }
