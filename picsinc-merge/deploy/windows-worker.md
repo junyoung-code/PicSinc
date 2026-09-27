@@ -4,7 +4,7 @@
 
 ## 1. 설치와 GPU 사전 확인
 
-개인 파일에 접근하지 않는 전용 표준 Windows 계정에서 저장소를 준비한다. `picsinc-merge`와 `experiments/yolo-outline`의 상대 위치를 Mac과 같게 둔다. 같은 `yolo26n-seg.pt` 파일만 안전하게 복사하고 파일 해시를 Mac 원본과 비교한다. 사진·결과·토큰은 Git에 넣지 않는다.
+개인 파일에 접근하지 않는 전용 표준 Windows 계정에서 저장소를 준비한다. `picsinc-merge`와 `experiments/yolo-outline`의 상대 위치를 Mac과 같게 둔다. `yolo26m-seg.pt` 파일을 `.cache/`에 별도로 복사하고 SHA-256 `16b636f04e8fb6a325b3370f22dc5e5535ff473e384f4d041fd28d788f6ee9f5`를 확인한다. 모델 파일은 Git에 포함되지 않으므로 `git pull`만으로 Windows에 생기지 않는다. 사진·결과·토큰도 Git에 넣지 않는다.
 
 PowerShell에서 아래를 전용 계정으로 실행한다. Python 3.12, Node 22, NVIDIA 드라이버를 먼저 설치한다. [PyTorch 2.14 지원표](https://github.com/pytorch/pytorch/blob/main/RELEASE.md#pytorch-cuda-support-matrix)의 Pascal 지원 CUDA 12.6 빌드를 사용한다.
 
@@ -21,7 +21,7 @@ npm ci --include=dev
 powershell -NoProfile -File .\scripts\check-windows-worker.ps1
 ```
 
-이 점검과 2절의 오프라인 화질 비교에는 `.env.worker`와 `WORKER_TOKEN`이 필요 없다. 출력에서 GTX 1060, 약 3GB VRAM, `cuda=True`, CUDA 지원 아키텍처, 모델 SHA-256을 확인한다. `torch.cuda.is_available()`만으로 충분하지 않으므로 아래 실제 YOLO 시험도 통과해야 한다. 모델, `imgsz=1024`, `retina_masks=True`, 중복 제거·겹침 보정은 변경하지 않는다. 3GB에서 실패하면 해상도를 낮추거나 CPU로 돌리지 않고 Windows 상시 운영을 보류한다.
+이 점검과 2절의 오프라인 화질 비교에는 `.env.worker`와 `WORKER_TOKEN`이 필요 없다. 출력에서 GTX 1060, 약 3GB VRAM, `cuda=True`, CUDA 지원 아키텍처, 위 모델 SHA-256을 확인한다. `torch.cuda.is_available()`만으로 충분하지 않으므로 아래 실제 YOLO 시험도 통과해야 한다. `m` 모델을 `imgsz=1024`, `retina_masks=True`, 기존 중복 제거·겹침 보정으로 실행한다. 3GB에서 실패하면 해상도를 낮추거나 CPU로 돌리지 않고 Windows 상시 운영을 보류한다.
 
 ## 2. 비공개 사진 화질 비교
 

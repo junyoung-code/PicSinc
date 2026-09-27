@@ -22,8 +22,8 @@ COPY --from=web --chown=node:node /app/picsinc-merge/public ./public
 COPY --from=web --chown=node:node /app/picsinc-merge/node_modules ./node_modules
 COPY --from=web --chown=node:node /app/picsinc-merge/package.json ./package.json
 COPY --chown=node:node experiments/yolo-outline/outline.py experiments/yolo-outline/overlap.py experiments/yolo-outline/export_regions.py /app/yolo/
-# Freeze the already verified public model in the image; requests need no model download.
-COPY --chown=node:node experiments/yolo-outline/.cache/yolo26n-seg.pt /app/yolo/.cache/yolo26n-seg.pt
+# Freeze the selected public model in the image; requests need no model download.
+COPY --chown=node:node experiments/yolo-outline/.cache/yolo26m-seg.pt /app/yolo/.cache/yolo26m-seg.pt
 RUN mkdir -p /app/yolo/.cache/ultralytics /app/yolo/.cache/matplotlib && chown -R node:node /app/yolo
 USER node
 EXPOSE 3000

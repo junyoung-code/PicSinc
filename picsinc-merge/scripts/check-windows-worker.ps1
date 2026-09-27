@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
 $yolo = Join-Path (Split-Path -Parent $project) 'experiments\yolo-outline'
 $python = Join-Path $yolo '.venv\Scripts\python.exe'
-$model = Join-Path $yolo '.cache\yolo26n-seg.pt'
+$model = Join-Path $yolo '.cache\yolo26m-seg.pt'
 
 if (-not (Test-Path $python)) { throw "Python venv missing: $python" }
 if (-not (Test-Path $model)) { throw "YOLO model missing: $model" }

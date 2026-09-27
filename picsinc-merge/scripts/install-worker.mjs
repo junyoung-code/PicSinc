@@ -23,7 +23,7 @@ const copyOptions={recursive:true,verbatimSymlinks:true,mode:constants.COPYFILE_
 await mkdir(cwd,{recursive:true});await mkdir(yolo,{recursive:true});
 for(const entry of ['src','node_modules','package.json','tsconfig.json']) await cp(path.join(source,entry),path.join(cwd,entry),copyOptions);
 const modelSource=path.resolve(source,'../experiments/yolo-outline');
-for(const entry of ['.venv','export_regions.py','outline.py','overlap.py','.cache/yolo26n-seg.pt']) await cp(path.join(modelSource,entry),path.join(yolo,entry),copyOptions);
+for(const entry of ['.venv','export_regions.py','outline.py','overlap.py','.cache/yolo26m-seg.pt']) await cp(path.join(modelSource,entry),path.join(yolo,entry),copyOptions);
 await writeFile(path.join(cwd,'.env.worker'),Object.entries({WORKER_BASE_URL:settings.WORKER_BASE_URL,WORKER_TOKEN:settings.WORKER_TOKEN,YOLO_RUNTIME_DIR:yolo,YOLO_PYTHON:path.join(yolo,'.venv/bin/python')}).map(([key,value])=>`${key}=${JSON.stringify(value)}`).join('\n')+'\n',{mode:0o600});
 await chmod(path.join(cwd,'.env.worker'),0o600);
 const file=path.join(folder,`${label}.plist`);

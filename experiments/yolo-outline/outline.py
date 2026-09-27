@@ -68,7 +68,7 @@ class Segmenter:
         CACHE.mkdir(parents=True, exist_ok=True)
         settings.update({"sync": False})
         self.device = select_device(torch)
-        self.model = YOLO(str(CACHE / "yolo26n-seg.pt"))
+        self.model = YOLO(str(CACHE / "yolo26m-seg.pt"))
 
     def predict(self, photo):
         try:

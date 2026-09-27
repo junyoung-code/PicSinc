@@ -1,0 +1,14 @@
+.git
+.codex
+.agents
+**/node_modules
+**/.next
+**/.venv
+**/__pycache__
+**/.env*
+**/private
+**/test-images
+**/*.tsbuildinfo
+**/.DS_Store
+**/.cache/*
+!experiments/yolo-outline/.cache/yolo26m-seg.pt
