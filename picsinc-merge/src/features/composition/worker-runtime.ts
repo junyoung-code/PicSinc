@@ -17,7 +17,8 @@ export class WorkerApiError extends Error {
   constructor(public status: number) { super("Worker API request failed"); }
 }
 type Post = <T>(route: string, body: unknown, signal?: AbortSignal) => Promise<T>;
-type RunTask = (job: WorkerAssignment, signal: AbortSignal) => Promise<WorkerCompletion["result"]>;
+type TaskResult = WorkerCompletion["result"] | { result: WorkerCompletion["result"]; metrics: NonNullable<WorkerCompletion["metrics"]> };
+type RunTask = (job: WorkerAssignment, signal: AbortSignal) => Promise<TaskResult>;
 
 export function createWorkerClient(config: WorkerConfig): Post {
   const base = safeUrl(config.baseUrl);
@@ -34,13 +35,18 @@ export function createWorkerClient(config: WorkerConfig): Post {
   };
 }
 
-export const runChildTask: RunTask = async (job, signal) => {
+const runMeasuredChildTask: RunTask = async (job, signal) => {
   const directory = await mkdtemp(path.join(tmpdir(), "picsinc-worker-"));
   try { return await spawnTask(job, signal, directory); }
   finally { await rm(directory, { recursive: true, force: true }); }
 };
+// Preserve the public task helper's result shape for existing local callers.
+export const runChildTask: RunTask = async (job, signal) => {
+  const outcome = await runMeasuredChildTask(job, signal);
+  return "result" in outcome ? outcome.result : outcome;
+};
 
-function spawnTask(job: WorkerAssignment, signal: AbortSignal, directory: string): Promise<WorkerCompletion["result"]> { return new Promise((resolve, reject) => {
+function spawnTask(job: WorkerAssignment, signal: AbortSignal, directory: string): Promise<TaskResult> { return new Promise((resolve, reject) => {
   if (signal.aborted) { reject(signal.reason); return; }
   const child = fork(fileURLToPath(new URL("./worker-task.ts", import.meta.url)), [], {
     execArgv: ["--import", "tsx"], detached: process.platform !== "win32",
@@ -74,7 +80,7 @@ function spawnTask(job: WorkerAssignment, signal: AbortSignal, directory: string
     if (failure || code !== 0 || !result) reject(failure ?? new WorkerError("processing_failed"));
     else {
       if (metrics) console.info("worker measurement", JSON.stringify({ jobId: job.id, kind: job.kind, ...metrics }));
-      resolve(result);
+      resolve(metrics ? { result, metrics } : result);
     }
   });
   child.send(job, (error) => { if (error) { failure = new WorkerError("processing_failed"); stop(); } });
@@ -100,14 +106,16 @@ export async function processAssignment(job: WorkerAssignment, post: Post, shutd
     }
   })();
   try {
-    const result = await (options.runTask ?? runChildTask)(job, signal);
+    const outcome = await (options.runTask ?? runMeasuredChildTask)(job, signal);
+    const result = "result" in outcome ? outcome.result : outcome;
+    const metrics = "result" in outcome ? outcome.metrics : undefined;
     heartbeatStop.abort(); await heartbeat;
     if (signal.aborted) return false;
     await post("heartbeat", auth, signal);
     completing = true;
     // Completion is idempotent. A dropped response may mean it was already committed.
     for (let attempt = 0; attempt < 3; attempt++) {
-      try { await post("complete", { ...auth, result } satisfies WorkerCompletion, shutdown); return false; }
+      try { await post("complete", { ...auth, result, metrics } satisfies WorkerCompletion, shutdown); return false; }
       catch (error) {
         if (shutdown.aborted || (error instanceof WorkerApiError && error.status < 500 && error.status !== 429)) return false;
         if (attempt < 2) await delay(options.retryMs ?? 2_000, undefined, { signal: shutdown });

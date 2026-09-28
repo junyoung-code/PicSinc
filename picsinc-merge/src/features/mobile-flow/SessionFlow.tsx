@@ -13,6 +13,7 @@ import { DeletedRoomScreen, DeleteRoomDialog } from "./room-deletion";
 import { originalDetectionMonitor } from "./original-detection-monitor";
 import { saveEditorSelection } from "./save-editor-selection";
 import type { OriginalDetectionState } from "@/features/photo-session/original-detection-state";
+import { sendFestivalEvent } from "@/core/festival-visit";
 
 const labels: Record<Step, string> = { invite: "친구 초대하기", select: "내 얼굴 선택", guide: "내 사진 보정하기", upload: "보정본 올리기", review: "선택 영역 확인", status: "제출 현황", result: "최종 사진", overlap: "겹친 영역 확인" };
 const progress: Record<Step, number> = { invite: 48, select: 65, guide: 32, upload: 48, review: 72, status: 81, result: 100, overlap: 90 };
@@ -70,6 +71,10 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   const savedSelection = data?.selections.find(s => s.participantId === data.currentParticipantId && s.editedAssetId === selectedEdit?.id);
   const submittedCount = data?.participants.filter(p => p.submitted).length ?? 0;
   const currentResult = Boolean(data?.result && data.result.version === data.session.version);
+  useEffect(() => {
+    if (step === "result" && data?.result) sendFestivalEvent("result_displayed", inviteToken,
+      { assetId: data.result.resultAssetId, clientEventId: crypto.randomUUID() });
+  }, [step, data?.result?.resultAssetId, inviteToken]);
   const assetUrl = (id: string) => `${base}/assets/${encodeURIComponent(id)}`;
 
   useEffect(() => { setNow(Date.now()); const timer = window.setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(timer); }, []);
@@ -271,6 +276,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     }
     if (!response.ok) {
       const error = new RequestError(result.error || "선택 상태를 저장하지 못했어요. 다시 시도해 주세요.", response.status, result.code);
+      sendFestivalEvent("stage_failed", inviteToken, { stage: "region_claim", errorCode: `http_${response.status}`, clientEventId: crypto.randomUUID() });
       report(error); throw error;
     }
     setClaims(result.claims);
@@ -321,6 +327,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
       await saveEditorSelection({ base, snapshot: data, maskAssetId: uploaded.asset.id, selectedRegionIds, editedAssetId: selectedEdit?.id, saveOriginal: step === "select", submit: step !== "select" || !owner });
       setDirty(false); await refresh(); recordStep(step === "select" && owner ? "upload" : "status");
     } catch (error) {
+      sendFestivalEvent("stage_failed", inviteToken, { stage: "area_submit", errorCode: error instanceof RequestError ? `http_${error.status}` : "client_error", clientEventId: crypto.randomUUID() });
       if (error instanceof RequestError && error.code === "SESSION_VERSION_CONFLICT") { await refresh(); throw new Error("변경이 계속되고 있어요. 선택 영역은 유지됩니다. 잠시 후 다시 제출해주세요."); }
       report(error); throw error;
     } finally { setBusy(false); }
@@ -329,7 +336,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     if (!data || busy || !owner || !submittedCount) return;
     setBusy(true); setMerging(true); setMessage("");
     try { await composeRemote(base, data.session.version, status => setMessage(status === "queued" ? "처리 순서를 기다리고 있어요. 잠시 후 다시 확인해도 됩니다." : "사진을 합치고 있어요.")); await refresh(); recordStep("result"); }
-    catch (error) { report(error); if (error instanceof RequestError && error.status === 409) await refresh().catch(report); }
+    catch (error) { sendFestivalEvent("stage_failed", inviteToken, { stage: "composition", errorCode: error instanceof RequestError ? `http_${error.status}` : "client_error", clientEventId: crypto.randomUUID() }); report(error); if (error instanceof RequestError && error.status === 409) await refresh().catch(report); }
     finally { setBusy(false); setMerging(false); }
   }
   async function copy() {
@@ -373,11 +380,11 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   } else if (step === "overlap") {
     content = <><h1>겹친 부분에 사용할<br />사진을 골라주세요</h1><p className="description">표시된 겹침을 확인하고 영역별 보정본을 지정해 주세요. 저장한 뒤 다시 병합합니다.</p><div className="overlap-editor"><RegionEditor inviteToken={inviteToken} overlapOnly onDirtyChange={setDirty} onSaved={() => { setDirty(false); void refresh().then(() => recordStep("status")).catch(report); }} /></div></>;
   } else {
-    content = <><div className="result-heading"><h1>우리 모두가 원하는<br />사진이 완성됐어요</h1><p className="description">다 함께 찍은 사진을 공유해보아요.</p></div>{data.result && <img className="photo-preview" src={assetUrl(data.result.previewAssetId)} alt="함께 보정한 최종 사진" />}
+    content = <><div className="result-heading"><h1>우리 모두가 원하는<br />사진이 완성됐어요</h1><p className="description">다 함께 찍은 사진을 공유해보아요.</p></div>{data.result && <img className="photo-preview" src={assetUrl(data.result.previewAssetId)} alt="함께 보정한 최종 사진" onError={() => sendFestivalEvent("stage_failed", inviteToken, { stage: "result_view", errorCode: "image_load_failed", clientEventId: crypto.randomUUID() })} />}
       {data.result && data.result.version !== data.session.version && <Notice>제출 내용이 바뀌었어요. 아래 사진은 이전 결과입니다. 대표자가 다시 병합해 주세요.</Notice>}
       {Boolean(data.result?.unassignedOverlapPixels) && <Notice>겹친 영역에 임시로 적용된 보정본이 있어요. 대표자가 확인하고 수정할 수 있어요.</Notice>}
     </>;
-    footer = <>{data.result && <a className="primary-button" href={assetUrl(data.result.resultAssetId)} download>사진 저장하기</a>}<a className="text-button restart-link" href="/sessions/new">처음부터 다시 만들기</a></>;
+    footer = <>{data.result && <a className="primary-button" href={assetUrl(data.result.resultAssetId)} download onClick={() => sendFestivalEvent("save_clicked", inviteToken, { assetId: data.result!.resultAssetId, clientEventId: crypto.randomUUID() })}>사진 저장하기</a>}<a className="text-button restart-link" href="/sessions/new">처음부터 다시 만들기</a></>;
   }
   const previous: Partial<Record<Step, Step>> = { select: owner ? "invite" : "upload", upload: owner ? "select" : "guide", review: "upload", status: owner ? "upload" : "select", result: "status", overlap: "result" };
   return <MobileShell helpTopic={step === "invite" ? "invite" : step === "select" || step === "review" ? "select" : step === "upload" ? "upload" : step === "guide" ? "guide" : step === "status" && owner ? "status" : undefined} title={step === "status" && !owner && me?.submitted ? "제출 완료" : labels[step]} progress={progress[step]} onBack={step === "invite" ? () => location.assign("/sessions/new") : previous[step] ? () => navigate(previous[step]!) : undefined} footer={footer}>

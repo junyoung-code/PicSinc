@@ -3,9 +3,10 @@ import type { CompositeResult } from "./contracts";
 import type { JobView } from "./processing";
 import type { DetectedRegions } from "@/features/region-editor/detected-regions";
 import { request, jsonRequest, RequestError } from "@/features/mobile-flow/client";
+import { sendFestivalEvent, visitId } from "./festival-visit";
 
 type PreparedUpload={uploadId:string;signedUrl:string;token:string;path:string};
-type UploadAttempt = { prepared?: PreparedUpload; uploaded: boolean; pending?: Promise<any> };
+type UploadAttempt = { prepared?: PreparedUpload; uploaded: boolean; pending?: Promise<any>; failureEventId?: string };
 // Keep the same intent after a lost completion response. Blob keys release naturally
 // when the page no longer holds the selected photo or mask.
 const uploads = new WeakMap<Blob, Map<string, UploadAttempt>>();
@@ -51,12 +52,19 @@ async function sendUpload(prepareUrl:string,file:Blob,metadata:Record<string,unk
   })();
   try { return await attempt.pending; }
   catch (error) {
+    const kind = prepareUrl === "/api/uploads" ? "original_upload" : prepareUrl.endsWith("/edited") ? "edited_upload" : null;
+    if (kind) {
+      const inviteToken = kind === "original_upload" ? undefined : prepareUrl.split("/")[3];
+      const errorCode = error instanceof RequestError ? (error.code && /^[a-z0-9_]{1,48}$/.test(error.code) ? error.code : `http_${error.status}`) : "network";
+      attempt.failureEventId ??= crypto.randomUUID();
+      sendFestivalEvent("stage_failed", inviteToken, { stage: kind, errorCode, clientEventId: attempt.failureEventId, uploadId: attempt.prepared?.uploadId });
+    }
     if (error instanceof RequestError && [404, 410].includes(error.status)) byRequest.delete(key);
     throw error;
   } finally { attempt.pending = undefined; }
 }
 export function uploadOriginal(nickname:string,file:File):Promise<{shareUrl:string;recoveryUrl:string;session:{inviteToken:string}}> {
-  return sendUpload('/api/uploads',file,{nickname},{});
+  return sendUpload('/api/uploads',file,{nickname,visitId:visitId()},{});
 }
 export function uploadAsset(base:string,kind:'edited'|'mask',file:Blob):Promise<{asset:{id:string}}> {
   const inviteToken=base.split('/').filter(Boolean).at(-1);

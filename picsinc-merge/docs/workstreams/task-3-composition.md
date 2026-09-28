@@ -29,3 +29,5 @@
 - 결과 PNG의 가로·세로 크기가 원본과 같고, 미리보기에서도 같은 영역 배치를 확인할 수 있습니다.
 
 진행 상황은 [STATE.md](../../STATE.md)에서만 관리합니다.
+
+행사 계측 변경: `src/features/composition/worker-runtime.ts`와 `src/core/processing.ts`에서 작업 완료 보고에 다운로드·처리·업로드 시간을 더했다. 구버전 워커의 보고는 지표 없이 처리한다. `src/features/photo-session/processing-service.ts`에서 작업 ID·시도 회차별 시작/결과와 대기 시간을 `festival_analytics_events`에 기록한다. 검증은 `worker.test.ts`, DB 마이그레이션 통합 검사, 타입 검사와 빌드를 사용한다. Windows 설치본 교체와 실제 운영 작업 확인은 [STATE.md](../../STATE.md)에 기록한다.

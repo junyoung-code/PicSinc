@@ -105,7 +105,10 @@ Deno.serve(async (request: Request) => {
     }
     const uploadsDeleted = await cleanupUploadIntents(db, now);
     const outputGrantsDeleted = await cleanupOutputGrants(db, now);
-    return Response.json({ deleted, uploadsDeleted, outputGrantsDeleted });
+    const before = new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const analytics = await db.rpc("prune_festival_analytics_events", { p_before: before, p_limit: 500 });
+    if (analytics.error) throw analytics.error;
+    return Response.json({ deleted, uploadsDeleted, outputGrantsDeleted, analyticsDeleted: analytics.data });
   } catch {
     console.error("Expired photo cleanup failed; retained metadata for retry.");
     return Response.json({ error: "Cleanup failed; retry on next run." }, { status: 500 });

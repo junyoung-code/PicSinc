@@ -17,6 +17,7 @@ export type UploadIntent = {
   content_type: string; byte_size: number; temporary_key: string; final_key: string;
   expires_at: string; status: "uploading" | "verifying" | "ready";
   lease_token: string | null; lease_expires_at: string | null;
+  visit_id?: string | null; analytics_context?: "test" | "festival" | null;
 };
 export interface DirectUploadRepository {
   insert(intent: UploadIntent): Promise<void>;
@@ -70,13 +71,13 @@ export class DirectUploadService {
     private readonly now = () => new Date(),
   ) {}
 
-  async prepareOriginalUpload(nickname: string, metadata: UploadMetadata, bootstrapToken: string) {
+  async prepareOriginalUpload(nickname: string, metadata: UploadMetadata, bootstrapToken: string, visitId?: string, analyticsContext?: "test" | "festival") {
     validateUploadMetadata(metadata, "original");
     nickname = nickname.trim();
     if (!nickname || nickname.length > 40) fail(400, "닉네임은 1~40자로 입력하세요.");
     if (!bootstrapToken) fail(403, "업로드 참여증이 필요합니다.");
     const id = randomUUID(); const secrets = originalUploadSecrets(id, this.secret);
-    return this.prepare({ id, kind: "original", session_id: randomUUID(), participant_id: randomUUID(), asset_id: randomUUID(), invite_token: createSecretToken(), nickname, owner_hash: tokenHash(bootstrapToken), session_token_hash: tokenHash(secrets.sessionToken), recovery_token_hash: tokenHash(secrets.recoveryToken) }, metadata);
+    return this.prepare({ id, kind: "original", session_id: randomUUID(), participant_id: randomUUID(), asset_id: randomUUID(), invite_token: createSecretToken(), nickname, owner_hash: tokenHash(bootstrapToken), session_token_hash: tokenHash(secrets.sessionToken), recovery_token_hash: tokenHash(secrets.recoveryToken), visit_id: visitId ?? null, analytics_context: analyticsContext ?? null }, metadata);
   }
 
   async prepareSessionUpload(auth: UploadAuth, kind: "edited" | "mask", metadata: UploadMetadata) {
@@ -85,7 +86,7 @@ export class DirectUploadService {
     return this.prepare({ id: randomUUID(), kind, session_id: session.id, participant_id: auth.participantId, asset_id: randomUUID(), invite_token: auth.inviteToken, nickname: null, owner_hash: tokenHash(auth.sessionToken), session_token_hash: null, recovery_token_hash: null }, metadata);
   }
 
-  private async prepare(base: Pick<UploadIntent, "id" | "kind" | "session_id" | "participant_id" | "asset_id" | "invite_token" | "nickname" | "owner_hash" | "session_token_hash" | "recovery_token_hash">, metadata: UploadMetadata) {
+  private async prepare(base: Pick<UploadIntent, "id" | "kind" | "session_id" | "participant_id" | "asset_id" | "invite_token" | "nickname" | "owner_hash" | "session_token_hash" | "recovery_token_hash"> & Pick<UploadIntent, "visit_id" | "analytics_context">, metadata: UploadMetadata) {
     const extension = metadata.contentType === "image/png" ? "png" : "jpg";
     const temporary_key = `uploads/${base.id}/source.${extension}`;
     // Persist before signing so every upload capability has a cleanup record.

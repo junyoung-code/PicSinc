@@ -167,3 +167,51 @@ test("durable festival events cover retries, repeat milestones, room context, an
     assert.equal(await value<number>(db, "select count(*)::int from festival_analytics_events where session_id=$1", [ids.room]), beforeDelete, "analytics survive room cascade deletion");
   } finally { await db.close(); }
 });
+
+test("visit linkage, pinned test rooms, worker attempts and 30-day pruning", async () => {
+  const db = await currentSchemaDatabase();
+  const visit = "40000000-0000-4000-8000-000000000001";
+  try {
+    await db.exec("update festival_analytics_settings set event_context='festival' where singleton=true");
+    await db.query(`insert into photo_upload_intents (
+      id,kind,session_id,participant_id,asset_id,invite_token,nickname,owner_hash,
+      session_token_hash,recovery_token_hash,content_type,byte_size,temporary_key,
+      final_key,expires_at,status,lease_token,lease_expires_at,visit_id,analytics_context
+    ) values ($1,'original',$2,$3,$4,'test-invite','Owner','owner-hash',
+      'session-hash','recovery-hash','image/png',100,'uploads/test/source.png',
+      'test/original.png',now()+interval '2 hours','verifying',$5,now()+interval '2 minutes',$6,'test')`,
+    [ids.originalUpload, ids.room, ids.owner, ids.original, ids.originalLease, visit]);
+    await db.query("select finalize_original_upload($1,$2,$3,100,100,'image/png')", [ids.originalUpload, "owner-hash", ids.originalLease]);
+    assert.equal(await value<string>(db, "select event_context from festival_analytics_room_contexts where session_id=$1", [ids.room]), "test");
+    assert.equal(await value<string>(db, "select visit_id from festival_analytics_events where session_id=$1 and event_name='room_created'", [ids.room]), visit);
+
+    const detectionJob = await value<string>(db, "select id from processing_jobs where session_id=$1 and kind='detect' limit 1", [ids.room]);
+    await db.query("update processing_jobs set status='running',attempts=1,lease_token=gen_random_uuid(),lease_until=now()-interval '1 second' where id=$1", [detectionJob]);
+    await db.query("update processing_jobs set attempts=2,lease_token=gen_random_uuid(),lease_until=now()-interval '1 second' where id=$1", [detectionJob]);
+    await db.query("update processing_jobs set status='failed',error_code='worker_lost' where id=$1", [detectionJob]);
+    assert.deepEqual((await db.query<{ attempt: number; error_code: string }>("select attempt,error_code from festival_analytics_events where processing_job_id=$1 order by attempt", [detectionJob])).rows,
+      [{ attempt: 1, error_code: "worker_lost" }, { attempt: 2, error_code: "worker_lost" }]);
+
+    await db.query(`insert into festival_analytics_events(event_name,event_context,visit_id,device_kind)
+      values ('visit_started','test',$1,'mobile') on conflict do nothing`, [visit]);
+    await db.query(`insert into festival_analytics_events(event_name,event_context,visit_id,device_kind)
+      values ('visit_started','test',$1,'mobile') on conflict do nothing`, [visit]);
+    assert.equal(await value<number>(db, "select count(*)::int from festival_analytics_events where event_name='visit_started'"), 1);
+
+    await db.query(`insert into festival_analytics_events(event_name,event_context,session_id,visit_id)
+      values ('room_opened','test',$1,$2) on conflict do nothing`, [ids.room, visit]);
+    const job = "40000000-0000-4000-8000-000000000002";
+    await db.query(`insert into festival_analytics_events(event_name,event_context,session_id,processing_job_id,attempt,queue_ms)
+      values ('worker_attempt_started','test',$1,$2,1,250) on conflict do nothing`, [ids.room, job]);
+    await db.query(`insert into festival_analytics_events(event_name,event_context,session_id,processing_job_id,attempt,download_ms,processing_ms,upload_ms)
+      values ('worker_attempt_finished','test',$1,$2,1,100,200,50) on conflict do nothing`, [ids.room, job]);
+    await db.query(`insert into festival_analytics_events(event_name,event_context,session_id,processing_job_id,attempt,queue_ms)
+      values ('worker_attempt_started','test',$1,$2,1,250) on conflict do nothing`, [ids.room, job]);
+    assert.equal(await value<number>(db, "select count(*)::int from festival_analytics_events where processing_job_id=$1", [job]), 2);
+
+    await db.query("update festival_analytics_events set occurred_at=now()-interval '31 days' where event_name='room_opened'");
+    assert.equal(await value<number>(db, "select prune_festival_analytics_events(now()-interval '30 days', 1)"), 1);
+    assert.equal(await value<number>(db, "select prune_festival_analytics_events(now()-interval '30 days', 1)"), 0);
+    assert.equal(await value<number>(db, "select count(*)::int from festival_analytics_events where session_id=$1 and event_name='room_created'", [ids.room]), 1);
+  } finally { await db.close(); }
+});

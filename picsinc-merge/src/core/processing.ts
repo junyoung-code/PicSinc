@@ -14,5 +14,6 @@ export interface WorkerAssignment {
 export type WorkerCompletion = {
   id: string;
   leaseToken: string;
+  metrics?: { downloadMs: number; processingMs: number; uploadMs: number };
   result: { width: number; height: number; regions?: { id: string; box: { x: number; y: number; width: number; height: number } }[]; previewWidth?: number; previewHeight?: number; unassignedOverlapPixels?: number };
 };

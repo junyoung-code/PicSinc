@@ -8,6 +8,7 @@ import { DirectUploadService, type UploadAuth, type UploadMetadata } from "./dir
 import { createSecretToken } from "./tokens";
 import { fail } from "./errors";
 import { runHeavyTask } from "@/core/heavy-task";
+import { defaultEventContext, validUuid } from "@/core/festival-analytics-server";
 
 const bootstrapCookie = "picsinc_upload_owner";
 function uploads() {
@@ -27,7 +28,8 @@ export async function prepareOriginal(request: Request) {
   try {
     const value = await body(request);
     const bootstrap = (await cookies()).get(bootstrapCookie)?.value || createSecretToken();
-    const prepared = await uploads().prepareOriginalUpload(typeof value.nickname === "string" ? value.nickname : "", metadata(value), bootstrap);
+    const prepared = await uploads().prepareOriginalUpload(typeof value.nickname === "string" ? value.nickname : "", metadata(value), bootstrap,
+      validUuid(value.visitId) ? value.visitId : undefined, await defaultEventContext());
     const response = NextResponse.json(prepared, { status: 201, headers: { "Cache-Control": "no-store" } });
     response.cookies.set(bootstrapCookie, bootstrap, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 2 * 60 * 60 });
     return response;

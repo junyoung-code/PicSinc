@@ -96,6 +96,18 @@ test("worker sends bearer token only to API and retries uncertain completion wit
   } finally { await endpoint.close(); }
 });
 
+test("worker includes bounded phase measurements in completion without media bytes", async () => {
+  let completion: unknown;
+  await processAssignment(job(), async <T>(route: string, body: unknown) => {
+    if (route === "complete") completion = body;
+    return { ok: true } as T;
+  }, new AbortController().signal, {
+    runTask: async () => ({ result: { width: 3, height: 2 }, metrics: { downloadMs: 11, processingMs: 22, uploadMs: 33 } }),
+  });
+  assert.deepEqual((completion as { metrics: unknown }).metrics, { downloadMs: 11, processingMs: 22, uploadMs: 33 });
+  assert.equal(JSON.stringify(completion).includes("signedUrl"), false);
+});
+
 test("detection child uploads complete JSON but sends only IDs and boxes through IPC", async () => {
   const runtime = await mkdtemp(path.join(tmpdir(), "picsinc-worker-test-"));
   const expected = { width: 3, height: 2, previewPngBase64: "private-preview", regions: [{ id: "person-1", box: { x: 0, y: 0, width: 2, height: 2 }, maskPngBase64: "private-mask" }] };

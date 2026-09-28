@@ -65,3 +65,16 @@ PICSINC_TEST_EXTERNAL_WORKER=1 PICSINC_TEST_BASE_URL=https://picsinc-merge.verce
 ```
 
 기존 Docker·Caddy 파일은 이전 단일 서버 배포 참고용이며 현재 공개 배포에서 사용하지 않습니다.
+
+## 행사 이벤트 수집과 추출
+
+`20260924050000_festival_analytics.sql` 다음에 `20260928010000_festival_event_details.sql`, `20260928020000_festival_worker_lease_events.sql`을 적용한다. Vercel Production 서버 환경변수 `FESTIVAL_OPERATOR_CODE`에는 32자 이상 임의 코드를 Secret으로 둔다. 앱·정리 Edge Function을 배포한 뒤 Windows 워커 설치본을 새 코드로 갱신한다. 이전 워커의 완료 보고는 받지만 단계별 처리 시간은 비어 있다.
+
+행사 전 기본 구분은 `test`다. 운영자는 `/operator`에서 코드를 입력해 이 브라우저에 4시간 시험 모드를 켜거나 끌 수 있다. 행사 시작 시 아래 명령으로 **새 방문·새 방**의 기본 구분을 바꾼다. 이미 만든 방은 원래 구분을 유지한다.
+
+```sh
+node --env-file=.env.local --import tsx scripts/set-festival-default.ts festival
+node --env-file=.env.local --import tsx scripts/export-festival-events.ts YYYY-MM-DD
+```
+
+날짜는 한국 시간 기준이다. 추출 결과는 Git 제외 `private/festival-export/` 아래 `events.jsonl`, `summary.csv`, `manifest.json`으로 저장된다. 원본 이벤트에는 사진·닉네임·토큰·파일 경로를 넣지 않는다. 5분 정리 작업은 30일 초과 이벤트를 한 번에 최대 500건 지운다. 네트워크가 완전히 끊겨 서버에 닿지 않은 브라우저 실패는 기록될 수 없다.

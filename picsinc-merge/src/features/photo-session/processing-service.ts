@@ -6,9 +6,10 @@ import { workerPresenceView, type WorkerName } from "@/core/worker-presence";
 import { supabaseServer } from "@/integrations/storage/supabase-server";
 import { SupabasePhotoSessionStore } from "@/integrations/storage/supabase-photo-session-store";
 import { SessionError } from "./errors";
+import { boundedMs, recordFestivalEvent } from "@/core/festival-analytics-server";
 
 type Auth = { inviteToken: string; participantId: string; sessionToken: string };
-type Row = { id: string; session_id: string; requested_by: string; kind: "detect" | "compose"; input: any; status: JobView["status"]; result: any; lease_token: string; lease_until: string; error_code?: string; error_message?: string };
+type Row = { id: string; session_id: string; requested_by: string; kind: "detect" | "compose"; input: any; status: JobView["status"]; result: any; lease_token: string; lease_until: string; attempts: number; created_at: string; available_at: string; updated_at: string; error_code?: string; error_message?: string };
 const db = () => supabaseServer();
 const storage = () => db().storage.from(process.env.SUPABASE_STORAGE_BUCKET || "picsinc-merge");
 const hash = (s: string) => createHash("sha256").update(s).digest();
@@ -54,6 +55,7 @@ export async function enqueue(auth: Auth, kind: "detect" | "compose", options: {
   if (kind==='compose' && (!Number.isSafeInteger(options.version) || options.version!<1)) throw new SessionError(400,"작업 버전이 올바르지 않습니다.");
   const {data,error}=await db().rpc('enqueue_processing_job',{p_session_id:session.id,p_participant_id:auth.participantId,p_kind:kind,p_asset_id:options.assetId || null,p_version:options.version || null,p_retry:options.retry || false});
   check(error);
+  if (kind === 'compose') await recordFestivalEvent({ event_name: 'composition_requested', session_id: session.id, participant_id: auth.participantId, processing_job_id: (data as Row).id, session_version: options.version });
   return view(data as Row,session.expiresAt);
 }
 
@@ -151,6 +153,8 @@ export async function claimWorker(): Promise<WorkerAssignment | null> {
       if(signError || !signed) throw new SessionError(503,'Storage unavailable');
       outputs[key]=signed;
     }
+    await recordFestivalEvent({ event_name: 'worker_attempt_started', session_id: row.session_id, processing_job_id: row.id,
+      attempt: row.attempts, queue_ms: boundedMs(Date.parse(row.updated_at) - Date.parse(row.available_at)) });
     return {id:row.id,leaseToken:row.lease_token,kind:row.kind,input:row.input,files,outputs};
   } catch(error) {
     await db().rpc('fail_processing_job',{p_id:row.id,p_lease_token:row.lease_token,p_code:error instanceof SessionError && error.status<500?'invalid_input':'transient'});
@@ -164,7 +168,11 @@ export async function completeWorker(body: WorkerCompletion) {
   const {data,error}=await db().from('processing_jobs').select('*').eq('id',body.id).eq('lease_token',body.leaseToken).maybeSingle();check(error);
   if(!data) throw new SessionError(409,'Worker lease lost');
   const row=data as Row;
-  if(row.status==='ready') return {ok:true};
+  if(row.status==='ready') {
+    await recordFestivalEvent({ event_name: 'worker_attempt_finished', session_id: row.session_id, processing_job_id: row.id, attempt: row.attempts,
+      download_ms: boundedMs(body.metrics?.downloadMs), processing_ms: boundedMs(body.metrics?.processingMs), upload_ms: boundedMs(body.metrics?.uploadMs) });
+    return {ok:true};
+  }
   if(row.status!=='running' || Date.parse(row.lease_until)<=Date.now()) throw new SessionError(409,'Worker lease lost');
   const result=body.result;
   if(!result || !Number.isSafeInteger(result.width) || !Number.isSafeInteger(result.height) || result.width<1 || result.height<1 || result.width*result.height>40_000_000) throw new SessionError(400,'Invalid result');
@@ -180,13 +188,20 @@ export async function completeWorker(body: WorkerCompletion) {
   }
   const {data:completed,error:completeError}=await db().rpc('complete_processing_job',{p_id:body.id,p_lease_token:body.leaseToken,p_result:result});check(completeError);
   if(!completed) throw new SessionError(409,'Worker lease lost or room changed');
+  const metrics = body.metrics;
+  await recordFestivalEvent({ event_name: 'worker_attempt_finished', session_id: row.session_id, processing_job_id: row.id, attempt: row.attempts,
+    download_ms: boundedMs(metrics?.downloadMs), processing_ms: boundedMs(metrics?.processingMs), upload_ms: boundedMs(metrics?.uploadMs) });
   return {ok:true};
 }
 
 export async function updateWorker(action: 'heartbeat'|'fail', body: {id:string;leaseToken:string;errorCode?:string}) {
+  const current = action === 'fail' ? await db().from('processing_jobs').select('id,session_id,attempts').eq('id',body.id).eq('lease_token',body.leaseToken).maybeSingle() : null;
+  if (current?.error) check(current.error);
   const args: Record<string,unknown>={p_id:body.id,p_lease_token:body.leaseToken};
   if(action==='fail') args.p_code=['transient','invalid_input','processing_failed'].includes(body.errorCode || '')?body.errorCode:'processing_failed';
   const {data,error}=await db().rpc(action==='heartbeat'?'heartbeat_processing_job':'fail_processing_job',args);check(error);
   if(!data) throw new SessionError(409,'Worker lease lost');
+  if (action === 'fail' && current?.data) await recordFestivalEvent({ event_name: 'worker_attempt_finished', session_id: current.data.session_id,
+    processing_job_id: body.id, attempt: current.data.attempts, error_code: args.p_code as string });
   return {ok:true};
 }
