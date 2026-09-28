@@ -8,6 +8,12 @@ import sharp from "sharp";
 import type { WorkerAssignment } from "@/core/processing";
 import { boundedBody, safeUrl, WorkerError } from "./worker-io";
 import { assertWorkerDevice, createWorkerClient, processAssignment, reportWorkerPresence, runChildTask, WorkerApiError } from "./worker-runtime";
+import { coveredDownloadMs } from "./worker-task";
+
+test("overlapping downloads count once in worker timing", () => {
+  assert.equal(coveredDownloadMs([[10, 110], [20, 90], [100, 150]]), 140);
+  assert.equal(coveredDownloadMs([[10, 110], [20, 90], [100, 150]], 40, 120), 80);
+});
 
 function job(base = "http://127.0.0.1"): WorkerAssignment {
   return {

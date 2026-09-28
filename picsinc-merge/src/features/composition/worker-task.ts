@@ -6,20 +6,36 @@ import { downloadInput, uploadOutput, WorkerError } from "./worker-io";
 
 type TaskMetrics = { downloadMs: number; processingMs: number; uploadMs: number; inputBytes: number; outputBytes: number };
 
+// Downloads can overlap. Count their covered wall-clock interval once so the
+// remaining processing time cannot become negative for concurrent inputs.
+export function coveredDownloadMs(intervals: Array<[number, number]>, from = 0, to = Infinity) {
+  let end = from; let covered = 0;
+  for (const [start, finish] of [...intervals].sort((a, b) => a[0] - b[0])) {
+    const clippedStart = Math.max(from, start), clippedEnd = Math.min(to, finish);
+    if (clippedEnd <= Math.max(end, clippedStart)) continue;
+    covered += clippedEnd - Math.max(end, clippedStart);
+    end = clippedEnd;
+  }
+  return covered;
+}
+
 async function executeMeasuredTask(job: WorkerAssignment): Promise<{ result: WorkerCompletion["result"]; metrics: TaskMetrics }> {
   const metrics: TaskMetrics = { downloadMs: 0, processingMs: 0, uploadMs: 0, inputBytes: 0, outputBytes: 0 };
+  const downloadIntervals: Array<[number, number]> = [];
   const readAsset = async (id: string) => {
     if (!Object.hasOwn(job.files, id)) throw new WorkerError("invalid_input");
     const started = performance.now();
     try { const bytes = await downloadInput(job.files[id]); metrics.inputBytes += bytes.length; return bytes; }
-    finally { metrics.downloadMs += performance.now() - started; }
+    finally { downloadIntervals.push([started, performance.now()]); }
   };
   const writeOutput = async (url: string, bytes: Buffer, contentType: string) => {
     const started = performance.now();
     try { await uploadOutput(url, bytes, contentType); metrics.outputBytes += bytes.length; }
     finally { metrics.uploadMs += performance.now() - started; }
   };
-  const result = await executeTask(job, readAsset, writeOutput, metrics);
+  const result = await executeTask(job, readAsset, writeOutput, metrics,
+    (from, to) => coveredDownloadMs(downloadIntervals, from, to));
+  metrics.downloadMs = coveredDownloadMs(downloadIntervals);
   return { result, metrics: Object.fromEntries(Object.entries(metrics).map(([key, value]) => [key, Math.round(value)])) as TaskMetrics };
 }
 
@@ -27,7 +43,8 @@ async function executeMeasuredTask(job: WorkerAssignment): Promise<{ result: Wor
 export async function executeTask(job: WorkerAssignment,
   download: (id: string) => Promise<Buffer> = id => downloadInput(job.files[id]),
   upload: (url: string, bytes: Buffer, contentType: string) => Promise<void> = uploadOutput,
-  metrics?: TaskMetrics): Promise<WorkerCompletion["result"]> {
+  metrics?: TaskMetrics,
+  downloadDuration?: (from: number, to: number) => number): Promise<WorkerCompletion["result"]> {
   let transferFailed = false;
   const readAsset = async (id: string) => {
     if (!Object.hasOwn(job.files, id)) throw new WorkerError("invalid_input");
@@ -47,10 +64,12 @@ export async function executeTask(job: WorkerAssignment,
       return { width, height, regions: result.regions.map(({ id, box }) => ({ id, box })) };
     }
     if (job.kind !== "compose" || !("originalAssetId" in job.input) || !job.outputs.preview || !job.outputs.result) throw new WorkerError("invalid_input");
-    const downloadBefore = metrics?.downloadMs ?? 0;
     const started = performance.now();
     const result = await composePhoto(job.input as CompositionInput, readAsset);
-    if (metrics) metrics.processingMs += performance.now() - started - (metrics.downloadMs - downloadBefore);
+    if (metrics) {
+      const finished = performance.now();
+      metrics.processingMs += Math.max(0, finished - started - (downloadDuration?.(started, finished) ?? 0));
+    }
     await upload(job.outputs.preview.signedUrl, result.previewPng, "image/png");
     await upload(job.outputs.result.signedUrl, result.png, "image/png");
     return {
