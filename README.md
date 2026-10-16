@@ -1,20 +1,96 @@
-# PicSinc
+# MOIRA (모이라)
 
-PicSinc is a collaborative group-photo editing MVP. Each participant selects and claims their own face in a shared photo, applies local portrait edits, and the service combines accepted edits over the untouched original.
+> **단체 사진, 이제 각자 원하는 모습으로.**  
+> 함께 찍은 사진에서 각자 자신의 영역을 보정하고, 그 결과를 한 장의 사진으로 합치는 협업형 사진 보정 웹 서비스입니다.
 
-## What we are building
+MOIRA는 **PicSync라는 이름으로 시작해 리브랜딩한 프로젝트**입니다. GitHub 저장소명 `PicSinc`는 초기 개발 당시의 이름을 유지하고 있습니다. 한 사람이 여러 명의 사진을 대신 보정하거나, 각자 보정한 사진을 다시 모아 합치는 번거로움을 줄이는 것을 목표로 합니다.
 
-- Face landmarks and person, skin, and hair segmentation
-- Per-person skin, facial-shape, makeup, eye, and portrait-enhancement edits
-- Versioned edit previews that only the claimed participant can accept
-- Deterministic composition of approved patches while preserving every other pixel
+## PicSync에서 MOIRA로
 
-## Privacy and safety
+초기 **PicSync**는 각 참여자가 기존 사진 보정 앱에서 자신의 모습을 수정한 뒤, 보정한 사진을 웹에 업로드하면 각자의 결과를 하나로 합치는 방식으로 기획되었습니다.
 
-PicSinc does not infer a person's identity. Participants manually claim a detected face, and only the owner of that face can request edits. Original images remain immutable; API credentials and media are handled server-side only and are never committed to this repository.
+이후 사용자 테스트와 제품 방향 조정을 거쳐 **MOIRA**로 브랜드를 변경하고, 외부 앱을 오가지 않아도 **공유 웹페이지 안에서 각자 자신의 영역을 직접 보정**할 수 있는 경험으로 확장하고 있습니다.
 
-## Status
+| 구분 | PicSync (초기 기획) | MOIRA (현재 기획) |
+| --- | --- | --- |
+| 보정 방식 | 외부 앱에서 개별 보정 후 업로드 | 웹에서 각자의 영역을 직접 보정 |
+| 핵심 경험 | 각자 보정한 사진을 한 장으로 합성 | 보정방 안에서 공동 편집 및 최종 합성 |
+| 개발 방향 | 외부 보정 앱·API 활용 검토 | 자체 얼굴·터치 보정 기능 개발 추진 |
 
-The MVP is in active development. Meitu API access is being integrated behind server-side adapters for detection, segmentation, and portrait retouching.
+> 위 비교는 **기획 방향의 변화**를 설명합니다. 현재 구현된 기능의 범위와는 다를 수 있습니다.
 
-See [MASTER_SPEC.md](MASTER_SPEC.md) for the current product contracts and technical boundaries.
+## 서비스 소개
+
+여러 명이 찍은 사진은 한 장이지만, 원하는 보정은 사람마다 다릅니다. MOIRA는 **각 참여자가 자신의 영역을 직접 보정하고**, 모든 참여자의 결과를 **하나의 사진으로 합성**하는 경험을 제공합니다.
+
+- **웹 기반 협업**: 별도 앱 설치 없이 링크로 보정방에 참여
+- **개인별 보정**: 참여자가 자신의 영역을 선택하고 얼굴 보정 및 터치 보정 진행
+- **결과 합성**: 각자의 보정 결과를 원본 사진을 기준으로 하나의 결과물로 결합
+- **대표자 중심 진행**: 대표자가 보정방을 만들고 최종 완료 흐름을 관리
+
+## 이용 흐름
+
+1. **보정방 생성** — 대표자가 사진을 올리고 보정방을 생성합니다.
+2. **친구 초대** — 참여자들이 공유 링크로 보정방에 입장합니다.
+3. **영역 선택** — 각 참여자가 보정할 인물/영역을 확인하고 선택합니다.
+4. **개별 보정** — 참여자들이 각자의 기기에서 자신의 영역을 보정합니다.
+5. **전체 사진 터치 보정** — 필요한 경우, 개별 보정 이후 한 명이 전체 사진을 추가 보정합니다.
+6. **최종 완료 및 저장** — 대표자가 최종 결과물을 확인하고 저장합니다.
+
+> 위 흐름은 제품 기획 기준이며, 모든 단계의 구현 완료를 의미하지는 않습니다.
+
+## 주요 기능 및 개발 범위
+
+| 영역 | 내용 |
+| --- | --- |
+| 보정방 | 방 생성, 링크 공유, 참여자 현황, 진행 상태 관리 |
+| 영역 선택 | 사진 속 인물 인식 보조 및 참여자별 영역 지정 |
+| 얼굴 보정 | 얼굴형, 눈, 코, 입술, 눈썹 등 세부 조절 |
+| 터치 보정 | 브러시 기반 부분 보정 및 복원 |
+| 협업 제어 | 참여자별 수정 영역 제한, 진행 단계별 편집 권한 관리 |
+| 이미지 합성 | 각 참여자의 보정 결과를 원본 기준으로 결합 |
+| 결과물 | 최종 사진 확인 및 저장 |
+
+**보정 원칙**
+
+- 개별 보정은 다른 참여자의 영역에 영향을 주지 않도록 설계합니다.
+- 보정값을 변경할 때는 누적 편집본이 아닌 **원본을 기준으로 재계산**하는 방식을 지향합니다.
+- 각 보정 항목은 다른 항목의 설정과 독립적으로 조절할 수 있도록 설계합니다.
+- 인물이나 보정 영역이 겹치는 경우를 고려해 합성 및 권한 처리 방식을 검증합니다.
+
+## 프로젝트 현황
+
+**Status: MVP 개발 및 개선 진행 중**
+
+초기 PoC 및 사용자 테스트를 바탕으로, 사용 흐름과 보정 기능을 개선하고 있습니다. 얼굴 보정 기능의 자체 구현과 편집·합성 안정성 확보를 주요 개발 과제로 다룹니다.
+
+기능별 구현 여부 및 확정된 기술 스택은 실제 코드와 이슈/PR을 기준으로 확인해 주세요. 외부 보정 API 사용 여부는 이 README에서 확정된 것으로 표시하지 않습니다.
+
+## 개발 환경 및 실행 방법
+
+실제 폴더 구조와 패키지 매니저를 확인한 뒤 이 섹션을 업데이트할 예정입니다.
+
+1. 저장소를 복제합니다.
+   ```bash
+   git clone https://github.com/junyoung-code/PicSinc.git
+   cd PicSinc
+   ```
+2. 프론트엔드 디렉터리, 의존성 설치 및 로컬 실행 명령은 프로젝트 구성 확인 후 추가합니다.
+3. 필요한 환경 변수는 팀에서 공유하는 안전한 방법으로 설정하며, 비밀키가 포함된 `.env` 파일을 커밋하지 않습니다.
+
+## 협업 가이드
+
+- 기능 개발 및 디자인 수정은 **별도 브랜치**에서 진행합니다.
+- 수정 내용을 커밋한 뒤 **Pull Request(PR)** 를 만들어 리뷰를 받습니다.
+- 공용 브랜치에 직접 반영하기 전 기존 작업과 충돌 여부를 확인합니다.
+- API 키, 인증 정보, 사용자 사진 등 민감한 파일은 저장소에 올리지 않습니다.
+
+브랜치 이름 예시: `feature/moira-frontend`
+
+## 문서
+
+- [MASTER_SPEC.md](MASTER_SPEC.md) — 제품 및 기술 명세 (실제 파일 내용이 최신 기획과 일치하는지 확인 필요)
+
+---
+
+**MOIRA** · 모두의 보정이 모여 하나의 사진으로.
