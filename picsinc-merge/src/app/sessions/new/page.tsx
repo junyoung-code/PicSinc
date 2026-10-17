@@ -1,12 +1,13 @@
 "use client";
-import { useState } from "react";
+import { use, useState } from "react";
 import MobileShell, { PhotoPicker, StatusMessage } from "@/components/mobile-shell";
 import SplashScreen from "@/components/splash-screen";
 import { photoError, rememberRecovery, usePreview } from "@/features/mobile-flow/client";
 import { uploadOriginal } from "@/core/remote-client";
 
-export default function NewSessionPage() {
-  const [showSplash, setShowSplash] = useState(true);
+export default function NewSessionPage({ searchParams }: { searchParams: Promise<{ step?: string | string[] }> }) {
+  const { step: initialStep } = use(searchParams);
+  const [showSplash, setShowSplash] = useState(initialStep !== "name");
   const [step, setStep] = useState<"name" | "photo">("name");
   const [nickname, setNickname] = useState("");
   const [file, setFile] = useState<File | null>(null);

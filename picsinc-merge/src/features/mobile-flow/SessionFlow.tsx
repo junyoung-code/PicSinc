@@ -391,7 +391,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   const previous: Partial<Record<Step, Step>> = { select: owner ? "invite" : "upload", upload: owner ? "select" : "guide", review: "upload", status: owner ? "upload" : "select", result: "status", overlap: "result" };
   return <MobileShell variant={step === "invite" ? "moira-invite" : step === "select" ? "moira-select" : undefined} showProgress={step !== "invite" && step !== "select"} helpTopic={step === "invite" ? "invite" : step === "select" || step === "review" ? "select" : step === "upload" ? "upload" : step === "guide" ? "guide" : step === "status" && owner ? "status" : undefined} title={step === "status" && !owner && me?.submitted ? "제출 완료" : labels[step]} progress={progress[step]} onBack={step === "invite" ? () => location.assign("/sessions/new") : previous[step] ? () => navigate(previous[step]!) : undefined} footer={footer}>
     {content}<StatusMessage message={message} />
-    {confirmDelete && <DeleteRoomDialog base={base} onCancel={() => setConfirmDelete(false)} onDeleted={() => { current.current.dirty = false; editorBack.current = null; location.replace("/sessions/new"); }} />}
+    {confirmDelete && <DeleteRoomDialog base={base} onCancel={() => setConfirmDelete(false)} onDeleted={() => { current.current.dirty = false; editorBack.current = null; location.replace("/sessions/new?step=name"); }} />}
     {toast && <div className="copy-toast" role="status">{toast}</div>}
   </MobileShell>;
 }
