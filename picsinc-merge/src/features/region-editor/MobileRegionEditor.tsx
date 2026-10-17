@@ -7,6 +7,8 @@ import { editableContours, visibleContours, smoothedDisplayContour, findContourH
 import styles from "./mobile-editor.module.css";
 
 export interface MobileRegionEditorProps {
+  moiraSelection?: boolean;
+  onSelectionChange?: (selected: boolean) => void;
   imageUrl: string;
   width: number;
   height: number;
@@ -30,6 +32,7 @@ export interface MobileRegionEditorProps {
 type Region = { id: string; mask: Uint8Array; contours: Point[][]; box: DetectedRegions["regions"][number]["box"] };
 type Tool = "select" | "points" | "brush" | "erase" | "pan";
 const colors = ["#6558e8", "#e04e7c", "#008f89", "#dd7600", "#296bdb", "#a545c2"];
+const selectionColors = ["#e8deff", "#ffafe0", "#bcebcb", "#ffeadb", "#ffeadb", "#a3d6fb", "#e8deff", "#ffafe0"];
 
 async function decodeMask(url: string, width: number, height: number) {
   const image = new Image(); image.crossOrigin = "anonymous"; image.src = url; await image.decode();
@@ -51,12 +54,13 @@ async function encodeMask(mask: Uint8Array, width: number, height: number) {
   return new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("영역 PNG를 만들지 못했습니다.")), "image/png"));
 }
 
-export default function MobileRegionEditor({ imageUrl, width, height, detection, initialMaskUrl, initialSelectedIds = [], busy = false, detecting = false, onSave, saveLabel, participantNickname, onDirtyChange, onRetryDetection, detectionError, onDetailOpen, regionClaims = [], currentParticipantId, onRegionToggle }: MobileRegionEditorProps) {
+export default function MobileRegionEditor({ moiraSelection = false, onSelectionChange, imageUrl, width, height, detection, initialMaskUrl, initialSelectedIds = [], busy = false, detecting = false, onSave, saveLabel, participantNickname, onDirtyChange, onRetryDetection, detectionError, onDetailOpen, regionClaims = [], currentParticipantId, onRegionToggle }: MobileRegionEditorProps) {
   const rootRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const maskRef = useRef<Uint8Array>(new Uint8Array(width * height));
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
+  const customMaskRef = useRef(false);
   const regionRef = useRef<Region[]>([]);
   const contoursRef = useRef<Point[][]>([]);
   const viewRef = useRef<ViewTransform>({ scale: 1, x: 0, y: 0 });
@@ -72,7 +76,7 @@ export default function MobileRegionEditor({ imageUrl, width, height, detection,
   const loading = imageLoading || maskLoading;
   const dirtyRef = useRef(false);
   const expandedRef = useRef(false);
-  const detailSnapshot = useRef<{ mask: Uint8Array; ids: string[]; dirty: boolean } | null>(null);
+  const detailSnapshot = useRef<{ mask: Uint8Array; ids: string[]; dirty: boolean; customMask: boolean } | null>(null);
   const detailDirty = useRef(false);
   const detailComplete = useRef(false);
   const exitPending = useRef(false);
@@ -95,12 +99,17 @@ export default function MobileRegionEditor({ imageUrl, width, height, detection,
   const [brushSize, setBrushSize] = useState(18);
   const [revision, setRevision] = useState(0);
 
+  const hasSelection = maskRef.current.some(Boolean);
+  const showSelectionActions = !moiraSelection || (!loading && !detecting);
+  useEffect(() => { onSelectionChange?.(hasSelection); }, [hasSelection, onSelectionChange]);
+
   const initialIds = useRef(initialSelectedIds); initialIds.current = initialSelectedIds;
   const locked = busy || loading || saving || claimPending || exitDialog;
 
   function changed() {
     let nextDirty = true;
     if (expandedRef.current && detailSnapshot.current) {
+      customMaskRef.current = true;
       detailDirty.current = maskRef.current.some((value, index) => value !== detailSnapshot.current!.mask[index]);
       nextDirty = detailSnapshot.current.dirty || detailDirty.current;
     }
@@ -136,6 +145,7 @@ export default function MobileRegionEditor({ imageUrl, width, height, detection,
       const mask = initialMaskUrl ? await decodeMask(initialMaskUrl, width, height) : new Uint8Array(width * height);
       if (cancelled) return;
       if (dirtyRef.current || savingRef.current) { setIncomingMask(true); setMaskLoading(false); return; }
+      customMaskRef.current = !!initialMaskUrl;
       maskRef.current = mask; setSelectedIds(initialIds.current); setDirty(false); dirtyCallback.current?.(false); setIncomingMask(false); refreshMask(); setMaskLoading(false);
     })().catch(reason => { if (!cancelled) { setError(reason instanceof Error ? reason.message : "영역을 불러오지 못했습니다."); setMaskLoading(false); } });
     return () => { cancelled = true; };
@@ -201,7 +211,7 @@ export default function MobileRegionEditor({ imageUrl, width, height, detection,
   function openEditor() {
     if (locked || expandedRef.current) return;
     setClaimConflict(null);
-    detailSnapshot.current = { mask: maskRef.current.slice(), ids: [...selectedIds], dirty: dirtyRef.current };
+    detailSnapshot.current = { mask: maskRef.current.slice(), ids: [...selectedIds], dirty: dirtyRef.current, customMask: customMaskRef.current };
     detailDirty.current = false; detailComplete.current = false; exitPending.current = false; discardConfirmed.current = false;
     undoMasks.current = []; redoMasks.current = [];
     expandedRef.current = true; setExpanded(true);
@@ -225,6 +235,7 @@ export default function MobileRegionEditor({ imageUrl, width, height, detection,
     closeEditor();
     if (!detailComplete.current) {
       maskRef.current = snapshot.mask;
+      customMaskRef.current = snapshot.customMask;
       setSelectedIds(snapshot.ids);
       dirtyRef.current = snapshot.dirty; setDirty(snapshot.dirty); dirtyCallback.current?.(snapshot.dirty);
       refreshMask();
@@ -259,17 +270,37 @@ export default function MobileRegionEditor({ imageUrl, width, height, detection,
     const context = canvas.getContext("2d")!; context.setTransform(dpr, 0, 0, dpr, 0, 0); context.clearRect(0, 0, rect.width, rect.height);
     const view = viewRef.current; context.translate(view.x, view.y); context.scale(view.scale, view.scale);
     if (imageRef.current) context.drawImage(imageRef.current, 0, 0, width, height);
-    if (overlayRef.current) context.drawImage(overlayRef.current, 0, 0, width, height);
+    if (overlayRef.current && (!moiraSelection || expanded || tool !== "select" || customMaskRef.current)) context.drawImage(overlayRef.current, 0, 0, width, height);
     const path = (ring: Point[]) => { context.beginPath(); ring.forEach((p, i) => i ? context.lineTo(p.x, p.y) : context.moveTo(p.x, p.y)); context.closePath(); };
     if (tool === "select") for (const [i, region] of regionRef.current.entries()) {
       const conflict = claimConflict?.regionId === region.id;
-      context.strokeStyle = conflict ? "#df2638" : colors[i % colors.length]; context.lineWidth = (conflict || selectedIds.includes(region.id) ? 2.5 : 1.5) / view.scale;
+      const claim = regionClaims.find(item => item.regionId === region.id);
+      const nickname = claim?.nickname ?? (selectedIds.includes(region.id) ? participantNickname : undefined);
+      const color = selectionColors[i % selectionColors.length];
+      if (moiraSelection && !expanded && (claim || selectedIds.includes(region.id)) && (!customMaskRef.current || claim && claim.participantId !== currentParticipantId)) {
+        context.save(); context.globalAlpha = 0.35; context.fillStyle = color;
+        context.beginPath();
+        for (const ring of region.contours) { ring.forEach((p, index) => index ? context.lineTo(p.x, p.y) : context.moveTo(p.x, p.y)); context.closePath(); }
+        context.fill("evenodd"); context.restore();
+      }
+      context.strokeStyle = conflict ? "#df2638" : moiraSelection && !expanded ? color : colors[i % colors.length]; context.lineWidth = (moiraSelection && !expanded ? 2 : conflict || selectedIds.includes(region.id) ? 2.5 : 1.5) / view.scale;
       if (conflict) {
         context.beginPath();
         for (const ring of region.contours) { ring.forEach((p, index) => index ? context.lineTo(p.x, p.y) : context.moveTo(p.x, p.y)); context.closePath(); }
         context.fillStyle = "#df263866"; context.fill("evenodd");
       }
       for (const ring of visibleContours(region.contours)) { path(smoothedDisplayContour(ring)); context.stroke(); }
+      if (moiraSelection && !expanded && nickname) {
+        const unit = 1 / view.scale;
+        context.save(); context.font = `700 ${8 * unit}px "Noto Sans KR", sans-serif`;
+        const labelWidth = Math.min(width, context.measureText(nickname).width + 14 * unit);
+        const x = Math.max(0, Math.min(width - labelWidth, region.box.x + region.box.width / 2 - labelWidth / 2));
+        const y = Math.max(0, region.box.y - 23 * unit);
+        context.beginPath(); context.roundRect(x, y, labelWidth, 17 * unit, 5 * unit);
+        context.fillStyle = color; context.fill(); context.fillStyle = "#25232b";
+        context.textAlign = "center"; context.textBaseline = "middle";
+        context.fillText(nickname, x + labelWidth / 2, y + 8.5 * unit, labelWidth - 6 * unit); context.restore();
+      }
     }
     if (tool === "points") for (const ring of visibleContours(contoursRef.current)) {
       const pending = gesture.current?.pending; const display = pending?.ring === ring ? ring.map((p, i) => i === pending.index ? pending.target : p) : ring;
@@ -285,7 +316,7 @@ export default function MobileRegionEditor({ imageUrl, width, height, detection,
   }
   redraw.current = draw;
   useEffect(() => { const canvas = canvasRef.current; if (!canvas) return; const observer = new ResizeObserver(fit); observer.observe(canvas); fit(); return () => observer.disconnect(); }, [expanded, width, height]);
-  useEffect(() => { draw(); }, [revision, tool, selectedIds, expanded, loading, claimConflict]);
+  useEffect(() => { draw(); }, [revision, tool, selectedIds, expanded, loading, claimConflict, regionClaims, participantNickname, moiraSelection]);
   function local(event: React.PointerEvent<HTMLCanvasElement>): Point { const rect = event.currentTarget.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top }; }
   async function toggle(region: Region) {
     if (locked || claimPendingRef.current) return;
@@ -374,24 +405,27 @@ export default function MobileRegionEditor({ imageUrl, width, height, detection,
   const controls = <div className={styles.tools} aria-label="영역 편집 도구">
     {([['points', '점 이동하기'], ['brush', '브러시'], ['erase', '지우기']] as [Tool, string][]).map(([value, label]) => <button key={value} type="button" aria-pressed={tool === value} disabled={locked} onClick={() => setTool(value)}>{label}</button>)}
   </div>;
-  return <section ref={rootRef} className={`${styles.editor} ${expanded ? styles.expanded : ""}`} role={expanded ? "dialog" : undefined} aria-modal={expanded || undefined} aria-label="내 영역 선택">
+  const refineButton = <button type="button" className={styles.refine} disabled={locked || (!!regions.length && !hasSelection)} onClick={openEditor}>영역 편집하기</button>;
+  const saveButton = <button type="button" className={styles.save} disabled={locked || !imageRef.current || !hasSelection} onClick={() => void save()}>{saving ? "저장 중…" : moiraSelection && !hasSelection ? "이대로 진행하기" : saveLabel}</button>;
+  return <section ref={rootRef} className={`${styles.editor} ${expanded ? styles.expanded : moiraSelection ? `${styles.moiraSelection} ${loading || detecting ? styles.recognizing : ""}` : ""}`} role={expanded ? "dialog" : undefined} aria-modal={expanded || undefined} aria-label="내 영역 선택">
     {expanded && <div className={styles.dialogHeader}><button type="button" aria-label="영역 편집 닫기" onClick={() => requestDetailExit()}>‹</button><strong>내 영역 편집</strong><button type="button" onClick={() => requestDetailExit(true)}>완료</button></div>}
-    {!expanded && participantNickname && <div className={styles.identity}><strong>{participantNickname}으로 참여 중</strong></div>}
+    {!expanded && !moiraSelection && participantNickname && <div className={styles.identity}><strong>{participantNickname}으로 참여 중</strong></div>}
     {expanded && <div className={styles.editHint}><strong>원하는 영역을 수동으로 편집해보세요.</strong><p>보정할 부분만 선택 영역으로 조정할 수 있어요.</p></div>}
     <div className={styles.canvasFrame}><canvas ref={canvasRef} className={styles.canvas} style={expanded ? undefined : { aspectRatio: `${width} / ${height}` }} aria-label="사진 속 사람 영역을 눌러 선택하거나 해제할 수 있습니다." onPointerDown={down} onPointerMove={move} onPointerUp={event => end(event)} onPointerCancel={event => end(event, true)} onLostPointerCapture={event => { if (pointers.current.has(event.pointerId)) end(event, true); }} />
       {claimConflict && <div className={styles.claimToast} role="status"><span className={styles.claimIcon} aria-hidden="true" /><span><strong>{claimConflict.nickname}님이 선택한 영역이에요</strong><small>다른 얼굴을 선택해주세요.</small></span></div>}
-      {(loading || detecting) && <div className={styles.loadingOverlay} role="status"><span className={styles.spinner} aria-hidden="true" /><strong>{detecting ? "AI가 얼굴 영역을 탐지하고 있어요!" : "사진과 영역을 준비하고 있어요."}</strong></div>}
+      {(loading || detecting) && <div className={styles.loadingOverlay} role="status">{!moiraSelection && <span className={styles.spinner} aria-hidden="true" />}<strong>{detecting ? <>AI가 얼굴 영역을<br />탐지하고 있어요!</> : "사진과 영역을 준비하고 있어요."}</strong></div>}
     </div>
     <div className={styles.scrollControls}>
       {expanded && <>{controls}<div className={styles.historyTools}><button type="button" disabled={locked} onClick={resetDetail}>↻ 초기화</button><button type="button" disabled={locked || !undoMasks.current.length} onClick={() => restoreHistory()}>↶ 실행 취소</button><button type="button" disabled={locked || !redoMasks.current.length} onClick={() => restoreHistory(true)}>↷ 다시 실행</button></div></>}
-      {!expanded && <button type="button" className={styles.refine} disabled={locked || (!!regions.length && !maskRef.current.some(Boolean))} onClick={openEditor}>영역 편집하기</button>}
+      {!expanded && !moiraSelection && refineButton}
       {expanded && (tool === "brush" || tool === "erase") && <label className={styles.brush}>브러시 크기 <input aria-label="브러시 크기" type="range" min="3" max="45" value={brushSize} onChange={event => setBrushSize(Number(event.target.value))} /></label>}
       {(detectionError || (!detection && !busy)) && <p className={styles.hint}>{detectionError || "영역을 직접 선택하거나 사람 영역을 다시 찾아보세요."} {onRetryDetection && <button type="button" disabled={locked} onClick={onRetryDetection}>다시 찾기</button>}</p>}
       {detection && !regions.length && !loading && <p className={styles.hint}>찾은 사람이 없습니다. 브러시로 직접 선택할 수 있어요.</p>}
       {error && <p role="alert" className={styles.error}>{error}</p>}
       {incomingMask && <p className={styles.hint}>다른 기기에서 저장한 영역이 바뀌었어요. 지금 수정한 영역은 유지됩니다. <button type="button" disabled={locked} onClick={discardLocalDraft}>내 수정 버리고 저장된 영역 불러오기</button></p>}
     </div>
-    {!expanded && <button type="button" className={styles.save} disabled={locked || !imageRef.current || !maskRef.current.some(Boolean)} onClick={() => void save()}>{saving ? "저장 중…" : saveLabel}</button>}
+    {!expanded && moiraSelection && !loading && !detecting && <div className={styles.regionOptions} role="group" aria-label="사진 속 영역 선택">{regions.map((region, index) => <button key={region.id} type="button" aria-pressed={selectedIds.includes(region.id)} disabled={locked} onClick={() => void toggle(region)}>영역 {index + 1}{regionClaims.find(claim => claim.regionId === region.id)?.nickname ? ` · ${regionClaims.find(claim => claim.regionId === region.id)!.nickname}` : ""}</button>)}</div>}
+    {!expanded && (moiraSelection ? showSelectionActions && <div className={styles.selectionActions}>{saveButton}{refineButton}</div> : saveButton)}
     {exitDialog && <div className={styles.modalBackdrop}><div ref={modalRef} className={styles.exitModal} role="alertdialog" aria-modal="true" aria-labelledby="editor-exit-title" aria-describedby="editor-exit-description">
       <span className={styles.exitIcon} aria-hidden="true" />
       <h2 id="editor-exit-title">변경사항을 저장하지 않고 나갈까요?</h2>

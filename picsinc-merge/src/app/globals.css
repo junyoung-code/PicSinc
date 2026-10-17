@@ -178,3 +178,18 @@ p { line-height: 1.6; margin: 0 0 16px; }
 @media (max-width: 360px) { .moira-flow .screen-content { padding-left: 20px; padding-right: 20px; } .moira-flow .screen-footer { padding-left: 20px; padding-right: 20px; } }
 
 .moira-invite .screen-footer { padding-bottom: max(36px, env(safe-area-inset-bottom)); }
+
+.moira-invite .avatar { background:transparent; border-radius:0; }
+.moira-select .screen-content { display:flex; flex-direction:column; padding-top:25px; padding-bottom:0; }
+.moira-select .description { color:#25232b; }
+.delete-room-dialog { top:max(24px, calc(50% - 236px)); bottom:auto; margin:0 auto; color:#25232b; }
+.delete-room-icon { color:#25232b; line-height:34px; }
+.delete-room-dialog h2 { font-size:14px; line-height:22px; margin:0 0 10px; }
+.delete-room-dialog p { font-size:14px; line-height:22px; color:#706b79; margin:0; }
+.delete-room-buttons { margin-top:29px; }
+.delete-room-buttons button { line-height:22px; color:#25232b; }
+.delete-room-buttons button:first-child, .delete-room-buttons button:last-child { color:#25232b; }
+.moira-invite .participant-list li { height:66px; min-height:66px; padding:0 11px; }
+.moira-invite .participant-name { flex:0 1 197px; min-width:0; }
+.moira-select .selection-description { color:#706b79; }
+.delete-room-buttons button:first-child { flex:0 0 38.5621%; }

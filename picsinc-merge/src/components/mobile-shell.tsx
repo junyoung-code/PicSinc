@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { helpContent, type HelpTopic } from "@/features/mobile-flow/help-content";
 
 export default function MobileShell({ title, progress = 0, onBack, children, footer, helpTopic, showProgress = true, variant }: {
-  variant?: "moira-name" | "moira-upload" | "moira-invite"; title: string; progress?: number; onBack?: () => void; children: ReactNode; footer?: ReactNode; helpTopic?: HelpTopic; showProgress?: boolean;
+  variant?: "moira-name" | "moira-upload" | "moira-invite" | "moira-select"; title: string; progress?: number; onBack?: () => void; children: ReactNode; footer?: ReactNode; helpTopic?: HelpTopic; showProgress?: boolean;
 }) {
   const [help, setHelp] = useState(false);
   const [closing, setClosing] = useState(false);
