@@ -171,7 +171,7 @@ p { line-height: 1.6; margin: 0 0 16px; }
 .moira-invite .participant-list { margin: 0 12px 0 0; gap: 14px; }
 .moira-invite .participant-list li { background: white; }
 .moira-invite .secondary-button { background: #e8deff; border-color: #e8deff; }
-.splash-screen { background: #fdfbf7; animation: none; }
+.splash-screen { background: #fdfbf7; align-items: center; justify-content: center; overflow: hidden; animation: none; }
 .splash-video { display: block; width: 474px; max-width: none; height: 297px; object-fit: contain; flex-shrink: 0; }
 @media (max-width: 360px) { .moira-flow .screen-content { padding-left: 20px; padding-right: 20px; } .moira-flow .screen-footer { padding-left: 20px; padding-right: 20px; } }
 
