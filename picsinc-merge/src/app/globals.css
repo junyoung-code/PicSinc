@@ -148,7 +148,7 @@ p { line-height: 1.6; margin: 0 0 16px; }
 .moira-flow { --primary: #6e52dc; --muted: #706b79; color: #25232b; background: #fffdf7; }
 .moira-flow .top-bar { height: 56px; padding: 0 26px; font-size: 16px; }
 .moira-flow .top-bar .icon-button, .moira-flow .top-spacer { width: 44px; flex-shrink: 0; }
-.moira-flow .top-bar .icon-button:last-child { color: var(--primary); }
+.moira-flow .top-bar .icon-button:last-child { color: var(--primary); transform: translateX(8px); }
 .moira-flow .screen-content { padding: 26px 26px 16px; }
 .moira-flow h1 { font-size: 24px; line-height: 34px; letter-spacing: 0; margin: 0 0 14px; }
 .moira-flow .description { font-size: 14px; line-height: 22px; margin: 0 0 14px; }
