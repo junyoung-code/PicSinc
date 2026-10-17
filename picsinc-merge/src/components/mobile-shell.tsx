@@ -27,7 +27,7 @@ export default function MobileShell({ title, progress = 0, onBack, children, foo
   const content = helpTopic ? helpContent[helpTopic] : null;
   return <main className={`phone-shell${variant ? ` moira-flow ${variant}` : ""}`}>
     <header className="top-bar">
-      {onBack ? <button className="icon-button back" aria-label="이전 화면" onClick={onBack}>‹</button> : <span className="top-spacer" />}
+      {onBack ? <button className="icon-button back" aria-label="이전 화면" onClick={onBack}>{variant ? <img src="/images/figma/moira-arrow-left.svg" alt="" aria-hidden="true" /> : "‹"}</button> : <span className="top-spacer" />}
       <span>{title}</span>
       {content ? <button ref={helpButton} className="icon-button" aria-label="도움말" aria-haspopup="dialog" aria-expanded={help} onClick={() => setHelp(true)}>?</button> : <span className="top-spacer" />}
     </header>
