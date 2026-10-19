@@ -105,6 +105,7 @@ export default function MobileRegionEditor({ moiraSelection = false, onSelection
 
   const initialIds = useRef(initialSelectedIds); initialIds.current = initialSelectedIds;
   const locked = busy || loading || saving || claimPending || exitDialog;
+  const actionLocked = !moiraSelection && locked;
 
   function changed() {
     let nextDirty = true;
@@ -209,7 +210,7 @@ export default function MobileRegionEditor({ moiraSelection = false, onSelection
     return () => { document.body.style.overflow = previous; document.removeEventListener("keydown", keydown); previouslyFocused?.focus(); };
   }, [expanded]);
   function openEditor() {
-    if (locked || expandedRef.current) return;
+    if (locked || claimPendingRef.current || expandedRef.current) return;
     setClaimConflict(null);
     detailSnapshot.current = { mask: maskRef.current.slice(), ids: [...selectedIds], dirty: dirtyRef.current, customMask: customMaskRef.current };
     detailDirty.current = false; detailComplete.current = false; exitPending.current = false; discardConfirmed.current = false;
@@ -395,7 +396,7 @@ export default function MobileRegionEditor({ moiraSelection = false, onSelection
     }
   }
   async function save() {
-    if (locked) return;
+    if (locked || claimPendingRef.current) return;
     if (!maskRef.current.some(Boolean)) { setError("사진에서 사람을 선택하거나 브러시로 영역을 표시해 주세요."); return; }
     savingRef.current = true; changed(); setSaving(true); setError("");
     try { await onSave(await encodeMask(maskRef.current, width, height), selectedIds); dirtyRef.current = false; setDirty(false); dirtyCallback.current?.(false); setIncomingMask(false); }
@@ -405,8 +406,8 @@ export default function MobileRegionEditor({ moiraSelection = false, onSelection
   const controls = <div className={styles.tools} aria-label="영역 편집 도구">
     {([['points', '점 이동하기'], ['brush', '브러시'], ['erase', '지우기']] as [Tool, string][]).map(([value, label]) => <button key={value} type="button" aria-pressed={tool === value} disabled={locked} onClick={() => setTool(value)}>{label}</button>)}
   </div>;
-  const refineButton = <button type="button" className={styles.refine} disabled={locked || (!!regions.length && !hasSelection)} onClick={openEditor}>영역 편집하기</button>;
-  const saveButton = <button type="button" className={styles.save} disabled={locked || !imageRef.current || !hasSelection} onClick={() => void save()}>{saving ? "저장 중…" : moiraSelection && !hasSelection ? "이대로 진행하기" : saveLabel}</button>;
+  const refineButton = <button type="button" className={styles.refine} aria-disabled={locked || undefined} disabled={actionLocked || (moiraSelection ? !hasSelection : !!regions.length && !hasSelection)} onClick={openEditor}>영역 편집하기</button>;
+  const saveButton = <button type="button" className={styles.save} aria-disabled={locked || undefined} disabled={actionLocked || !imageRef.current || !hasSelection} onClick={() => void save()}>{saving ? "저장 중…" : moiraSelection && !hasSelection ? "이대로 진행하기" : saveLabel}</button>;
   return <section ref={rootRef} className={`${styles.editor} ${expanded ? styles.expanded : moiraSelection ? `${styles.moiraSelection} ${loading || detecting ? styles.recognizing : ""}` : ""}`} role={expanded ? "dialog" : undefined} aria-modal={expanded || undefined} aria-label="내 영역 선택">
     {expanded && <div className={styles.dialogHeader}><button type="button" aria-label="영역 편집 닫기" onClick={() => requestDetailExit()}>‹</button><strong>내 영역 편집</strong><button type="button" onClick={() => requestDetailExit(true)}>완료</button></div>}
     {!expanded && !moiraSelection && participantNickname && <div className={styles.identity}><strong>{participantNickname}으로 참여 중</strong></div>}
@@ -419,13 +420,13 @@ export default function MobileRegionEditor({ moiraSelection = false, onSelection
       {expanded && <>{controls}<div className={styles.historyTools}><button type="button" disabled={locked} onClick={resetDetail}>↻ 초기화</button><button type="button" disabled={locked || !undoMasks.current.length} onClick={() => restoreHistory()}>↶ 실행 취소</button><button type="button" disabled={locked || !redoMasks.current.length} onClick={() => restoreHistory(true)}>↷ 다시 실행</button></div></>}
       {!expanded && !moiraSelection && refineButton}
       {expanded && (tool === "brush" || tool === "erase") && <label className={styles.brush}>브러시 크기 <input aria-label="브러시 크기" type="range" min="3" max="45" value={brushSize} onChange={event => setBrushSize(Number(event.target.value))} /></label>}
-      {(detectionError || (!detection && !busy)) && <p className={styles.hint}>{detectionError || "영역을 직접 선택하거나 사람 영역을 다시 찾아보세요."} {onRetryDetection && <button type="button" disabled={locked} onClick={onRetryDetection}>다시 찾기</button>}</p>}
-      {detection && !regions.length && !loading && <p className={styles.hint}>찾은 사람이 없습니다. 브러시로 직접 선택할 수 있어요.</p>}
+      {(detectionError || (!detection && !busy)) && <p className={styles.hint}>{detectionError || "영역을 직접 선택하거나 사람 영역을 다시 찾아보세요."} {onRetryDetection && <button type="button" disabled={locked} onClick={onRetryDetection}>다시 찾기</button>}{moiraSelection && !regions.length && <button type="button" disabled={locked} onClick={openEditor}>직접 영역 선택</button>}</p>}
+      {detection && !regions.length && !loading && <p className={styles.hint}>찾은 사람이 없습니다. 브러시로 직접 선택할 수 있어요. {moiraSelection && <button type="button" disabled={locked} onClick={openEditor}>직접 영역 선택</button>}</p>}
       {error && <p role="alert" className={styles.error}>{error}</p>}
       {incomingMask && <p className={styles.hint}>다른 기기에서 저장한 영역이 바뀌었어요. 지금 수정한 영역은 유지됩니다. <button type="button" disabled={locked} onClick={discardLocalDraft}>내 수정 버리고 저장된 영역 불러오기</button></p>}
     </div>
     {!expanded && moiraSelection && !loading && !detecting && <div className={styles.regionOptions} role="group" aria-label="사진 속 영역 선택">{regions.map((region, index) => <button key={region.id} type="button" aria-pressed={selectedIds.includes(region.id)} disabled={locked} onClick={() => void toggle(region)}>영역 {index + 1}{regionClaims.find(claim => claim.regionId === region.id)?.nickname ? ` · ${regionClaims.find(claim => claim.regionId === region.id)!.nickname}` : ""}</button>)}</div>}
-    {!expanded && (moiraSelection ? showSelectionActions && <div className={styles.selectionActions}>{saveButton}{refineButton}</div> : saveButton)}
+    {!expanded && (moiraSelection ? showSelectionActions && <div className={styles.selectionActions} aria-busy={busy || saving || claimPending}>{saveButton}{refineButton}</div> : saveButton)}
     {exitDialog && <div className={styles.modalBackdrop}><div ref={modalRef} className={styles.exitModal} role="alertdialog" aria-modal="true" aria-labelledby="editor-exit-title" aria-describedby="editor-exit-description">
       <span className={styles.exitIcon} aria-hidden="true" />
       <h2 id="editor-exit-title">변경사항을 저장하지 않고 나갈까요?</h2>
