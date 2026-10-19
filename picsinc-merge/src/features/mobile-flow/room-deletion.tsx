@@ -41,8 +41,7 @@ export function DeleteRoomDialog({ base, onCancel, onDeleted }: { base: string; 
   return <dialog ref={dialog} className="delete-room-dialog" aria-labelledby="delete-room-title" aria-describedby="delete-room-description" onCancel={event => { event.preventDefault(); if (!pending.current) onCancel(); }}>
     <div className="delete-room-icon" aria-hidden="true">!</div>
     <h2 id="delete-room-title">방을 삭제하고<br />처음부터 시작할까요?</h2>
-    <p id="delete-room-description">참여자 전원의 작업과 업로드한 사진이 모두 사라지고,<br />기존 초대 링크도 더 이상 사용할 수 없어요.</p>
-    <strong className="delete-room-warning">삭제한 방은 복구할 수 없어요.</strong>
+    <p id="delete-room-description">참여자 전원의 작업이 모두 사라지고<br />기존 초대 링크도 더 이상 사용할 수 없어요.</p>
     {error && <p className="delete-room-error" role="alert">{error}</p>}
     <div className="delete-room-buttons"><button disabled={busy} onClick={onCancel}>취소</button><button disabled={busy} onClick={() => void remove()}>{busy ? "삭제 중…" : "삭제하고 다시 시작"}</button></div>
   </dialog>;
