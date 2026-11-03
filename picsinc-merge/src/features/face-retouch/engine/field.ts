@@ -33,12 +33,16 @@ export function prepare(faces:Face[],state:EditState,width:number,height:number,
  return {operations:ops,areas,state,width,height,limited:touchScope==="global"?false:limited,touchScope};
 }
 const areaEntries=new WeakMap<Prepared["areas"],Array<[string,Region]>>();
-function protection(p:Point,owner:string,areas:Prepared["areas"]):number {
+function protection(p:Point,owner:string,plan:Prepared):number {
+ const areas=plan.areas;
+ // Zero every grid vertex that can contribute to a protected output pixel.
+ // The extra source-pixel diagonal also keeps linear texture taps outside it.
+ const guard=gridGeometry(plan).guard+Math.SQRT2;
  let entries=areaEntries.get(areas);if(!entries){entries=Object.entries(areas);areaEntries.set(areas,entries);}
  let weight=1;for(const [id,r] of entries)if(id!==owner&&id!=="__touch"){
-  const radius=Math.max(r.rx,r.ry)*1.25;
+  const padding=guard/Math.min(r.rx,r.ry),radius=Math.max(r.rx,r.ry)*(1.25+padding);
   if(Math.abs(p.x-r.center.x)>=radius||Math.abs(p.y-r.center.y)>=radius)continue;
-  weight*=smooth((regionDistance(p,r)-1)/.25);if(!weight)break;
+  weight*=smooth((regionDistance(p,r)-1-padding)/.25);if(!weight)break;
  }return weight;
 }
 const inverseCache=new WeakMap<Operation,Map<number,{cr:number;sr:number;ix:number;iy:number}>>();
@@ -91,19 +95,19 @@ function pointWeights(point:Point,plan:Prepared,sample?:(i:number)=>number){
 }
 function minimum(indices:number[],weights:number[]){let v=1;for(const i of indices)v=Math.min(v,weights[i]??1);return v;}
 export function colorSuppression(point:Point,plan:Prepared,weights=pointWeights(point,plan)):number{
- let amount=0;for(const [owner,list] of Object.entries(compiled(plan).redness))if(plan.state.settings[owner].eyeRedness&&regionDistance(point,plan.areas[owner])<1.25)amount=Math.max(amount,(1-minimum(list,weights))*protection(point,owner,plan.areas));return amount;
+ let amount=0;for(const [owner,list] of Object.entries(compiled(plan).redness))if(plan.state.settings[owner].eyeRedness&&regionDistance(point,plan.areas[owner])<1.25)amount=Math.max(amount,(1-minimum(list,weights))*protection(point,owner,plan));return amount;
 }
 export type Strengths=Record<string,number>;
 export function mapPoint(point:Point,plan:Prepared,strengths:Strengths={},weights=pointWeights(point,plan),pointProtection?:Record<string,number>,contourSamples?:Record<string,Projection>):Point {
  let p={...point};const contourReferences:Record<string,Point>={},projections:Record<string,Projection>={};const cache=compiled(plan),protectedWeights:Record<string,number>=pointProtection??{};
- const protect=(owner:string)=>owner==="__touch"?1:protectedWeights[owner]??(protectedWeights[owner]=protection(point,owner,plan.areas));
+ const protect=(owner:string)=>owner==="__touch"?1:protectedWeights[owner]??(protectedWeights[owner]=protection(point,owner,plan));
  for(let i=plan.state.strokes.length-1;i>=0;i--){
   const stroke=plan.state.strokes[i],area=plan.areas[stroke.owner],outer=stroke.radius*TOUCH_SUPPORT;if(!area)continue;
   if(Math.abs(point.x-stroke.from.x)>=outer||Math.abs(point.y-stroke.from.y)>=outer)continue;
   const d=Math.hypot(point.x-stroke.from.x,point.y-stroke.from.y)/outer;if(d>=1)continue;
   let weight=(1-smooth(d))*stroke.strength*(strengths[`${stroke.owner}:touch`]??1)*(1-smooth((regionDistance(point,area)-1)/.35));
   weight*=protect(stroke.owner)*minimum(cache.touchRestores[i],weights);if(!weight)continue;
-  const q={x:p.x-(stroke.to.x-stroke.from.x)*weight,y:p.y-(stroke.to.y-stroke.from.y)*weight},safe=stroke.owner==="__touch"?1:protection(q,stroke.owner,plan.areas);
+  const q={x:p.x-(stroke.to.x-stroke.from.x)*weight,y:p.y-(stroke.to.y-stroke.from.y)*weight},safe=stroke.owner==="__touch"?1:protection(q,stroke.owner,plan);
   p={x:p.x+(q.x-p.x)*safe,y:p.y+(q.y-p.y)*safe};
  }
  for(let i=plan.operations.length-1;i>=0;i--){
@@ -123,7 +127,7 @@ export function mapPoint(point:Point,plan:Prepared,strengths:Strengths={},weight
   else{q=inverse(p,o,scale);weight*=o.legacyFalloff?1-smooth((regionDistance(p,o)-.5)/.5):1-smooth(Math.min(outside(p,o),outside(q,o))/o.feather);}
   if(!weight)continue;
   for(const r of o.exclusions){const collar=Math.max(2,Math.min(r.rx,r.ry)*.65);weight*=smooth(Math.min(outside(point,r),outside(q,r))/collar);}
-  weight*=protection(q,o.owner,plan.areas);
+  weight*=protection(q,o.owner,plan);
   p={x:p.x+(q.x-p.x)*weight,y:p.y+(q.y-p.y)*weight};
  }
  return {x:Math.max(0,Math.min(plan.width,p.x)),y:Math.max(0,Math.min(plan.height,p.y))};
@@ -156,7 +160,7 @@ export async function buildField(plan:Prepared,isCurrent:()=>boolean=()=>true):P
  };
  const restores=plan.state.restores.map(r=>mask(`r:${gridKey}:${JSON.stringify([r.from,r.center,r.radius])}`,maskWindow(Math.min(r.from.x,r.center.x)-r.radius,Math.min(r.from.y,r.center.y)-r.radius,Math.max(r.from.x,r.center.x)+r.radius,Math.max(r.from.y,r.center.y)+r.radius),(x,y)=>restoreWeight(gridPoint(x,y),r),1));
  const owners=[...new Set([...plan.operations.map(o=>o.owner),...plan.state.strokes.map(s=>s.owner)])];
- const protects=Object.fromEntries(owners.map(owner=>[owner,mask(`p:${gridKey}:${owner}:${JSON.stringify(plan.areas)}`,{x0:0,y0:0,x1:columns-1,y1:rows-1},(x,y)=>protection(gridPoint(x,y),owner,plan.areas),1)]));
+ const protects=Object.fromEntries(owners.map(owner=>[owner,mask(`p:${gridKey}:${owner}:${JSON.stringify(plan.areas)}`,{x0:0,y0:0,x1:columns-1,y1:rows-1},(x,y)=>protection(gridPoint(x,y),owner,plan),1)]));
  const contourMasks:Record<string,((x:number,y:number)=>Projection)>={};
  for(const o of plan.operations)if(o.contour&&!contourMasks[o.owner]){
   const key=`c:${gridKey}:${JSON.stringify(o.contour.map(v=>v.point))}`;

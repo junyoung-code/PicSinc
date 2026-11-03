@@ -32,3 +32,10 @@
 기본 방 페이지는 `SessionFlow`를 사용한다. 별도 `/sessions/{inviteToken}/collaboration`의 `SessionEntry`가 협업 여부를 확인하고 `CollaborativeRoom`이 방 단계·선택·개인 보정·전체 사진 편집·최종 저장을 연결한다. `RetouchEditor`는 서버 마스크가 있는 개인 모드와 최신 저장본을 기준으로 하는 전체 사진 모드를 공유한다. 제품 기준은 [MASTER_SPEC](../../MASTER_SPEC.md#진입-경로와-기능-분리--2026-11-03), 확인 결과와 남은 일은 [STATE](../../STATE.md)에서 관리한다.
 
 터치 보정은 `touch/gesture.ts`의 획 관리와 `ui/TouchFeedback.tsx`의 위치 안내·확대경을 분리한다. 기존 좌표 엔진·방 마스크·저장 계약을 유지하며, 조작 취소·부분 복원·화면과 확대경의 동기화는 기능 옆 검사와 브라우저 검사로 확인한다.
+
+## 보정기 검증 재실행
+
+- `npm run test:retouch`: 얼굴별 설정·좌표 보간·원본 참조·안전 제한 회귀 검사.
+- 프로덕션 빌드 서버를 실행한 뒤 `RETOUCH_BASE_URL=http://127.0.0.1:3114 npm run test:retouch:e2e`를 사용한다. `RETOUCH_BROWSER=webkit`으로 엔진을 바꿀 수 있으며, 이는 실제 iPhone 검사가 아니다.
+- `node --import tsx scripts/retouch-benchmark.mjs`: 단일·복합 효과와 누적 터치의 입력→Worker 결과→WebGL 제출, PNG 다운로드 시간을 기록한다. `RETOUCH_BASE_URL`, `RETOUCH_FIXTURE`, `RETOUCH_BROWSER`, `RETOUCH_SAMPLES`로 조건을 지정한다. 순차 입력 지연이며 연속 입력 처리량이나 물리 화면 표시 시간은 아니다.
+- `node scripts/retouch-photo-audit.mjs private/cases.json`: `[{id,condition,origin,path}]` 형식의 로컬 사진 목록을 검사한다. 익명 ID와 실제/생성/변형 출처를 기록하고 사진·비교 결과는 `private/retouch-e2e/`에만 보관한다. 자동 검사는 자연스러움·가림 소유권을 합격 처리하지 않는다. 결과·측정값·미검증 항목은 STATE에서 관리한다.

@@ -163,7 +163,7 @@ test("nearby-face protection and simulated occlusion limitations",async({page})=
  await open(page,close);await expect(page.getByRole("button",{name:"얼굴 2",exact:true})).toBeVisible();
  const faces=await detectedLandmarks(page),baseline=await image(page),base=await raw(baseline);await strength(page,100);
  const rendered=await image(page),pixels=await raw(rendered),area=faceArea(faces[1],615,420);
- let protectedCount=0,changedProtected=0;for(let y=0;y<420;y++)for(let x=0;x<615;x++)if(regionDistance({x,y},area)<.9){const i=(y*615+x)*4;if(!pixels.subarray(i,i+4).equals(base.subarray(i,i+4)))changedProtected++;protectedCount++;}expect(protectedCount).toBeGreaterThan(1000);expect(changedProtected).toBe(0);
+ let protectedCount=0,changedProtected=0;for(let y=0;y<420;y++)for(let x=0;x<615;x++)if(regionDistance({x:x+.5,y:y+.5},area)<1){const i=(y*615+x)*4;if(!pixels.subarray(i,i+4).equals(base.subarray(i,i+4)))changedProtected++;protectedCount++;}expect(protectedCount).toBeGreaterThan(1000);expect(changedProtected).toBe(0);
  await writeFile(`${output}/nearby-before.png`,baseline);await writeFile(`${output}/nearby-after.png`,rendered);await expect(page.getByText("다른 얼굴과 가까운 변형은 보호 영역에서 제한돼요.")).toBeVisible();
  const covered=resolve(output,"occluded.png");const cover=await sharp({create:{width:66,height:36,channels:3,background:"#bfc3c5"}}).png().toBuffer();await sharp(fixture).composite([{input:cover,left:125,top:350}]).png().toFile(covered);
  page.once("dialog",d=>d.accept());await page.getByLabel("사진 열기",{exact:true}).setInputFiles(covered);await expect(page.getByRole("button",{name:"얼굴 1",exact:true})).toBeVisible({timeout:100_000});await ready(page);
@@ -192,7 +192,7 @@ test("small detected neighbor is protected while excluded from editing",async({p
  await open(page,path);const faces=await detectedLandmarks(page);expect(faces).toHaveLength(2);
  await expect(page.getByRole("button",{name:"얼굴 2",exact:true})).toHaveCount(0);await expect(page.getByText(/너무 작은 얼굴은 제외/)).toBeVisible();
  const before=await image(page),base=await raw(before);await strength(page,100);const after=await image(page),pixels=await raw(after),area=faceArea(faces[1],415,420);
- let protectedCount=0,changedProtected=0;for(let y=0;y<420;y++)for(let x=0;x<415;x++)if(regionDistance({x,y},area)<.9){const i=(y*415+x)*4;if(!pixels.subarray(i,i+4).equals(base.subarray(i,i+4)))changedProtected++;protectedCount++;}
+ let protectedCount=0,changedProtected=0;for(let y=0;y<420;y++)for(let x=0;x<415;x++)if(regionDistance({x:x+.5,y:y+.5},area)<1){const i=(y*415+x)*4;if(!pixels.subarray(i,i+4).equals(base.subarray(i,i+4)))changedProtected++;protectedCount++;}
  expect(protectedCount).toBeGreaterThan(1000);expect(changedProtected).toBe(0);expect(after.equals(before)).toBeFalsy();
  await writeFile(`${output}/small-neighbor-before.png`,before);await writeFile(`${output}/small-neighbor-after.png`,after);
  // Inject a known small detection overlapping an eye to isolate color-mask
