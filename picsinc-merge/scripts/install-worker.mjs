@@ -1,5 +1,5 @@
 // Install the existing Mac worker for this user's login session.
-import {mkdir,writeFile,readFile,cp,chmod} from 'node:fs/promises';
+import {mkdir,writeFile,readFile,cp,chmod,open} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import {parseEnv} from 'node:util';
 import {homedir} from 'node:os';
@@ -12,7 +12,13 @@ const label='com.picsinc.photo-worker';
 const xml=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const folder=path.join(homedir(),'Library','LaunchAgents');
 const logs=path.join(homedir(),'Library','Logs','PicSinc');
-await mkdir(folder,{recursive:true});await mkdir(logs,{recursive:true});
+await mkdir(folder,{recursive:true});await mkdir(logs,{recursive:true,mode:0o700});
+await chmod(logs,0o700);
+for(const name of ['worker.log','worker-error.log']) {
+  const handle=await open(path.join(logs,name),'a',0o600);
+  await handle.close();
+  await chmod(path.join(logs,name),0o600);
+}
 const settings=parseEnv(await readFile(path.join(source,'.env.worker'),'utf8'));
 if(!settings.WORKER_BASE_URL || !settings.WORKER_TOKEN || settings.WORKER_TOKEN.length<32) throw new Error('Configure .env.worker first');
 const domain=`gui/${process.getuid()}`;
