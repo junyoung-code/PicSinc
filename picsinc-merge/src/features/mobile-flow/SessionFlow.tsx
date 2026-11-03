@@ -11,6 +11,7 @@ import { allowedStep, resumeStep, type FlowSnapshot, type Step } from "./flow-st
 import { jsonRequest, photoError, rememberRecovery, request, RequestError, usePreview } from "./client";
 import { DeletedRoomScreen, DeleteRoomDialog } from "./room-deletion";
 import { originalDetectionMonitor } from "./original-detection-monitor";
+import { visiblePolling } from "./polling";
 import { saveEditorSelection } from "./save-editor-selection";
 import type { OriginalDetectionState } from "@/features/photo-session/original-detection-state";
 import { sendFestivalEvent } from "@/core/festival-visit";
@@ -39,6 +40,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   const [merging, setMerging] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [consented, setConsented] = useState(false);
   const [editedId, setEditedId] = useState("");
   const [pendingEditId, setPendingEditId] = useState("");
   const [detection, setDetection] = useState<DetectedRegions | null>(null);
@@ -165,35 +167,23 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   // Only status screens poll. Never reinitialize the editor's draft from polling.
   useEffect(() => {
     if (!data || !["status", "invite"].includes(step) || merging || expired) return;
-    let active = true, pending = false;
-    const poll = async () => {
-      if (document.visibilityState !== "visible" || pending) return;
-      pending = true;
+    let active = true;
+    const stop = visiblePolling(5000, async () => {
       try { const snapshot = await request<FlowSnapshot>(base); if (active) { setData(snapshot); if (step === "status" && snapshot.result?.version === snapshot.session.version) showNewResult(snapshot); } }
-      catch (error) { if (active) report(error); }
-      finally { pending = false; }
-    };
-    const timer = window.setInterval(() => void poll(), 5000);
-    const focus = () => void poll(); window.addEventListener("focus", focus); document.addEventListener("visibilitychange", focus);
-    return () => { active = false; clearInterval(timer); window.removeEventListener("focus", focus); document.removeEventListener("visibilitychange", focus); };
+      catch (error) { if (active) report(error); throw error; }
+    });
+    return () => { active = false; stop(); };
   }, [Boolean(data), step, merging, expired, base]);
 
   // Screens without snapshot/claim polling only check whether the room still exists.
   useEffect(() => {
     if (expired || (!data && !canJoin) || (!merging && data && ["invite", "status", "select", "review"].includes(step))) return;
-    let active = true, pending = false;
-    const poll = async () => {
-      if (document.visibilityState !== "visible" || pending) return;
-      pending = true;
+    let active = true;
+    const stop = visiblePolling(3000, async () => {
       try { await request(`${base}/lifecycle`); }
-      catch (error) { if (active && error instanceof RequestError && [404, 410].includes(error.status)) report(error); }
-      finally { pending = false; }
-    };
-    void poll();
-    const timer = window.setInterval(() => void poll(), 3000);
-    const focus = () => void poll();
-    window.addEventListener("focus", focus); document.addEventListener("visibilitychange", focus);
-    return () => { active = false; clearInterval(timer); window.removeEventListener("focus", focus); document.removeEventListener("visibilitychange", focus); };
+      catch (error) { if (active && error instanceof RequestError && [404, 410].includes(error.status)) report(error); throw error; }
+    });
+    return () => { active = false; stop(); };
   }, [base, Boolean(data), canJoin, step, merging, expired]);
 
   function showNewResult(snapshot: FlowSnapshot) {
@@ -250,19 +240,14 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     if (!data || !["select", "review"].includes(step) || expired) return;
     let active = true;
     initialClaims.current = null; setClaims(null);
-    const poll = async () => {
-      if (document.visibilityState !== "visible") return;
+    const stop = visiblePolling(3000, async () => {
       const generation = ++claimRequest.current;
       try {
         const result = await request<{ claims: NonNullable<typeof claims> }>(`${base}/region-claims`);
         if (active && generation === claimRequest.current) { initialClaims.current ??= result.claims; setClaims(result.claims); }
-      } catch (error) { if (active) report(error); }
-    };
-    void poll();
-    const timer = window.setInterval(() => void poll(), 3000);
-    const focus = () => void poll();
-    window.addEventListener("focus", focus); document.addEventListener("visibilitychange", focus);
-    return () => { active = false; clearInterval(timer); window.removeEventListener("focus", focus); document.removeEventListener("visibilitychange", focus); };
+      } catch (error) { if (active) report(error); throw error; }
+    });
+    return () => { active = false; stop(); };
   }, [Boolean(data), base, step, expired]);
 
   async function toggleClaim(regionId: string, selected: boolean): Promise<{ ok: true } | { ok: false; nickname: string }> {
@@ -299,13 +284,13 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     } catch (error) { report(error); } finally { setBusy(false); }
   }
   async function upload() {
-    if ((!file && !(owner && (selectedEdit || pendingEditId) && !me?.submitted)) || busy) return;
+    if ((!file && !(owner && (selectedEdit || pendingEditId) && !me?.submitted)) || (file && !consented) || busy) return;
     setBusy(true); setMessage("");
     try {
       let editId = pendingEditId || selectedEdit?.id;
       if (file) {
         const body = await uploadAsset(base, "edited", file);
-        editId = body.asset.id; setPendingEditId(editId); chooseEdit(editId); setFile(null);
+        editId = body.asset.id; setPendingEditId(editId); chooseEdit(editId); setFile(null); setConsented(false);
       }
       const snapshot = await refresh();
       if (!owner) { recordStep("select"); return; }
@@ -350,13 +335,13 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     {canJoin ? <><div className="intro"><p className="eyebrow">{inviter} 님의 초대</p><h1>함께 찍은 사진을<br />각자 보정해요</h1><p className="description">평소 쓰는 앱에서 내 얼굴을 보정한 뒤<br />사진을 올리면 한 장으로 합쳐드려요.</p></div><form onSubmit={event => { event.preventDefault(); void join(); }}><label className="name-field">내 이름<input required autoComplete="nickname" maxLength={40} value={nickname} onChange={event => setNickname(event.target.value)} placeholder="친구들이 알아볼 이름" /></label></form></> : <div className="loading-screen"><div className="spinner" /><p>보정방을 불러오고 있어요.</p></div>}
     <StatusMessage message={message} />{message && !canJoin && <button className="secondary-button" onClick={() => location.reload()}>다시 불러오기</button>}
   </MobileShell>;
-  if (merging) return <MobileShell title="사진 합치는 중" progress={81}><div className="loading-screen merging-screen"><img className="figma-spinner" src="/images/figma/processing-spinner.svg" alt="" /><h1>{mergeDelayed ? <>평소보다 오래<br />걸리고 있어요</> : <>각자의 보정을<br />한 장에 담고 있어요</>}</h1><p className="description">{mergeDelayed ? <>사진을 안전하게 합치고 있어요.<br />최대 3분 정도 걸릴 수 있어요.</> : message || "선택한 얼굴만 원본 사진에 자연스럽게 합치는 중이에요."}</p></div></MobileShell>;
+  if (merging) return <MobileShell title="사진 합치는 중" progress={81}><div className="loading-screen merging-screen"><img className="figma-spinner" src="/images/figma/processing-spinner.svg" alt="" /><h1>{mergeDelayed ? <>평소보다 오래<br />걸리고 있어요</> : <>각자의 보정을<br />한 장에 담고 있어요</>}</h1><p className="description">{mergeDelayed ? "사진을 안전하게 합치고 있어요." : message || "선택한 얼굴만 원본 사진에 자연스럽게 합치는 중이에요."}<br />사진 합치기는 5분 정도 걸릴 수 있어요.<br />이용자가 많으면 더 지연될 수 있어요.</p></div></MobileShell>;
 
   const roster = <ul className="participant-list">{photoDisplay.participants.map(person => <li key={person.id}><span className="avatar" aria-hidden="true" /><span className="participant-name">{person.nickname}{person.id === me?.id ? " (나)" : ""}</span><span className={`badge ${person.submitted ? "complete" : ""}`}>{person.submitted ? "제출 완료" : person.id === data.session.ownerParticipantId && step === "invite" ? "대표자" : "보정 중"}</span></li>)}</ul>;
   const shareField = <div className="share-field"><input aria-label="친구에게 보낼 초대 링크" value={shareUrl} readOnly onFocus={event => event.currentTarget.select()} /><button className="small-button" onClick={() => void copy()}>복사</button></div>;
   let content: ReactNode, footer: ReactNode;
   if (step === "invite") {
-    content = <><h1>보정방이 만들어졌어요</h1><p className="description">링크를 보내면 친구들이 앱 설치 없이 참여할 수 있어요.</p>{shareField}<>{detectionState.status === "failed" && <StatusMessage message={detectionError} />}</>{detectionState.status === "failed" && <button className="text-button" onClick={() => retryDetection.current()}>분석 다시 시도</button>}<div className="room-time"><span>보정방 유지 시간</span><strong>{now ? remainingTime(data.session.expiresAt, now) : "계산 중"}</strong></div><h2>참여자</h2>{roster}</>;
+    content = <><h1>보정방이 만들어졌어요</h1><p className="description">링크를 보내면 친구들이 앱 설치 없이 참여할 수 있어요.</p>{shareField}<p className="description">링크를 받은 사람은 방에 참여해 사진과 결과를 볼 수 있어요. 각자 자신의 얼굴 영역만 제출하고, 병합·삭제는 대표자가 해요.</p><>{detectionState.status === "failed" && <StatusMessage message={detectionError} />}</>{detectionState.status === "failed" && <button className="text-button" onClick={() => retryDetection.current()}>분석 다시 시도</button>}<div className="room-time"><span>보정방 유지 시간</span><strong>{now ? remainingTime(data.session.expiresAt, now) : "계산 중"}</strong></div><h2>참여자</h2>{roster}</>;
     footer = <><button className="text-button restart-link" onClick={() => setConfirmDelete(true)}>처음부터 다시 하기</button><button className="primary-button" onClick={() => navigate(resumeStep(data))}>시작하기</button></>;
   } else if (step === "select" || step === "review") {
     const review = step === "review";
@@ -372,8 +357,8 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     content = <><h1>평소 하던 대로<br />내 얼굴을 보정해주세요</h1><ol className="guide-list"><li><span className="step-number">1</span><div><strong>원본 사진 저장</strong><p>같은 원본을 휴대폰에 저장해요.</p></div></li><li><span className="step-number">2</span><div><strong>평소 쓰던 앱에서 보정</strong><p>Meitu, SNOW, EPIK 등을 사용해요.</p></div></li><li><span className="step-number">3</span><div><strong>보정한 사진 업로드</strong><p>다시 이 링크로 돌아와 사진 전체를 올려요.</p></div></li></ol>{currentResult && <button className="text-button" onClick={() => navigate("result")}>현재 병합 결과 보기</button>}</>;
     footer = <><button className="primary-button" onClick={() => navigate("upload")}>이미 보정했어요</button></>;
   } else if (step === "upload") {
-    content = <><h1>보정이 끝난 사진을<br />올려주세요</h1><p className="description">내 얼굴만 보정한 전체 사진을 선택해주세요.</p><PhotoPicker file={file} preview={preview} label="보정한 사진 선택" busy={busy} onChange={next => { const error = next ? photoError(next) : ""; setMessage(error); setFile(error ? null : next); }} /><Notice>사진을 자르거나 회전했다면 원본과 맞지 않을 수 있어요.</Notice>{owner && !me?.submitted && (selectedEdit || pendingEditId) && !file && <p className="description">업로드한 보정본이 있어요. 다시 올리지 않고 제출을 이어갈 수 있어요.</p>}{!owner && currentResult && <button className="text-button" onClick={() => navigate("result")}>현재 병합 결과 보기</button>}</>;
-    footer = <button className="primary-button" disabled={(!file && !(owner && (selectedEdit || pendingEditId) && !me?.submitted)) || busy} onClick={() => void upload()}>{busy ? "처리 중…" : owner && !file && (selectedEdit || pendingEditId) && !me?.submitted ? "업로드한 보정본 제출하기" : "계속"}</button>;
+    content = <><h1>보정이 끝난 사진을<br />올려주세요</h1><p className="description">내 얼굴만 보정한 전체 사진을 선택해주세요.</p><PhotoPicker file={file} preview={preview} label="보정한 사진 선택" busy={busy} onChange={next => { const error = next ? photoError(next) : ""; setMessage(error); setFile(error ? null : next); setConsented(false); }} /><Notice>사진을 자르거나 회전했다면 원본과 맞지 않을 수 있어요.<br />보정본은 방 참여자가 보고 합성에 사용하며, 방 생성 후 24시간까지 보관돼요.</Notice>{file && <label className="photo-consent"><input type="checkbox" checked={consented} onChange={event => setConsented(event.target.checked)} />이 사진을 방 참여자와 공유하고 합성에 사용하는 데 동의해요.</label>}{owner && !me?.submitted && (selectedEdit || pendingEditId) && !file && <p className="description">업로드한 보정본이 있어요. 다시 올리지 않고 제출을 이어갈 수 있어요.</p>}{!owner && currentResult && <button className="text-button" onClick={() => navigate("result")}>현재 병합 결과 보기</button>}</>;
+    footer = <button className="primary-button" disabled={(!file && !(owner && (selectedEdit || pendingEditId) && !me?.submitted)) || (Boolean(file) && !consented) || busy} onClick={() => void upload()}>{busy ? "처리 중…" : owner && !file && (selectedEdit || pendingEditId) && !me?.submitted ? "업로드한 보정본 제출하기" : "계속"}</button>;
   } else if (step === "status") {
     content = <><h1>{owner ? <>{data.participants.length}명 중 {submittedCount}명이<br />보정을 마쳤어요</> : me?.submitted ? <>이제 친구들의 보정을<br />기다리고 있어요</> : <>내 얼굴을 선택해<br />제출해주세요</>}</h1><p className="description">{!owner && me?.submitted ? "대표자가 ‘사진 합치기’ 버튼을 누르면 병합이 시작돼요." : <>페이지를 닫아도 진행 상황이 유지돼요.{!owner && <><br />같은 링크에서 다시 확인할 수 있어요.</>}</>}</p>{roster}{(owner || !me?.submitted) && <Notice>{owner ? "제출된 보정본으로만 합쳐지며, 미제출자의 얼굴은 원본으로 유지돼요." : "대표자가 ‘사진 합치기’ 버튼을 누르면 병합이 시작돼요."}</Notice>}</>;
     footer = owner ? <button className="primary-button" disabled={!submittedCount || busy} onClick={() => void compose()}>{submittedCount ? "현재 결과로 병합하기" : "한 명 이상 제출하면 병합할 수 있어요"}</button> : <button className="secondary-button" onClick={() => void refresh().catch(report)}>현황 새로고침</button>;

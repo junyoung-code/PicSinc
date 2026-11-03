@@ -14,7 +14,8 @@ import { createWorkerClient, processAssignment, runChildTask, WorkerApiError } f
 test("remote upload, automatic detection, local processing, ownership, lease recovery and expiry", {
   skip: process.env.PICSINC_REMOTE_HTTP_TEST !== "1", timeout: 300_000,
 }, async () => {
-  assert.equal(process.env.SUPABASE_URL, "https://zogtpmolcmpiipwbysck.supabase.co");
+  const expectedRef = process.env.PICSINC_TEST_DB_REF || "zogtpmolcmpiipwbysck";
+  assert.equal(process.env.SUPABASE_URL, `https://${expectedRef}.supabase.co`);
   assert(process.env.SUPABASE_SECRET_KEY, "SUPABASE_SECRET_KEY is required for fixture cleanup");
   assert(process.env.WORKER_TOKEN && process.env.WORKER_TOKEN.length >= 32, "WORKER_TOKEN must match the server");
   const base = process.env.PICSINC_TEST_BASE_URL || process.env.TEST_BASE_URL || "http://127.0.0.1:3137";

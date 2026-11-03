@@ -3,6 +3,7 @@ import type { CompositeResult } from "./contracts";
 import type { JobView } from "./processing";
 import type { DetectedRegions } from "@/features/region-editor/detected-regions";
 import { request, jsonRequest, RequestError } from "@/features/mobile-flow/client";
+import { pollingDelay } from "@/features/mobile-flow/polling";
 import { sendFestivalEvent, visitId } from "./festival-visit";
 
 type PreparedUpload={uploadId:string;signedUrl:string;token:string;path:string};
@@ -72,13 +73,27 @@ export function uploadAsset(base:string,kind:'edited'|'mask',file:Blob):Promise<
 }
 
 async function waitJob(base:string,job:JobView,onStatus?:(status:string)=>void):Promise<JobView> {
+  let failures = 0;
+  const deadline = Date.now() + 15 * 60_000;
   while(true) {
     onStatus?.(job.status);
     if(job.status==='ready') return job;
     if(job.status==='failed') throw new RequestError(job.error || '처리하지 못했어요. 다시 시도해 주세요.',job.code==='version_changed'?409:503);
-    await new Promise(resolve=>setTimeout(resolve,3000));
-    const result=await request<{job:JobView}>(`${base}/jobs/${job.id}`);
-    job=result.job;
+    if (Date.now() >= deadline) throw new RequestError('처리가 길어지고 있어요. 나중에 이 방을 다시 열어 결과를 확인해 주세요.', 504);
+    await new Promise(resolve=>setTimeout(resolve,pollingDelay(3000,failures)));
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      await new Promise<void>(resolve => {
+        const resume = () => { if (document.visibilityState === 'visible') { document.removeEventListener('visibilitychange',resume); resolve(); } };
+        document.addEventListener('visibilitychange',resume);
+      });
+    }
+    try {
+      const result=await request<{job:JobView}>(`${base}/jobs/${job.id}`);
+      job=result.job; failures=0;
+    } catch (error) {
+      if (error instanceof RequestError && error.status < 500 && error.status !== 429) throw error;
+      if (++failures >= 5) throw error;
+    }
   }
 }
 export async function detectRemote(base:string,assetId:string,onStatus?:(status:string)=>void):Promise<DetectedRegions> {

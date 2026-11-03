@@ -12,6 +12,7 @@ docs/workstreams/
 *.key
 *.p12
 *.pfx
+.env.local
 
 # User media and generated output
 uploads/
@@ -19,3 +20,11 @@ storage/
 media/
 
 .DS_Store
+
+# "uploads/" excludes private media, but this directory contains application code.
+!picsinc-merge/src/app/api/sessions/**/uploads/
+!picsinc-merge/src/app/api/sessions/**/uploads/**
+!picsinc-merge/src/app/api/uploads/
+!picsinc-merge/src/app/api/uploads/**
+!picsinc-merge/src/integrations/storage/
+!picsinc-merge/src/integrations/storage/**

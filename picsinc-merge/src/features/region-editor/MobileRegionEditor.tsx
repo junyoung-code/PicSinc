@@ -5,6 +5,7 @@ import type { DetectedRegions } from "./detected-regions";
 import { paintBrush, type Point } from "./mask-geometry";
 import { editableContours, visibleContours, smoothedDisplayContour, findContourHandle, finishContourGesture, spacedHandleIndices, viewportToImage, zoomAround, type PendingContour, type ViewTransform } from "./contour-geometry";
 import styles from "./mobile-editor.module.css";
+import { regionLabelPosition, regionOwnerLabel, type RegionClaim } from "./region-labels";
 
 export interface MobileRegionEditorProps {
   imageUrl: string;
@@ -23,7 +24,7 @@ export interface MobileRegionEditorProps {
   onRetryDetection?: () => void;
   detectionError?: string;
   onDetailOpen: (onBrowserBack: () => boolean) => void;
-  regionClaims?: { regionId: string; participantId: string; nickname: string }[];
+  regionClaims?: RegionClaim[];
   currentParticipantId?: string;
   onRegionToggle?: (regionId: string, selected: boolean) => Promise<{ ok: true } | { ok: false; nickname: string }>;
 }
@@ -261,15 +262,20 @@ export default function MobileRegionEditor({ imageUrl, width, height, detection,
     if (imageRef.current) context.drawImage(imageRef.current, 0, 0, width, height);
     if (overlayRef.current) context.drawImage(overlayRef.current, 0, 0, width, height);
     const path = (ring: Point[]) => { context.beginPath(); ring.forEach((p, i) => i ? context.lineTo(p.x, p.y) : context.moveTo(p.x, p.y)); context.closePath(); };
-    if (tool === "select") for (const [i, region] of regionRef.current.entries()) {
+    for (const [i, region] of regionRef.current.entries()) {
+      const owner = regionOwnerLabel(region.id, regionClaims, selectedIds, currentParticipantId, participantNickname);
+      if (tool !== "select" && (!owner || owner.own)) continue;
       const conflict = claimConflict?.regionId === region.id;
-      context.strokeStyle = conflict ? "#df2638" : colors[i % colors.length]; context.lineWidth = (conflict || selectedIds.includes(region.id) ? 2.5 : 1.5) / view.scale;
+      context.save();
+      context.strokeStyle = conflict ? "#df2638" : owner ? owner.own ? "#6558e8" : "#344054" : colors[i % colors.length]; context.lineWidth = (conflict || owner ? 2.5 : 1.5) / view.scale;
+      if (owner && !owner.own) context.setLineDash([5 / view.scale, 3 / view.scale]);
       if (conflict) {
         context.beginPath();
         for (const ring of region.contours) { ring.forEach((p, index) => index ? context.lineTo(p.x, p.y) : context.moveTo(p.x, p.y)); context.closePath(); }
         context.fillStyle = "#df263866"; context.fill("evenodd");
       }
       for (const ring of visibleContours(region.contours)) { path(smoothedDisplayContour(ring)); context.stroke(); }
+      context.restore();
     }
     if (tool === "points") for (const ring of visibleContours(contoursRef.current)) {
       const pending = gesture.current?.pending; const display = pending?.ring === ring ? ring.map((p, i) => i === pending.index ? pending.target : p) : ring;
@@ -282,10 +288,22 @@ export default function MobileRegionEditor({ imageUrl, width, height, detection,
         context.fillStyle = "white"; context.fill(); context.strokeStyle = "#6558e8"; context.lineWidth = .75 / view.scale; context.stroke();
       }
     }
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.font = "600 12px system-ui, sans-serif"; context.textBaseline = "middle";
+    for (const region of regionRef.current) {
+      const owner = regionOwnerLabel(region.id, regionClaims, selectedIds, currentParticipantId, participantNickname);
+      if (!owner) continue;
+      const labelWidth = Math.min(rect.width - 8, context.measureText(owner.text).width + 16);
+      const position = regionLabelPosition(region.box, view, rect, labelWidth);
+      if (!position) continue;
+      context.fillStyle = owner.own ? "#6558e8" : "#344054";
+      context.beginPath(); context.roundRect(position.x, position.y, labelWidth, 24, 6); context.fill();
+      context.fillStyle = "#fff"; context.fillText(owner.text, position.x + 8, position.y + 12, Math.max(1, labelWidth - 16));
+    }
   }
   redraw.current = draw;
   useEffect(() => { const canvas = canvasRef.current; if (!canvas) return; const observer = new ResizeObserver(fit); observer.observe(canvas); fit(); return () => observer.disconnect(); }, [expanded, width, height]);
-  useEffect(() => { draw(); }, [revision, tool, selectedIds, expanded, loading, claimConflict]);
+  useEffect(() => { draw(); }, [revision, tool, selectedIds, expanded, loading, claimConflict, regionClaims, currentParticipantId, participantNickname]);
   function local(event: React.PointerEvent<HTMLCanvasElement>): Point { const rect = event.currentTarget.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top }; }
   async function toggle(region: Region) {
     if (locked || claimPendingRef.current) return;

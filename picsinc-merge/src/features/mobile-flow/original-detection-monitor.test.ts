@@ -13,6 +13,20 @@ test("idle resumes once, progress polls, ready loads once, and failure waits for
   await monitor.check(true); assert.equal(starts, 2);
 });
 
+test("transient polling failure keeps an active analysis and backs off", async t => {
+  let now = 0, reads = 0, broken = false;
+  t.mock.method(Date, "now", () => now);
+  const monitor = originalDetectionMonitor({
+    read: async () => { reads++; if (broken) throw new TypeError("offline"); return { status: "queued" }; },
+    start: async () => ({ status: "queued" }), result: async () => { throw new Error("not ready"); },
+    canApply: () => true, onState: () => {}, onResult: () => {}, onError: () => {},
+  });
+  await monitor.check(); broken = true; await monitor.check();
+  assert.equal(monitor.polling(), true);
+  await monitor.check(); assert.equal(reads, 2);
+  now = 6000; broken = false; await monitor.check(); assert.equal(reads, 3);
+});
+
 test("leaving the screen stops callbacks without cancelling a job or applying late results to an edited draft", async () => {
   for (const leave of [false, true]) {
     let resolve!: (value: typeof result) => void; let touched = false, applied = 0;

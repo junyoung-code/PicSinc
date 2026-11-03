@@ -16,7 +16,7 @@ const hash = (s: string) => createHash("sha256").update(s).digest();
 
 function check(error: { message: string } | null) {
   if (!error) return;
-  const known: Record<string, [number,string]> = { "Session expired": [410,"이 작업의 보관 기간이 끝났습니다."], "Forbidden": [403,"요청할 권한이 없습니다."], "Version changed": [409,"사진이나 선택이 바뀌었어요. 다시 불러와 주세요."], "No submissions": [400,"한 명 이상 제출해야 병합할 수 있습니다."] };
+  const known: Record<string, [number,string]> = { "Session expired": [410,"이 작업의 보관 기간이 끝났습니다."], "Forbidden": [403,"요청할 권한이 없습니다."], "Version changed": [409,"사진이나 선택이 바뀌었어요. 다시 불러와 주세요."], "Collaboration locked": [409,"현재 단계에서는 수정할 수 없어요."], "No submissions": [400,"한 명 이상 제출해야 병합할 수 있습니다."] };
   const mapped = known[error.message];
   if (mapped) throw new SessionError(...mapped);
   // Database messages may include query values; keep tokens and file paths out of logs.

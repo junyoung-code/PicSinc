@@ -8,8 +8,8 @@ import { supabaseServer } from "./supabase-server";
 const bucket = () => process.env.SUPABASE_STORAGE_BUCKET || "picsinc-merge";
 function checked(error: { message: string } | null) {
   if (!error) return;
-  const statuses: Record<string, number> = { "Upload missing": 404, "Upload expired": 410, "Upload unauthorized": 403, "Upload busy": 409, "Upload lease lost": 409, "Session expired": 410 };
-  const messages: Record<string, string> = { "Upload missing": "업로드를 찾을 수 없습니다.", "Upload expired": "업로드 시간이 만료되었습니다.", "Upload unauthorized": "이 업로드를 완료할 권한이 없습니다.", "Upload busy": "파일을 확인하고 있습니다. 잠시 후 다시 시도해 주세요.", "Upload lease lost": "파일 확인이 중단되었습니다. 다시 시도해 주세요.", "Session expired": "이 작업의 보관 기간이 끝났습니다." };
+  const statuses: Record<string, number> = { "Collaboration locked": 409, "Upload missing": 404, "Upload expired": 410, "Upload unauthorized": 403, "Upload busy": 409, "Upload lease lost": 409, "Session expired": 410 };
+  const messages: Record<string, string> = { "Collaboration locked": "현재 단계에서는 사진을 올릴 수 없어요.", "Upload missing": "업로드를 찾을 수 없습니다.", "Upload expired": "업로드 시간이 만료되었습니다.", "Upload unauthorized": "이 업로드를 완료할 권한이 없습니다.", "Upload busy": "파일을 확인하고 있습니다. 잠시 후 다시 시도해 주세요.", "Upload lease lost": "파일 확인이 중단되었습니다. 다시 시도해 주세요.", "Session expired": "이 작업의 보관 기간이 끝났습니다." };
   if (statuses[error.message]) throw new SessionError(statuses[error.message], messages[error.message]);
   throw new Error("Upload storage operation failed");
 }

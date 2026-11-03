@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import sharp from "sharp";
 import { DirectUploadService, originalUploadSecrets, readBoundedUpload, validateUploadMetadata, type DirectUploadFiles, type DirectUploadRepository, type UploadAuth, type UploadIntent } from "./direct-uploads-service";
 import { SessionError } from "./errors";
-import { MAX_PHOTO_BYTES } from "./image-validation";
+import { MAX_IMAGE_PIXELS, MAX_PHOTO_BYTES, verifyPhotoBytes } from "./image-validation";
 import type { CredentialRecord, SessionRecord } from "./types";
 import type { PhotoAsset } from "@/core/contracts";
 import { tokenHash } from "./tokens";
@@ -144,9 +144,17 @@ test("bounded stream rejects oversized chunked data without Content-Length", asy
 });
 
 test("metadata rejects oversized/empty files and mask MIME; HMAC purpose and intent are separated", () => {
+  validateUploadMetadata({ size: MAX_PHOTO_BYTES, contentType: "image/png" }, "original");
   assert.throws(() => validateUploadMetadata({ size: MAX_PHOTO_BYTES + 1, contentType: "image/png" }, "original"), status(400));
   assert.throws(() => validateUploadMetadata({ size: 0, contentType: "image/png" }, "original"), status(400));
   assert.throws(() => validateUploadMetadata({ size: 1, contentType: "image/jpeg" }, "mask"), status(400));
   const first = originalUploadSecrets("one", secret); const other = originalUploadSecrets("two", secret);
   assert.notEqual(first.sessionToken, first.recoveryToken); assert.notEqual(first.sessionToken, other.sessionToken);
+});
+
+test("actual image decoding rejects disguised files and pixels above the limit", async () => {
+  await assert.rejects(verifyPhotoBytes(Buffer.from("not a jpeg or png")), status(400));
+  const oversized = await sharp({ create: { width: 8000, height: 5001, channels: 3, background: "white" } }).jpeg({ quality: 1 }).toBuffer();
+  assert.ok(8000 * 5001 > MAX_IMAGE_PIXELS);
+  await assert.rejects(verifyPhotoBytes(oversized), status(400));
 });

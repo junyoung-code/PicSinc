@@ -35,6 +35,40 @@ interface PixelSource {
 /** A request error that an API route can safely turn into a 400 response. */
 export class CompositionError extends Error {}
 
+/** Saves a personal edit without allowing any changed pixel outside its authorized mask. */
+export async function isolatePersonalEdit(input: { original: Buffer; edited: Buffer; mask: Buffer }): Promise<Buffer> {
+  const [original, edited, mask] = await Promise.all([
+    decodePhoto(input.original, "원본 사진"),
+    decodePhoto(input.edited, "보정본"),
+    decodeMask(input.mask, "개인 선택 영역"),
+  ]);
+  assertSize(edited, original, "보정본");
+  assertMaskSize(mask, original, "개인 선택 영역");
+  const output = Buffer.from(original.pixels);
+  for (let pixel = 0; pixel < mask.selected.length; pixel++) {
+    if (mask.selected[pixel]) edited.pixels.copy(output, pixel * 4, pixel * 4, pixel * 4 + 4);
+  }
+  return sharp(output, { raw: { width: original.width, height: original.height, channels: 4 } })
+    .png({ palette: false }).toBuffer();
+}
+
+/** The caller must resolve authorizedMasks from server-owned claims, never client-provided IDs alone. */
+export async function intersectAuthorizedMask(input: { mask: Buffer; authorizedMasks: Buffer[] }): Promise<Buffer> {
+  const selection = await decodeMask(input.mask, "개인 선택 영역");
+  const allowed = new Uint8Array(selection.selected.length);
+  for (const bytes of input.authorizedMasks) {
+    const authorized = await decodeMask(bytes, "소유한 검출 영역");
+    if (authorized.width !== selection.width || authorized.height !== selection.height) {
+      throw new CompositionError("소유한 검출 영역은 개인 선택 영역과 같은 가로·세로여야 합니다.");
+    }
+    for (let pixel = 0; pixel < allowed.length; pixel++) {
+      if (selection.selected[pixel] && authorized.selected[pixel]) allowed[pixel] = 255;
+    }
+  }
+  return sharp(allowed, { raw: { width: selection.width, height: selection.height, channels: 1 } })
+    .png({ palette: false }).toBuffer();
+}
+
 /**
  * Produces a fresh sRGB PNG from the stored original, edits, and masks.
  * The caller owns authorization and resolves only session-scoped asset IDs.

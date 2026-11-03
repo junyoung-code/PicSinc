@@ -110,6 +110,9 @@ test("durable festival events cover retries, repeat milestones, room context, an
     assert.equal(await value<number>(db, "select count(*)::int from festival_analytics_events where session_id=$1", [ids.room]), 2);
     assert.equal(await value<number>(db, "select count(*)::int from festival_analytics_events where session_id=$1 and event_name='participant_joined'", [ids.room]), 1, "the owner is counted once");
 
+    // New rooms use the external-upload merge flow without collaboration state.
+    assert.equal(await value<number>(db, "select count(*)::int from session_collaboration where session_id=$1", [ids.room]), 0);
+
     // Switching the global default while the test room is active must not split it.
     await db.exec("update festival_analytics_settings set event_context='festival' where singleton=true");
     await db.query("select join_photo_session($1,$2,'Guest','guest-session-hash','guest-recovery-hash')", [ids.room, ids.guest]);
@@ -185,6 +188,7 @@ test("visit linkage, pinned test rooms, worker attempts and 30-day pruning", asy
     assert.equal(await value<string>(db, "select event_context from festival_analytics_room_contexts where session_id=$1", [ids.room]), "test");
     assert.equal(await value<string>(db, "select visit_id from festival_analytics_events where session_id=$1 and event_name='room_created'", [ids.room]), visit);
 
+    // Original upload queues detection immediately in the merge flow.
     const detectionJob = await value<string>(db, "select id from processing_jobs where session_id=$1 and kind='detect' limit 1", [ids.room]);
     await db.query("update processing_jobs set status='running',attempts=1,lease_token=gen_random_uuid(),lease_until=now()-interval '1 second' where id=$1", [detectionJob]);
     await db.query("update processing_jobs set attempts=2,lease_token=gen_random_uuid(),lease_until=now()-interval '1 second' where id=$1", [detectionJob]);

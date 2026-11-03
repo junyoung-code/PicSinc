@@ -8,7 +8,9 @@ test-images/
 tests/
 supabase/
 deploy/
-scripts/
+scripts/*
+!scripts/setup-retouch.mjs
+public/retouch/vendor/
 worker-logs/
 **/*.test.ts
 AGENTS.md

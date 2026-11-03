@@ -15,6 +15,7 @@ export class SupabasePhotoSessionStore implements PhotoSessionStore {
   private db() { return supabaseServer() as any; }
   private check(error: any) {
     if (!error) return;
+    if (error.message === "Collaboration locked") throw new SessionError(409, "현재 단계에서는 수정할 수 없어요.", "COLLABORATION_CONFLICT");
     if (error.message === "Session expired") throw new SessionError(410, "이 작업의 보관 기간이 끝났습니다.");
     if (error.message === "Region claim conflict" && error.details) throw new RegionClaimConflict(JSON.parse(error.details));
     if (error.message === "Region claim required") throw new SessionError(409, "선택 상태가 바뀌었어요. 얼굴을 다시 선택해주세요.");

@@ -6,6 +6,16 @@
 Vercel 프로젝트: `junyoung-codes-projects/picsinc-merge`
 Supabase 프로젝트: `picsinc-merge` (`zogtpmolcmpiipwbysck`)
 
+## 협업 스키마가 설치된 환경의 병합 기본값 복원
+
+`20261014114539_collaborative_retouch_rooms.sql` 이후에는 `20261103103930_restore_merge_room_default.sql`을 적용한다. 마지막 마이그레이션은 새 방의 자동 협업 등록을 원래 검출 작업 접수로 복원한다. 기존 방·사진·협업 기록은 변경하지 않는다. 협업 스키마가 없는 기존 운영 DB는 이미 병합이 기본이며 이 복원을 위해 협업 스키마를 추가할 필요가 없다. 기존 DB에 초기 스키마를 다시 실행하지 않는다.
+
+1. 로컬 `npm test`, `npm run typecheck`, `npm run build`를 확인한다. 로컬 PostgreSQL 호환 테스트는 SQL 상태 전환·권한·동시 요청을 검사한다.
+2. 배포 대상으로 확인한 Supabase 프로젝트에 위 마이그레이션을 적용하고 동일 소스의 웹 앱과 워커를 갱신한다. 환경변수·저장소·기존 정리 작업을 그대로 사용한다.
+3. 새 시험 방에서 원본 업로드 → 자동 검출 → 초대 → 외부 보정본·영역 제출 → 병합·PNG 저장을 확인한다. `/retouch`는 방 없이 열리는지 별도로 확인한다. 기존 실험 협업방은 `/sessions/{inviteToken}/collaboration`에서 기존 상태·권한을 검사한다.
+
+브라우저 회귀 검사는 실행 중인 로컬 앱에 `RETOUCH_BASE_URL=http://127.0.0.1:3112 npm run test:retouch:e2e`로 수행한다. 방 HTTP 응답을 대체하는 브라우저 테스트와 로컬 DB 테스트는 실제 배포 환경의 전체 흐름 검사를 대신하지 않는다.
+
 ## Vercel
 
 서버 환경변수: `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_STORAGE_BUCKET`, `UPLOAD_SIGNING_SECRET`, `WORKER_TOKEN`.

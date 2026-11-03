@@ -18,6 +18,8 @@
 
 연결 진입점은 [composePhoto(input, readAsset)](../../src/features/composition/compose.ts)입니다. 서버 전용 파일 읽기 콜백을 받아 원본 크기 PNG·미리보기 PNG, 각 크기와 미지정 겹침 픽셀 수를 반환합니다. 호출하는 서버가 파일 접근 권한을 확인합니다.
 
+협업 개인 보정 저장도 같은 파일의 `intersectAuthorizedMask({ mask, authorizedMasks })`와 `isolatePersonalEdit({ original, edited, mask })`를 사용합니다. 호출 서버가 실제 선점 정보에서 승인 마스크를 읽고, 교집합 마스크를 저장·적용합니다. 오류는 기존 `CompositionError`로 전달합니다. 검증은 `node --import tsx --test src/features/composition/compose.test.ts src/features/composition/personal-edit.test.ts`로 실행하며, 영역 밖 RGBA 픽셀 보존·입력 불변·크기 거절·빈 영역·여러 승인 영역 교집합을 검사합니다.
+
 로컬 작업 실행 진입점은 `src/features/composition/worker-main.ts`입니다. `WORKER_BASE_URL`·`WORKER_TOKEN`으로 작업을 가져오고, `worker-runtime.ts`가 배정 갱신·중단·완료 재시도를 담당합니다. `worker-task.ts`는 별도 프로세스에서 기존 검출·합성 함수를 호출하고 서명 URL로만 파일을 전송합니다. 공통 입력·출력은 `src/core/processing.ts`를 따릅니다. 시작 설정·DB·API는 ④에서 연결합니다.
 
 검증 명령: `node --import tsx --test src/features/composition/worker.test.ts`. 실제 로컬 HTTP·자식 프로세스로 PNG 전송을 확인하고, 배정 상실·종료·불확실한 완료 응답·비밀 정보 없는 오류 보고를 검사합니다. 해당 HTTP 테스트는 loopback 포트를 열 수 있는 실행 권한이 필요합니다.

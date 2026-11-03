@@ -107,7 +107,7 @@ export class PhotoSessionService {
         console.info("photo region detection", JSON.stringify({ requestId, step: name, status: "success", elapsedMs: Math.round(performance.now() - started), ...summary?.(result) }));
         return result;
       } catch (error) {
-        console.error("photo region detection", JSON.stringify({ requestId, step: name, status: "failure", elapsedMs: Math.round(performance.now() - started), errorName: error instanceof Error ? error.name : "UnknownError", errorMessage: error instanceof Error ? error.message.slice(0, 500) : undefined }));
+        console.error("photo region detection", JSON.stringify({ requestId, step: name, status: "failure", elapsedMs: Math.round(performance.now() - started), errorName: error instanceof Error ? error.name : "UnknownError" }));
         throw error;
       }
     };

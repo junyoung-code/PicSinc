@@ -17,3 +17,9 @@ test-images/
 worker-logs/
 !.env.worker.example
 supabase/.temp/
+
+# Reproducible MediaPipe runtime/model downloads
+/public/retouch/vendor/
+
+/test-results/
+/playwright-report/

@@ -114,7 +114,7 @@ test("region detection logs each stage and the failing stage without credentials
     assert.ok(entries.some(entry=>entry.step===name && entry.status==="success"),`${name} success`);
   }
   assert.ok(entries.some(entry=>entry.step==="cache-save" && entry.status==="start"));
-  assert.ok(entries.some(entry=>entry.step==="cache-save" && entry.status==="failure" && entry.errorMessage==="cache unavailable"));
+  assert.ok(entries.some(entry=>entry.step==="cache-save" && entry.status==="failure" && !Object.hasOwn(entry,"errorMessage")));
   const output=[...info,...errors].join("\n");
   assert.ok(!output.includes(auth.inviteToken));
   assert.ok(!output.includes(auth.sessionToken));

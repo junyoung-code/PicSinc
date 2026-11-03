@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
-import { uploadAsset, uploadOriginal } from "./remote-client";
+import { composeRemote, uploadAsset, uploadOriginal } from "./remote-client";
 import { RequestError } from "../features/mobile-flow/client";
 
 const storageUrl = "https://storage.example/signed/photo";
@@ -109,4 +109,18 @@ test("expired intents are replaced on an explicit retry", async t => {
   await assert.rejects(uploadOriginal("A", file), error => error instanceof RequestError && error.status === 410);
   assert.deepEqual(await uploadOriginal("A", file), result);
   assert.equal(prepares, 2);
+});
+
+test("job polling retries temporary status failures without enqueuing a second composition", async t => {
+  fastRetries(t);
+  let enqueues = 0, polls = 0;
+  t.mock.method(globalThis, "fetch", async (url: string) => {
+    if (url.endsWith("/compose")) { enqueues++; return json({ job: { id: "job-1", status: "queued" } }, 202); }
+    if (url.endsWith("/jobs/job-1")) return ++polls === 1 ? json({ error: "Busy" }, 503) : json({ job: { id: "job-1", status: "ready" } });
+    return json({ result: { version: 2, resultAssetId: "result" }, session: { version: 2 } });
+  });
+  const result = await composeRemote("/api/sessions/room", 2);
+  assert.equal(result.result.resultAssetId, "result");
+  assert.equal(enqueues, 1);
+  assert.equal(polls, 2);
 });
