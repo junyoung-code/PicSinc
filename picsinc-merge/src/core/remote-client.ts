@@ -4,10 +4,12 @@ import type { JobView } from "./processing";
 import type { DetectedRegions } from "@/features/region-editor/detected-regions";
 import { request, jsonRequest, RequestError } from "@/features/mobile-flow/client";
 import { pollingDelay } from "@/features/mobile-flow/polling";
+import { festivalTestActive, recordFestivalUpload } from "./festival-test-metrics";
 import { sendFestivalEvent, visitId } from "./festival-visit";
 
 type PreparedUpload={uploadId:string;signedUrl:string;token:string;path:string};
-type UploadAttempt = { prepared?: PreparedUpload; uploaded: boolean; pending?: Promise<any>; failureEventId?: string };
+type UploadAttempt = { prepared?: PreparedUpload; uploaded: boolean; pending?: Promise<any>;
+  startedAt?: number; prepareMs?: number; storageMs?: number; completeMs?: number; failureEventId?: string };
 // Keep the same intent after a lost completion response. Blob keys release naturally
 // when the page no longer holds the selected photo or mask.
 const uploads = new WeakMap<Blob, Map<string, UploadAttempt>>();
@@ -27,39 +29,60 @@ async function retryUpload<T>(action: () => Promise<T>): Promise<T> {
     }
   }
 }
-async function sendUpload(prepareUrl:string,file:Blob,metadata:Record<string,unknown>,completeBody:Record<string,unknown>) {
+export async function sendUpload(prepareUrl:string,file:Blob,metadata:Record<string,unknown>,completeBody:Record<string,unknown>,completeUrlPrefix='/api/uploads') {
   let byRequest = uploads.get(file);
   if (!byRequest) { byRequest = new Map(); uploads.set(file, byRequest); }
-  const key = JSON.stringify([prepareUrl, metadata, completeBody]);
+  const key = JSON.stringify([prepareUrl, metadata, completeBody, completeUrlPrefix]);
   let state = byRequest.get(key);
   if (!state) { state = { uploaded: false }; byRequest.set(key, state); }
   if (state.pending) return state.pending;
   const attempt = state;
+  const measure = prepareUrl === "/api/uploads" && festivalTestActive();
+  if (measure) attempt.startedAt ??= performance.now();
   attempt.pending = (async () => {
-    const prepared = attempt.prepared ??= await retryUpload(() => request<PreparedUpload>(prepareUrl, jsonRequest({ ...metadata, contentType: file.type || 'image/png', size: file.size })));
-    if (!attempt.uploaded) {
-      await retryUpload(async () => {
-        const response = await fetch(prepared.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type || 'image/png' }, body: file, credentials: 'omit' });
-        if (response.ok) return;
-        const body = await response.json().catch(() => null);
-        // A previous PUT can succeed while its response is lost. Never overwrite:
-        // completion will read and validate the immutable object already there.
-        if (response.status === 409 || (response.status === 400 && body?.error === 'Duplicate')) return;
-        throw new RequestError('사진을 업로드하지 못했어요. 다시 시도해 주세요.', response.status);
-      });
-      attempt.uploaded = true;
+    try {
+      const prepareStart = performance.now();
+      const prepared = attempt.prepared ??= await retryUpload(() => request<PreparedUpload>(prepareUrl, jsonRequest({ ...metadata, contentType: file.type || 'image/png', size: file.size })));
+      if (measure && attempt.prepareMs === undefined) attempt.prepareMs = performance.now() - prepareStart;
+      if (!attempt.uploaded) {
+        const storageStart = performance.now();
+        await retryUpload(async () => {
+          const response = await fetch(prepared.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type || 'image/png' }, body: file, credentials: 'omit' });
+          if (response.ok) return;
+          const body = await response.json().catch(() => null);
+          // A previous PUT can succeed while its response is lost. Never overwrite:
+          // completion will read and validate the immutable object already there.
+          if (response.status === 409 || (response.status === 400 && body?.error === 'Duplicate')) return;
+          throw new RequestError('사진을 업로드하지 못했어요. 다시 시도해 주세요.', response.status);
+        });
+        attempt.uploaded = true;
+        if (measure) attempt.storageMs = performance.now() - storageStart;
+      }
+      const completeStart = performance.now();
+      try { return await retryUpload(() => request<any>(`${completeUrlPrefix}/${prepared.uploadId}/complete`, jsonRequest(completeBody))); }
+      finally { if (measure) attempt.completeMs = (attempt.completeMs ?? 0) + performance.now() - completeStart; }
+    } catch (error) {
+      const kind = prepareUrl === "/api/uploads" ? "original_upload" : prepareUrl.endsWith("/edited") ? "edited_upload" : null;
+      if (kind) {
+        const inviteToken = kind === "original_upload" ? undefined : prepareUrl.split("/")[3];
+        const errorCode = error instanceof RequestError ? (error.code && /^[a-z0-9_]{1,48}$/.test(error.code) ? error.code : `http_${error.status}`) : "network";
+        attempt.failureEventId ??= crypto.randomUUID();
+        sendFestivalEvent("stage_failed", inviteToken, { stage: kind, errorCode, clientEventId: attempt.failureEventId, uploadId: attempt.prepared?.uploadId });
+      }
+      if (measure && attempt.prepared) recordFestivalUpload({ uploadId: attempt.prepared.uploadId,
+        prepareMs: Math.round(attempt.prepareMs ?? 0), storageMs: Math.round(attempt.storageMs ?? 0),
+        completeMs: Math.round(attempt.completeMs ?? 0), totalMs: Math.round(performance.now() - attempt.startedAt!), status: "failed" });
+      throw error;
     }
-    return retryUpload(() => request<any>(`/api/uploads/${prepared.uploadId}/complete`, jsonRequest(completeBody)));
   })();
-  try { return await attempt.pending; }
+  try {
+    const result = await attempt.pending;
+    if (measure && attempt.prepared) recordFestivalUpload({ uploadId: attempt.prepared.uploadId,
+      prepareMs: Math.round(attempt.prepareMs ?? 0), storageMs: Math.round(attempt.storageMs ?? 0),
+      completeMs: Math.round(attempt.completeMs ?? 0), totalMs: Math.round(performance.now() - attempt.startedAt!), status: "ready" });
+    return result;
+  }
   catch (error) {
-    const kind = prepareUrl === "/api/uploads" ? "original_upload" : prepareUrl.endsWith("/edited") ? "edited_upload" : null;
-    if (kind) {
-      const inviteToken = kind === "original_upload" ? undefined : prepareUrl.split("/")[3];
-      const errorCode = error instanceof RequestError ? (error.code && /^[a-z0-9_]{1,48}$/.test(error.code) ? error.code : `http_${error.status}`) : "network";
-      attempt.failureEventId ??= crypto.randomUUID();
-      sendFestivalEvent("stage_failed", inviteToken, { stage: kind, errorCode, clientEventId: attempt.failureEventId, uploadId: attempt.prepared?.uploadId });
-    }
     if (error instanceof RequestError && [404, 410].includes(error.status)) byRequest.delete(key);
     throw error;
   } finally { attempt.pending = undefined; }

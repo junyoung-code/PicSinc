@@ -51,3 +51,18 @@
 .exitButtons button:last-child { color:#fff; background:#6558e8; border-color:transparent; }
 @media (prefers-reduced-motion:reduce) { .spinner { animation:none; } }
 @media (min-width:600px) { .expanded { left:50%; transform:translateX(-50%); width:402px; box-shadow:0 0 0 100vmax #17152b99; } }
+
+/* Opt-in styling for the photo merging flow; shared retouch views keep their appearance. */
+.merge { color:#25232b; }
+.merge .identity strong { color:#706b79; }
+.merge button, .merge .refine, .merge .save { border:3px solid #25232b; border-radius:4px; box-shadow:4px 4px 0 #25232b; color:#25232b; background:white; font-weight:700; }
+.merge .refine, .merge .save { min-height:56px; }
+.merge .save, .merge button[aria-pressed="true"] { background:#e8deff; color:#25232b; }
+.merge .save:disabled, .merge .refine:disabled { border-color:#25232b; color:#706b79; background:#f4f2fb; }
+.merge .claimToast { border:2px solid #25232b; border-radius:4px; background:white; box-shadow:3px 3px #25232b; }
+.merge.expanded { color:white; }
+.merge.expanded .dialogHeader button { box-shadow:none; border:0; background:none; color:white; }
+.merge.expanded .editHint, .merge.expanded .scrollControls, .merge .exitModal { border-radius:4px; }
+.merge.expanded .tools button { font-size:12px; }
+.merge.expanded .historyTools button { border:1px solid #706b79; box-shadow:none; background:#25232b; color:white; }
+.merge.expanded .exitButtons button { box-shadow:none; }

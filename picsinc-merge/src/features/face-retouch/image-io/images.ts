@@ -13,5 +13,19 @@ export function png(canvas:HTMLCanvasElement):Promise<Blob> {
   return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error("PNG를 저장하지 못했어요. 원본과 설정은 유지했어요.")),"image/png"));
 }
 export function download(blob:Blob,name:string) {
-  const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60_000);
+  const a=document.createElement("a");
+  let url:string|undefined,started=false;
+  try {
+    url=URL.createObjectURL(blob);a.href=url;a.download=name;
+    document.body.appendChild(a);a.click();started=true;
+  } catch {
+    throw new Error("다운로드를 시작하지 못했어요. 원본과 설정은 유지했어요. PNG 저장을 다시 눌러주세요.");
+  } finally {
+    a.remove();
+    if(url){
+      const downloadUrl=url;
+      if(started)setTimeout(()=>URL.revokeObjectURL(downloadUrl),60_000);
+      else URL.revokeObjectURL(downloadUrl);
+    }
+  }
 }

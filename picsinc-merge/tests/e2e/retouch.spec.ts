@@ -89,6 +89,48 @@ test("failure retains original and rejects unsupported formats",async({page})=>{
  await page.getByLabel("사진 열기",{exact:true}).setInputFiles({name:"wrong.gif",mimeType:"image/gif",buffer:Buffer.from("GIF89a")});await expect(page.locator("main").getByRole("alert")).toContainText("JPEG 또는 PNG");
 });
 
+test("PNG encoding and download launch failures retain edits and allow retry without leaking resources",async({page})=>{
+ test.skip(!existsSync(fixture),"Private local fixture required");
+ await page.setViewportSize({width:320,height:568});
+ await mkdir(output,{recursive:true});await open(page);await strength(page,45);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+ const edited=await image(page);
+ // Encoding can fail under memory pressure. Keep the existing preview and values.
+ await page.evaluate(()=>{
+  const original=HTMLCanvasElement.prototype.toBlob;
+  HTMLCanvasElement.prototype.toBlob=function(callback){
+   HTMLCanvasElement.prototype.toBlob=original;callback(null);
+  };
+ });
+ await page.getByRole("button",{name:"PNG 저장",exact:true}).click();
+ await expect(page.locator("main").getByRole("alert")).toContainText("PNG");await ready(page);
+ expect((await image(page)).equals(edited)).toBeTruthy();
+ await expect(page.locator("#retouch-strength")).toHaveValue("45");
+ // Fail the browser download handoff once, then retry the same edit normally.
+ await page.evaluate(()=>{
+  const create=URL.createObjectURL,revoke=URL.revokeObjectURL,click=HTMLAnchorElement.prototype.click;
+  const resources={created:0,released:0};
+  Object.assign(window,{downloadResources:resources});
+  URL.createObjectURL=function(blob){resources.created++;return create.call(URL,blob);};
+  URL.revokeObjectURL=function(url){resources.released++;return revoke.call(URL,url);};
+  HTMLAnchorElement.prototype.click=function(){
+   HTMLAnchorElement.prototype.click=click;throw new DOMException("Download blocked","NotAllowedError");
+  };
+ });
+ await page.getByRole("button",{name:"PNG 저장",exact:true}).click();
+ await expect(page.locator("main").getByRole("alert")).toBeVisible();await ready(page);
+ await expect(page.locator("a[download]")).toHaveCount(0);
+ expect(await page.evaluate(()=>(window as unknown as {downloadResources:unknown}).downloadResources)).toEqual({created:1,released:1});
+ await expect(page.locator("main").getByRole("alert")).toContainText("다시");
+ expect((await image(page)).equals(edited)).toBeTruthy();
+ const downloaded=page.waitForEvent("download");await page.getByRole("button",{name:"PNG 저장",exact:true}).click();
+ await (await downloaded).saveAs(`${output}/retry-saved.png`);await ready(page);
+ const saved=sharp(`${output}/retry-saved.png`),source=await sharp(fixture).metadata(),meta=await saved.metadata();
+ expect([meta.width,meta.height]).toEqual([source.width,source.height]);
+ if(meta.width!<=1600&&meta.height!<=1600)expect((await saved.ensureAlpha().raw().toBuffer()).equals(await raw(edited))).toBeTruthy();
+ await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
+});
+
 test("mobile touch cancel, pinch and narrow-screen navigation",async({browser,browserName})=>{
  test.skip(browserName!=="chromium","CDP touch injection requires Chromium; real iOS gestures remain a device check.");
  test.skip(!existsSync(fixture),"Private fixture required");

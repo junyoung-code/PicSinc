@@ -10,10 +10,11 @@ test('default entry and invitation use external-photo merging without collaborat
     return route.fulfill({ json: {} });
   });
   await page.goto('/');
+  await page.getByRole('link', { name: '사진 합치기', exact: true }).click();
   await page.getByRole('button', { name: '시작하기', exact: true }).click();
-  await expect(page.getByText('친구들이 각자 보정한 사진을 제출할 수 있어요.', { exact: false })).toBeVisible();
+  await expect(page.getByText('MOIRA에서 한 장으로 합쳐요.', { exact: false })).toBeVisible();
   await page.goto('/sessions/merge-entry');
-  await expect(page.getByText('평소 쓰는 앱에서 내 얼굴을 보정한 뒤', { exact: false })).toBeVisible();
+  await expect(page.getByText('평소 쓰는 앱에서 보정하고,', { exact: false })).toBeVisible();
   expect(collaborationRequests).toEqual([]);
 });
 

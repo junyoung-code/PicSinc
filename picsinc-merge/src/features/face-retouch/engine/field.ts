@@ -140,6 +140,15 @@ function gridGeometry(plan:Prepared){
  const columns=Math.ceil(plan.width/step)+1,rows=Math.ceil(plan.height/step)+1;
  grid={columns,rows,guard:Math.hypot(plan.width/(columns-1),plan.height/(rows-1))};gridCache.set(plan,grid);return grid;
 }
+function yieldCalculation():Promise<void>{
+ // A task boundary lets newer Worker messages cancel this calculation. Nested
+ // timers acquire a minimum delay in WebKit, adding idle time to long edits.
+ return new Promise(resolve=>{
+  const channel=new MessageChannel();
+  channel.port1.onmessage=()=>{channel.port1.close();channel.port2.close();resolve();};
+  channel.port2.postMessage(null);
+ });
+}
 export async function buildField(plan:Prepared,isCurrent:()=>boolean=()=>true):Promise<Field|null> {
  if(!isCurrent())return null;
  const colorOwners=Object.keys(plan.state.settings).filter(id=>plan.state.settings[id].eyeRedness&&compiled(plan).redness[id].length);
@@ -170,15 +179,22 @@ export async function buildField(plan:Prepared,isCurrent:()=>boolean=()=>true):P
   const indices=mask(`${key}:index`,all,(x,y)=>sample(x,y).index,0),fractions=mask(`${key}:t`,all,(x,y)=>sample(x,y).t,0),distances=mask(`${key}:distance`,all,(x,y)=>sample(x,y).distance,Infinity);
   contourMasks[o.owner]=(x,y)=>({index:indices(x,y),t:fractions(x,y),distance:distances(x,y)});
  }
+ // Sampling functions and owner lists stay fixed for this field. Reuse their
+ // per-point records instead of allocating entries/arrays at every grid vertex.
+ const protectionSamplers=owners.map(owner=>({owner,sample:protects[owner]}));
+ const contourSamplers=Object.entries(contourMasks);
+ const protectionWeights:Record<string,number>={},contourSamples:Record<string,Projection>={};
  const strengths:Strengths={};let strained=false,yielded=performance.now();
  for(let attempt=0;attempt<32;attempt++){
   for(let y=window.y0;y<=window.y1;y++){
    for(let x=window.x0;x<=window.x1;x++){
-    const p={x:x/(columns-1)*plan.width,y:y/(rows-1)*plan.height},weights=pointWeights(p,plan,i=>restores[i](x,y)),protectionWeights=Object.fromEntries(owners.map(owner=>[owner,protects[owner](x,y)])),contourSamples=Object.fromEntries(Object.entries(contourMasks).map(([owner,sample])=>[owner,sample(x,y)])),q=mapPoint(p,plan,strengths,weights,protectionWeights,contourSamples),i=(y*columns+x)*4;
+    for(const {owner,sample} of protectionSamplers)protectionWeights[owner]=sample(x,y);
+    for(const [owner,sample] of contourSamplers)contourSamples[owner]=sample(x,y);
+    const p={x:x/(columns-1)*plan.width,y:y/(rows-1)*plan.height},weights=pointWeights(p,plan,i=>restores[i](x,y)),q=mapPoint(p,plan,strengths,weights,protectionWeights,contourSamples),i=(y*columns+x)*4;
     data[i]=(q.x-p.x)/plan.width;data[i+1]=(q.y-p.y)/plan.height;
     if(attempt===0&&colorOwners.length)data[i+2]=colorSuppression(p,plan,weights);
    }
-   if(performance.now()-yielded>=6){await new Promise<void>(r=>setTimeout(r,0));if(!isCurrent())return null;yielded=performance.now();}
+   if(performance.now()-yielded>=6){await yieldCalculation();if(!isCurrent())return null;yielded=performance.now();}
   }
   const unsafe=unsafeCells(data,columns,rows,window);
   if(!unsafe.length)return{data,columns,rows,limited:plan.limited,strained,strengths};

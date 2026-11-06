@@ -8,6 +8,7 @@ import styles from "./mobile-editor.module.css";
 import { regionLabelPosition, regionOwnerLabel, type RegionClaim } from "./region-labels";
 
 export interface MobileRegionEditorProps {
+  appearance?: "merge";
   imageUrl: string;
   width: number;
   height: number;
@@ -52,7 +53,7 @@ async function encodeMask(mask: Uint8Array, width: number, height: number) {
   return new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("영역 PNG를 만들지 못했습니다.")), "image/png"));
 }
 
-export default function MobileRegionEditor({ imageUrl, width, height, detection, initialMaskUrl, initialSelectedIds = [], busy = false, detecting = false, onSave, saveLabel, participantNickname, onDirtyChange, onRetryDetection, detectionError, onDetailOpen, regionClaims = [], currentParticipantId, onRegionToggle }: MobileRegionEditorProps) {
+export default function MobileRegionEditor({ appearance, imageUrl, width, height, detection, initialMaskUrl, initialSelectedIds = [], busy = false, detecting = false, onSave, saveLabel, participantNickname, onDirtyChange, onRetryDetection, detectionError, onDetailOpen, regionClaims = [], currentParticipantId, onRegionToggle }: MobileRegionEditorProps) {
   const rootRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -392,7 +393,7 @@ export default function MobileRegionEditor({ imageUrl, width, height, detection,
   const controls = <div className={styles.tools} aria-label="영역 편집 도구">
     {([['points', '점 이동하기'], ['brush', '브러시'], ['erase', '지우기']] as [Tool, string][]).map(([value, label]) => <button key={value} type="button" aria-pressed={tool === value} disabled={locked} onClick={() => setTool(value)}>{label}</button>)}
   </div>;
-  return <section ref={rootRef} className={`${styles.editor} ${expanded ? styles.expanded : ""}`} role={expanded ? "dialog" : undefined} aria-modal={expanded || undefined} aria-label="내 영역 선택">
+  return <section ref={rootRef} className={`${styles.editor} ${appearance === "merge" ? styles.merge : ""} ${expanded ? styles.expanded : ""}`} role={expanded ? "dialog" : undefined} aria-modal={expanded || undefined} aria-label="내 영역 선택">
     {expanded && <div className={styles.dialogHeader}><button type="button" aria-label="영역 편집 닫기" onClick={() => requestDetailExit()}>‹</button><strong>내 영역 편집</strong><button type="button" onClick={() => requestDetailExit(true)}>완료</button></div>}
     {!expanded && participantNickname && <div className={styles.identity}><strong>{participantNickname}으로 참여 중</strong></div>}
     {expanded && <div className={styles.editHint}><strong>원하는 영역을 수동으로 편집해보세요.</strong><p>보정할 부분만 선택 영역으로 조정할 수 있어요.</p></div>}

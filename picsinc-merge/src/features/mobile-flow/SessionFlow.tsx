@@ -2,7 +2,9 @@
 import { uploadAsset, detectRemote, composeRemote } from "@/core/remote-client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import MobileShell, { Notice, PhotoPicker, StatusMessage } from "@/components/mobile-shell";
+import { Notice, PhotoPicker, StatusMessage } from "@/components/mobile-shell";
+import MobileShell, { MergeWelcome, MergeSteps } from "@/features/merge-flow/MergeShell";
+import mergeStyles from "@/features/merge-flow/merge.module.css";
 import MobileRegionEditor from "@/features/region-editor/MobileRegionEditor";
 import RegionEditor from "@/features/region-editor/RegionEditor";
 import type { DetectedRegions } from "@/features/region-editor/detected-regions";
@@ -329,15 +331,15 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     catch { setMessage("링크를 선택해서 복사해 주세요."); }
   }
 
-  if (deleted) return <DeletedRoomScreen />;
+  if (deleted) return <div className={mergeStyles.merge}><DeletedRoomScreen /></div>;
   if (expired) return <MobileShell title="보정방 만료"><h1>보정방이 만료됐어요</h1><p className="description">사진은 방을 만든 뒤 24시간 동안 보관됩니다. 새 보정방에서 다시 시작해 주세요.</p><a className="primary-button" href="/sessions/new">새 보정방 만들기</a></MobileShell>;
-  if (!data) return <MobileShell title="PicSync" helpTopic={canJoin ? "join" : undefined} progress={10} footer={canJoin ? <button className="primary-button" disabled={busy || !nickname.trim()} onClick={() => void join()}>{busy ? "참여하는 중…" : "참여하기"}</button> : undefined}>
-    {canJoin ? <><div className="intro"><p className="eyebrow">{inviter} 님의 초대</p><h1>함께 찍은 사진을<br />각자 보정해요</h1><p className="description">평소 쓰는 앱에서 내 얼굴을 보정한 뒤<br />사진을 올리면 한 장으로 합쳐드려요.</p></div><form onSubmit={event => { event.preventDefault(); void join(); }}><label className="name-field">내 이름<input required autoComplete="nickname" maxLength={40} value={nickname} onChange={event => setNickname(event.target.value)} placeholder="친구들이 알아볼 이름" /></label></form></> : <div className="loading-screen"><div className="spinner" /><p>보정방을 불러오고 있어요.</p></div>}
+  if (!data) return <MobileShell title="초대받은 보정방" helpTopic={canJoin ? "join" : undefined} progress={10} footer={canJoin ? <button className="primary-button" disabled={busy || !nickname.trim()} onClick={() => void join()}>{busy ? "참여하는 중…" : "참여하기"}</button> : undefined}>
+    {canJoin ? <><MergeWelcome inviter={inviter} /><form onSubmit={event => { event.preventDefault(); void join(); }}><label className="name-field">내 이름<input required autoComplete="nickname" maxLength={40} value={nickname} onChange={event => setNickname(event.target.value)} placeholder="친구들이 알아볼 이름" /></label></form><MergeSteps /></> : <div className="loading-screen"><div className="spinner" /><p>보정방을 불러오고 있어요.</p></div>}
     <StatusMessage message={message} />{message && !canJoin && <button className="secondary-button" onClick={() => location.reload()}>다시 불러오기</button>}
   </MobileShell>;
   if (merging) return <MobileShell title="사진 합치는 중" progress={81}><div className="loading-screen merging-screen"><img className="figma-spinner" src="/images/figma/processing-spinner.svg" alt="" /><h1>{mergeDelayed ? <>평소보다 오래<br />걸리고 있어요</> : <>각자의 보정을<br />한 장에 담고 있어요</>}</h1><p className="description">{mergeDelayed ? "사진을 안전하게 합치고 있어요." : message || "선택한 얼굴만 원본 사진에 자연스럽게 합치는 중이에요."}<br />사진 합치기는 5분 정도 걸릴 수 있어요.<br />이용자가 많으면 더 지연될 수 있어요.</p></div></MobileShell>;
 
-  const roster = <ul className="participant-list">{photoDisplay.participants.map(person => <li key={person.id}><span className="avatar" aria-hidden="true" /><span className="participant-name">{person.nickname}{person.id === me?.id ? " (나)" : ""}</span><span className={`badge ${person.submitted ? "complete" : ""}`}>{person.submitted ? "제출 완료" : person.id === data.session.ownerParticipantId && step === "invite" ? "대표자" : "보정 중"}</span></li>)}</ul>;
+  const roster = <ul className="participant-list">{photoDisplay.participants.map(person => <li key={person.id}><img className="avatar" src={`/images/home/${person.id === data.session.ownerParticipantId ? "lilac" : "pink"}.png`} alt="" /><span className="participant-name">{person.nickname}{person.id === me?.id ? " (나)" : ""}</span><span className={`badge ${person.submitted ? "complete" : ""}`}>{person.submitted ? "제출 완료" : person.id === data.session.ownerParticipantId && step === "invite" ? "대표자" : "보정 중"}</span></li>)}</ul>;
   const shareField = <div className="share-field"><input aria-label="친구에게 보낼 초대 링크" value={shareUrl} readOnly onFocus={event => event.currentTarget.select()} /><button className="small-button" onClick={() => void copy()}>복사</button></div>;
   let content: ReactNode, footer: ReactNode;
   if (step === "invite") {
@@ -351,7 +353,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     content = <><h1>{review ? <>보정한 사진과<br />선택 영역을 확인해주세요</> : <>사진 속 내 얼굴을<br />모두 선택해주세요</>}</h1><p className="description">{review ? "윤곽이 달라졌다면 영역을 조정한 뒤 제출해 주세요." : "보정 영역을 선택해서 편집할 수 있어요."}</p>
       {review && ownEdits.length > 0 && <div className="thumbs" aria-label="내 보정본 선택">{ownEdits.map(edit => <button className="thumb" key={edit.id} aria-pressed={edit.id === selectedEdit?.id} onClick={() => { if (!dirty || window.confirm("저장하지 않은 수정을 버리고 다른 보정본을 열까요?")) { setDirty(false); chooseEdit(edit.id); } }}><img src={assetUrl(edit.id)} alt={photoDisplay.labels[edit.id]} />{photoDisplay.labels[edit.id]}</button>)}</div>}
       {claims === null && <p role="status" className="description">선택 상태를 불러오고 있어요.</p>}
-      {original && claims !== null && <MobileRegionEditor key={review || !owner ? selectedEdit?.id : "original"} imageUrl={assetUrl((review || !owner) && selectedEdit ? selectedEdit.id : original.id)} width={original.width} height={original.height} detection={detection} initialMaskUrl={maskId ? assetUrl(maskId) : undefined} initialSelectedIds={ownIds} regionClaims={claims ?? []} currentParticipantId={data.currentParticipantId} onRegionToggle={toggleClaim} participantNickname={me?.nickname} saveActionLabel={owner && !review ? "다음" : "제출"} busy={busy || (detecting && !editingStarted.current)} detecting={detecting && !editingStarted.current} detectionError={detectionError} onRetryDetection={() => retryDetection.current()} onDirtyChange={editorDirty} onDetailOpen={openDetailEditor} onSave={save} saveLabel={owner && !review ? "이대로 진행하기" : "선택한 얼굴 제출하기"} />}
+      {original && claims !== null && <MobileRegionEditor appearance="merge" key={review || !owner ? selectedEdit?.id : "original"} imageUrl={assetUrl((review || !owner) && selectedEdit ? selectedEdit.id : original.id)} width={original.width} height={original.height} detection={detection} initialMaskUrl={maskId ? assetUrl(maskId) : undefined} initialSelectedIds={ownIds} regionClaims={claims ?? []} currentParticipantId={data.currentParticipantId} onRegionToggle={toggleClaim} participantNickname={me?.nickname} saveActionLabel={owner && !review ? "다음" : "제출"} busy={busy || (detecting && !editingStarted.current)} detecting={detecting && !editingStarted.current} detectionError={detectionError} onRetryDetection={() => retryDetection.current()} onDirtyChange={editorDirty} onDetailOpen={openDetailEditor} onSave={save} saveLabel={owner && !review ? "이대로 진행하기" : "선택한 얼굴 제출하기"} />}
       {review && <button className="text-button" onClick={() => navigate("upload")}>다른 보정본 올리기</button>}{!me?.submitted && currentResult && <button className="text-button" onClick={() => navigate("result")}>현재 병합 결과 보기</button>}</>;
   } else if (step === "guide") {
     content = <><h1>평소 하던 대로<br />내 얼굴을 보정해주세요</h1><ol className="guide-list"><li><span className="step-number">1</span><div><strong>원본 사진 저장</strong><p>같은 원본을 휴대폰에 저장해요.</p></div></li><li><span className="step-number">2</span><div><strong>평소 쓰던 앱에서 보정</strong><p>Meitu, SNOW, EPIK 등을 사용해요.</p></div></li><li><span className="step-number">3</span><div><strong>보정한 사진 업로드</strong><p>다시 이 링크로 돌아와 사진 전체를 올려요.</p></div></li></ol>{currentResult && <button className="text-button" onClick={() => navigate("result")}>현재 병합 결과 보기</button>}</>;
@@ -365,7 +367,8 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   } else if (step === "overlap") {
     content = <><h1>겹친 부분에 사용할<br />사진을 골라주세요</h1><p className="description">표시된 겹침을 확인하고 영역별 보정본을 지정해 주세요. 저장한 뒤 다시 병합합니다.</p><div className="overlap-editor"><RegionEditor inviteToken={inviteToken} overlapOnly onDirtyChange={setDirty} onSaved={() => { setDirty(false); void refresh().then(() => recordStep("status")).catch(report); }} /></div></>;
   } else {
-    content = <><div className="result-heading"><h1>우리 모두가 원하는<br />사진이 완성됐어요</h1><p className="description">다 함께 찍은 사진을 공유해보아요.</p></div>{data.result && <img className="photo-preview" src={assetUrl(data.result.previewAssetId)} alt="함께 보정한 최종 사진" onError={() => sendFestivalEvent("stage_failed", inviteToken, { stage: "result_view", errorCode: "image_load_failed", clientEventId: crypto.randomUUID() })} />}
+    content = <><div className="result-heading"><p className={mergeStyles.tag}>우리의 보정, 완료!</p><h1>모두의 마음에 드는<br />우리 사진 완성.</h1><p className="description">각자의 보정이 한 장에 모였어요.</p></div>{data.result && <img className="photo-preview" src={assetUrl(data.result.previewAssetId)} alt="함께 보정한 최종 사진" onError={() => sendFestivalEvent("stage_failed", inviteToken, { stage: "result_view", errorCode: "image_load_failed", clientEventId: crypto.randomUUID() })} />}
+      {data.result && currentResult && <p className={mergeStyles.success}><img src="/images/merge-ui/check.svg" alt="" />제출한 {submittedCount}명의 보정을 한 장에 담았어요.</p>}
       {data.result && data.result.version !== data.session.version && <Notice>제출 내용이 바뀌었어요. 아래 사진은 이전 결과입니다. 대표자가 다시 병합해 주세요.</Notice>}
       {Boolean(data.result?.unassignedOverlapPixels) && <Notice>겹친 영역에 임시로 적용된 보정본이 있어요. 대표자가 확인하고 수정할 수 있어요.</Notice>}
     </>;

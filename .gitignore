@@ -26,5 +26,7 @@ media/
 !picsinc-merge/src/app/api/sessions/**/uploads/**
 !picsinc-merge/src/app/api/uploads/
 !picsinc-merge/src/app/api/uploads/**
+!picsinc-merge/src/app/api/retouch/uploads/
+!picsinc-merge/src/app/api/retouch/uploads/**
 !picsinc-merge/src/integrations/storage/
 !picsinc-merge/src/integrations/storage/**

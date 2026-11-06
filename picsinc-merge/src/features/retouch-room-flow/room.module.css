@@ -1,0 +1,49 @@
+.shell { width:100%; max-width:402px; min-height:100dvh; margin:auto; display:flex; flex-direction:column; padding-top:max(12px,env(safe-area-inset-top)); }
+.header { display:flex; align-items:center; gap:8px; min-height:44px; margin:0 16px; padding:4px 10px; border:var(--moira-border); border-radius:var(--moira-radius); background:var(--moira-accent); }
+.header strong { flex:1; min-width:0; font-size:14px; line-height:22px; }
+.header > button,.header > a { flex:none; display:grid; place-items:center; min-width:24px; min-height:32px; padding:0; border:0; background:none; }
+.headerAction button { border:var(--moira-border); border-radius:var(--moira-radius); background:var(--moira-surface); min-width:60px; min-height:30px; font-size:13px; font-weight:700; color:var(--moira-ink); }
+.content { padding:20px 24px; flex:1; min-width:0; }
+.content h1 { font-size:28px; line-height:40px; letter-spacing:-.7px; margin:10px 0; white-space:pre-line; word-break:keep-all; }
+.content p { font-size:14px; line-height:22px; }
+.content :global(.description) { color:var(--moira-muted); margin:10px 0 20px; }
+.shell :global(.primary-button),.shell :global(.secondary-button) { display:flex; justify-content:center; align-items:center; width:100%; min-height:52px; border:var(--moira-border); border-radius:var(--moira-radius); background:var(--moira-accent); color:var(--moira-ink); font:700 15px/22px var(--moira-font); text-decoration:none; padding:10px 12px; box-shadow:none; }
+.shell :global(.secondary-button) { background:var(--moira-surface); }
+.shell button:disabled { opacity:.45; }
+.shell button:focus-visible,.shell a:focus-visible { outline:3px solid var(--moira-ink); outline-offset:3px; }
+.shell :global(.name-field) { display:grid; gap:8px; margin:20px 0 16px; font-size:13px; font-weight:700; }
+.shell :global(.name-field) input,.shell :global(.collaboration-link) { width:100%; min-width:0; height:50px; border:var(--moira-border); border-radius:var(--moira-radius); background:var(--moira-surface); color:var(--moira-ink); padding:12px 14px; font:400 14px/22px var(--moira-font); }
+.shell :global(.collaboration-link) { font-size:12px; margin-top:10px; }
+.shell :global(.notice),.shell :global(.status-message) { background:var(--moira-subtle); border-radius:var(--moira-radius); padding:12px; color:var(--moira-ink); font-size:12px; line-height:20px; }
+.shell :global(.photo-consent) { display:flex; align-items:flex-start; gap:8px; color:var(--moira-muted); font-size:12px; line-height:20px; }
+.shell :global(.photo-consent) input { flex:none; margin-top:4px; accent-color:var(--moira-ink); }
+.footer { display:grid; gap:10px; padding:12px 24px max(24px,env(safe-area-inset-bottom)); background:var(--moira-canvas); }
+.badge { display:inline-flex; align-items:center; justify-content:center; min-height:28px; padding:3px 12px; background:var(--moira-mint); border:var(--moira-border); border-radius:var(--moira-radius); font-size:12px; font-weight:700; }
+.photoWindow { position:relative; margin-top:20px; border:var(--moira-border); border-radius:var(--moira-radius); background:var(--moira-subtle); overflow:hidden; }
+.photoWindow :global(.photo-picker-wrap) { margin:0; }
+.photoWindow :global(.photo-picker) { min-height:174px; height:174px; padding:12px 75px; border:0; border-radius:0; background:transparent; gap:6px; }
+.photoWindow :global(.photo-picker) strong { font-size:12px; max-height:40px; overflow:hidden; }
+.photoWindow :global(.photo-picker) > span:not(:global(.upload-plus)) { font-size:10px; line-height:16px; color:var(--moira-muted); }
+.photoWindow :global(.photo-picker) :global(.upload-plus) { font-size:30px; color:var(--moira-ink); background:var(--moira-surface); border:var(--moira-border); border-radius:var(--moira-radius); }
+.photoWindow :global(.has-preview) { padding:8px 80px; }
+.photoWindow :global(.has-preview) img { height:156px; width:auto; max-width:100%; border:var(--moira-border); border-radius:var(--moira-radius); padding:5px; background:white; }
+.photoWindow :global(.has-preview) > span { display:none; }
+.photoWindow :global(.has-preview) strong { position:absolute; bottom:4px; left:80px; right:80px; background:var(--moira-surface); font-size:10px; white-space:nowrap; text-overflow:ellipsis; }
+.photoWindow :global(.cancel-photo) { top:8px; right:8px; }
+.lilac,.pink { position:absolute; pointer-events:none; bottom:20px; }
+.lilac { left:18px; }.pink { right:16px; bottom:40px; }
+.steps { display:flex; justify-content:space-between; gap:8px; color:var(--moira-muted); font-size:11px; font-weight:700; margin:20px 0 0; }
+.roster { border:var(--moira-border); border-radius:var(--moira-radius); background:var(--moira-surface); padding:8px 10px; margin:16px 0; }
+.roster > p { margin:0 0 6px; font-size:11px; color:var(--moira-muted); }
+.people { display:flex; overflow-x:auto; list-style:none; padding:0; margin:0; gap:12px; }
+.person { display:grid; grid-template-columns:32px minmax(0,1fr); align-items:center; column-gap:6px; min-width:144px; flex:1 0 144px; font-size:11px; line-height:18px; }
+.person img { grid-row:1/3; width:32px; height:32px; object-fit:contain; }
+.person strong { overflow-wrap:anywhere; }
+.person span { color:var(--moira-muted); font-size:10px; }
+.result { display:block; width:256px; max-width:100%; height:auto; object-fit:contain; margin:18px auto; padding:10px; border:var(--moira-border); border-radius:var(--moira-radius); background:var(--moira-surface); }
+.done { display:flex; align-items:center; gap:10px; background:var(--moira-mint); border:var(--moira-border); border-radius:var(--moira-radius); padding:9px 12px; font-size:12px!important; font-weight:700; }
+.done img { flex:none; }
+.progress { display:block; width:calc(100% - 48px); height:4px; margin:12px 24px 0; accent-color:var(--moira-ink); }
+@media(max-width:360px) { .content { padding:20px 16px; } .footer { padding-left:16px; padding-right:16px; } .content h1 { font-size:25px; line-height:36px; } .lilac { left:6px; } .pink { right:6px; } }
+
+.shell :global(.name-field) input:focus-visible,.photoWindow :global(.photo-picker):focus-within { outline:2px solid var(--moira-ink); outline-offset:3px; }

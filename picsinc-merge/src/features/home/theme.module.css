@@ -1,0 +1,18 @@
+/* Figma 505:2033 / Y2K A. Apply theme at a screen boundary; no global overrides. */
+.theme {
+  --moira-canvas: #fbf9ff;
+  --moira-surface: #fff;
+  --moira-ink: #1b1b3a;
+  --moira-muted: #73708b;
+  --moira-sky: #8ed1fc;
+  --moira-accent: var(--moira-sky);
+  --moira-mint: #a7ebd9;
+  --moira-pink: #ffb5de;
+  --moira-subtle: #f0e9ff;
+  --moira-border: 2px solid var(--moira-ink);
+  --moira-radius: 6px;
+  --moira-font: 'Noto Sans KR', system-ui, sans-serif;
+  font-family: var(--moira-font);
+  color: var(--moira-ink);
+  background: var(--moira-canvas);
+}

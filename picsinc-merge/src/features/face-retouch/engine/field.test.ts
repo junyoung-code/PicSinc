@@ -54,6 +54,17 @@ test("neighboring faces remain exact and limitation is reported",()=>{
  for(const lm of b.landmarks){const p={x:lm.x*w,y:lm.y*h};assert.deepEqual(mapPoint(p,plan),p);}
 });
 test("obsolete field calculation is canceled",async()=>{assert.equal(await buildField(prepare([face],initialState([face]),w,h),()=>false),null);});
+test("in-flight calculation yields to cancellation and a subsequent edit remains usable",async()=>{
+ let state=initialState([face]);for(const [id] of controls)state=setControl(state,face.id,id,100);
+ let current=true;
+ const calculation=buildField(prepare([face],state,w,h),()=>current);
+ const cancel=new MessageChannel();
+ cancel.port1.onmessage=()=>{current=false;cancel.port1.close();cancel.port2.close();};
+ cancel.port2.postMessage(null);
+ assert.equal(await calculation,null);
+ const next=await buildField(prepare([face],initialState([face]),w,h));
+ assert.ok(next?.data.every(value=>value===0));
+});
 test("detected small faces without editable settings still protect their coordinates",()=>{
  const a=fixture("a",.40,.8),small=fixture("small",.56,.22);
  const state=setControl(initialState([a]),"a","faceWidth",100);

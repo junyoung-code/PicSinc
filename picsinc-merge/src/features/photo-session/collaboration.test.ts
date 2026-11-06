@@ -1,48 +1,9 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
-import { PGlite } from "@electric-sql/pglite";
+import type { PGlite } from "@electric-sql/pglite";
+import { currentSchemaDatabase } from "./retouch-room-test-db";
 import { readCollaborationRequest, MAX_COLLABORATION_BODY_BYTES } from "./collaboration-request";
 
-const project = new URL("../../../", import.meta.url);
-const sqlFile = (path: string) => readFile(new URL(path, project), "utf8");
-
-async function currentSchemaDatabase(beforeAnalytics?: (db: PGlite) => Promise<void>) {
-  const db = new PGlite();
-  await db.exec(`
-    create role anon;
-    create role authenticated;
-    create role service_role;
-    create schema storage;
-    create table storage.buckets (id text primary key, name text not null, public boolean not null);
-    create table storage.objects (id uuid primary key default gen_random_uuid());
-  `);
-
-  // These files describe the initial project state that predates the numbered
-  // migrations. Cleanup SQL is intentionally excluded because it provisions
-  // Supabase Vault, pg_cron, pg_net, and a deployed Edge Function URL.
-  for (const path of [
-    "src/integrations/storage/schema.sql",
-    "src/integrations/storage/integration.sql",
-    "src/integrations/storage/multiple-selections.sql",
-    "src/integrations/storage/mobile-flow.sql",
-  ]) {
-    let sql = await sqlFile(path);
-    // PGlite has PostgreSQL's built-in gen_random_uuid(), but does not package
-    // Supabase's pgcrypto extension. Only the unavailable declaration is omitted.
-    if (path.endsWith("schema.sql")) sql = sql.replace("create extension if not exists pgcrypto;", "");
-    await db.exec(sql);
-  }
-
-  const migrationDirectory = new URL("supabase/migrations/", project);
-  for (const name of (await readdir(migrationDirectory)).filter(name => name.endsWith(".sql")).sort()) {
-    if (name.endsWith("_festival_analytics.sql") && beforeAnalytics) await beforeAnalytics(db);
-    await db.exec(await readFile(new URL(name, migrationDirectory), "utf8"));
-  }
-  const installed=await db.query<{present:boolean}>("select to_regclass('public.session_collaboration') is not null as present");
-  if (!installed.rows[0].present) await db.exec(await sqlFile("src/integrations/storage/collaboration.sql"));
-  return db;
-}
 
 async function value<T>(db: PGlite, statement: string, params: unknown[] = []): Promise<T> {
   const result = await db.query<Record<string, T>>(statement, params);
@@ -136,7 +97,10 @@ test('collaborative rooms freeze roster, isolate completion from other saves, lo
   await action(db,guest,'cancel',{token:replacement.editToken});
   await assert.rejects(()=>action(db,guest,'end-global'),/Forbidden/);
   await action(db,owner,'end-global');
+  await assert.rejects(()=>action(db,guest,'finalize'),/Forbidden/);
+  await assert.rejects(()=>action(db,guest,'acquire'),/Collaboration locked/);
   const final=await action(db,owner,'finalize'); assert.equal(final.phase,'final'); assert.equal(final.latestAssetId,id(61));
+  assert.equal((await action(db,guest,'read')).latestAssetId,final.latestAssetId);
   await assert.rejects(()=>action(db,owner,'acquire'),/Collaboration locked/);
   await assert.rejects(()=>asset(db,70,owner),/Collaboration locked/);
   await assert.rejects(()=>value(db,`select enqueue_processing_job($1,$2,'compose',null,$3)`,[room,owner,version]),/Collaboration locked/);

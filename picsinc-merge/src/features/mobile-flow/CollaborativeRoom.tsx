@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import MobileShell, { Notice, StatusMessage } from "@/components/mobile-shell";
+import { Notice, StatusMessage } from "@/components/mobile-shell";
+import MobileShell from "@/features/retouch-room-flow/RetouchShell";
+import styles from "@/features/retouch-room-flow/room.module.css";
 import type { CollaborationAction, CollaborationView } from "@/features/photo-session/collaboration-types";
 import type { DetectedRegions } from "@/features/region-editor/detected-regions";
 import MobileRegionEditor from "@/features/region-editor/MobileRegionEditor";
@@ -51,7 +53,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     try { await command(body); await refresh(); } catch (e) { report(e); } finally { setBusy(false); }
   }
   useEffect(() => {
-    setShareUrl(`${location.origin}/sessions/${encodeURIComponent(inviteToken)}/collaboration`);
+    setShareUrl(`${location.origin}/retouch/rooms/${encodeURIComponent(inviteToken)}`);
     const clock = setInterval(() => setNow(Date.now()), 1000);
     const stop = visiblePolling(3000, async () => { try { await refresh(); } catch (e) { report(e); } });
     return () => { clearInterval(clock); stop(); };
@@ -120,6 +122,8 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
       }
       const r = await command({action:"personal-begin"});
       if (!r.personalToken || !r.personalMaskAssetId) throw new Error("편집 영역을 열지 못했어요.");
+      // The selection screen remounts after cancel: restore this visit's claims.
+      initialClaims.current = claims;
       dirty.current = false; pendingSave.current = null;
       setEditor({scope:"personal",token:r.personalToken,version:r.version,imageId:original.id,maskId:r.personalMaskAssetId});
       history.pushState({roomEdit:true},"",location.href); await refresh().catch(report);
@@ -175,10 +179,10 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     } catch (e) { report(e); } finally { setBusy(false); }
   }
   const remaining = Math.max(0, Date.parse(snapshot.session.expiresAt) - now);
-  if (expired || !remaining) return <MobileShell title="보정방 만료"><h1>보정방이 만료됐어요</h1><p>방 생성 후 24시간이 지났어요.</p><a href="/sessions/new">새 보정방 만들기</a></MobileShell>;
+  if (expired || !remaining) return <MobileShell title="보정방 만료"><h1>보정방이 만료됐어요</h1><p>방 생성 후 24시간이 지났어요.</p><a href="/retouch/rooms/new">새 보정방 만들기</a></MobileShell>;
   if (editor) {
     const valid = editor.scope === "personal" ? room.phase === "personal" && room.personalToken === editor.token && !done : room.phase === "global" && room.editToken === editor.token && room.editorId === me && Date.parse(room.leaseUntil ?? "") > now;
-    return <div className="collaborative-editor"><div className="collaboration-top">{roster}<StatusMessage message={error}/>{!valid && <p role="alert">편집권이 만료되었거나 단계가 바뀌었어요. 뒤로 가서 최신 상태를 확인해주세요.</p>}</div><RetouchEditor key={editor.token} room={{imageUrl:assetUrl(editor.imageId),maskUrl:editor.maskId?assetUrl(editor.maskId):undefined,scope:editor.scope,nickname:snapshot.participants.find(p=>p.id===me)?.nickname??"나",disabled:!valid,onSave:save,onCancel:()=>void cancelEditor(),onDirtyChange:value=>{dirty.current=value;}}}/></div>;
+    return <RetouchEditor key={editor.token} participants={<>{roster}<StatusMessage message={error}/>{!valid && <p role="alert">편집권이 만료되었거나 단계가 바뀌었어요. 뒤로 가서 최신 상태를 확인해주세요.</p>}</>} room={{imageUrl:assetUrl(editor.imageId),maskUrl:editor.maskId?assetUrl(editor.maskId):undefined,scope:editor.scope,nickname:snapshot.participants.find(p=>p.id===me)?.nickname??"나",disabled:!valid,onSave:save,onCancel:()=>void cancelEditor(),onDirtyChange:value=>{dirty.current=value;}}}/>;
   }
   const editorName = snapshot.participants.find(p => p.id === room.editorId)?.nickname;
   const locked = !!room.editorId && Date.parse(room.leaseUntil ?? "") > now;
@@ -187,11 +191,12 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   if ((room.phase === "personal" && room.rosterIds.length > 0 && room.completedIds.length === room.rosterIds.length || room.phase === "composing") && owner) footer = <button className="primary-button" disabled={busy} onClick={()=>void act({action:"compose"})}>{room.phase === "composing" ? "합성 상태 확인·재시도" : "전체 사진 단계로"}</button>;
   if (room.phase === "global") footer = <><button className="primary-button" disabled={busy || locked && room.editorId !== me} onClick={()=>void openGlobal()}>전체 사진 터치 보정</button>{owner && <button className="secondary-button" disabled={busy || locked} onClick={()=>void act({action:"end-global"})}>추가 보정 없이 결과 확인</button>}</>;
   if (room.phase === "review" && owner) footer = <button className="primary-button" disabled={busy} onClick={()=>void act({action:"finalize"})}>최종 완료</button>;
-  if (room.phase === "final") footer = <button className="primary-button" disabled={busy} onClick={()=>void downloadFinal()}>{busy?"저장 중…":"사진 저장"}</button>;
-  return <MobileShell title="MOIRA" progress={{lobby:15,personal:40,composing:65,global:75,review:90,final:100}[room.phase]} footer={footer}>
-    <h1>{{lobby:"친구들을 기다려요",personal:done?"내 보정이 저장됐어요":"내 영역을 선택해요",composing:"모두의 보정을 합치고 있어요",global:"전체 사진을 함께 확인해요",review:"최종 결과를 확인해요",final:"우리 사진이 완성됐어요"}[room.phase]}</h1>
+  return <MobileShell title={room.phase === "final" ? "완성 사진" : "MOIRA / 함께 보정하기"} action={room.phase === "final" ? <button disabled={busy} aria-label="사진 저장" onClick={()=>void downloadFinal()}>{busy?"저장 중…":"저장"}</button> : undefined} progress={{lobby:15,personal:40,composing:65,global:75,review:90,final:100}[room.phase]} footer={room.phase === "final" ? <a className="secondary-button" href="/retouch/rooms/new">처음부터 다시 하기</a> : footer}>
+    {room.phase === "final" && <span className={styles.badge}>우리의 보정, 완료!</span>}
+    <h1>{{lobby:"친구들을 기다려요",personal:done?"내 보정이 저장됐어요":"내 영역을 선택해요",composing:"모두의 보정을 합치고 있어요",global:"전체 사진을 함께 확인해요",review:"최종 결과를 확인해요",final:"모두의 마음에 드는\n우리 사진 완성."}[room.phase]}</h1>
     {room.phase === "lobby" && <><p className="description">모두 참여한 뒤 대표자가 인식을 시작하면 입장이 마감돼요.</p><button className="secondary-button" onClick={()=>void navigator.clipboard.writeText(shareUrl).then(()=>setError("초대 링크를 복사했어요.")).catch(()=>setError("링크를 길게 눌러 복사해주세요."))}>초대 링크 복사</button><input aria-label="초대 링크" value={shareUrl} readOnly className="collaboration-link"/><p>남은 시간 {Math.floor(remaining/3600000)}시간 {Math.floor(remaining/60000)%60}분</p></>}
-    {roster}
+    {room.phase !== "final" && roster}
+    {room.phase === "final" && <p className="description">각자의 취향이 한 장에 모였어요.</p>}
     {room.phase === "personal" && !done && <>
       {room.personalToken && <button className="secondary-button" disabled={busy} onClick={()=>void openPersonal().catch(()=>{})}>내 영역 보정 이어가기</button>}
       {!room.personalToken && claims === null && <p role="status">선택 상태를 불러오고 있어요.</p>}
@@ -201,8 +206,8 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     {room.phase === "composing" && <Notice>개인 보정은 모두 저장됐어요. 합성 결과가 준비되면 전체 사진 단계로 이동해요.</Notice>}
     {room.phase === "global" && <p aria-live="polite">{locked?`${editorName??"친구"}님이 전체 사진을 보정 중이에요. 잠시 기다려주세요.`:"한 번에 한 명씩 원하는 부분을 보정할 수 있어요."}</p>}
     {room.phase === "review" && !owner && <p>대표자가 최종 완료할 때까지 기다려주세요.</p>}
-    {room.latestAssetId && ["global","review","final"].includes(room.phase) && <img className="collaboration-result" src={assetUrl(room.latestAssetId)} alt={room.phase==="final"?"확정된 최종 사진":"저장된 보정 결과"}/>}
-    {room.phase === "final" && <p className="description">확정된 사진은 모든 참여자가 동일하게 저장해요. 저장되지 않았다면 다시 눌러주세요.</p>}
+    {room.latestAssetId && ["global","review","final"].includes(room.phase) && <img className={styles.result} src={assetUrl(room.latestAssetId)} alt={room.phase==="final"?"확정된 최종 사진":"저장된 보정 결과"}/>}
+    {room.phase === "final" && <p className={styles.done}><img src="/images/retouch-ui/check.svg" alt="" />모두의 보정이 반영됐어요</p>}
     <StatusMessage message={error}/>
   </MobileShell>;
 }

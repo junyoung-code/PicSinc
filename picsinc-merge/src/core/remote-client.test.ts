@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
-import { composeRemote, uploadAsset, uploadOriginal } from "./remote-client";
+import { composeRemote, sendUpload, uploadAsset, uploadOriginal } from "./remote-client";
 import { RequestError } from "../features/mobile-flow/client";
 
 const storageUrl = "https://storage.example/signed/photo";
@@ -47,6 +47,38 @@ test("completion retries busy conflicts, rate limits, and server errors only", a
     assert.deepEqual(await uploadOriginal("A", new File(["x"], "x.png", { type: "image/png" })), result);
     assert.equal(completions, 2);
   }
+});
+
+test("retouch uploads retain their completion route and intent after a lost response", async t => {
+  fastRetries(t);
+  const file = new File(["photo bytes"], "photo.png", { type: "image/png" });
+  let prepares = 0, puts = 0, completions = 0;
+  t.mock.method(globalThis, "fetch", async (url: string) => {
+    if (url === "/api/retouch/uploads") { prepares++; return json(prepared); }
+    if (url === storageUrl) { puts++; return new Response(null); }
+    assert.equal(url, "/api/retouch/uploads/one-upload/complete");
+    if (++completions <= 3) throw new TypeError("Lost response");
+    return json(result);
+  });
+  const upload = () => sendUpload("/api/retouch/uploads", file, { nickname: "A", consent: true }, {}, "/api/retouch/uploads");
+  await assert.rejects(upload(), TypeError);
+  assert.deepEqual(await upload(), result);
+  assert.equal(prepares, 1); assert.equal(puts, 1); assert.equal(completions, 4);
+});
+
+test("completion destinations do not share cached upload intents", async t => {
+  const file = new File(["photo bytes"], "photo.png", { type: "image/png" });
+  let prepares = 0, puts = 0;
+  const completions: string[] = [];
+  t.mock.method(globalThis, "fetch", async (url: string) => {
+    if (url === "/api/uploads") return json({ ...prepared, uploadId: `upload-${++prepares}` });
+    if (url === storageUrl) { puts++; return new Response(null); }
+    completions.push(url); return json(result);
+  });
+  await sendUpload("/api/uploads", file, {}, {});
+  await sendUpload("/api/uploads", file, {}, {}, "/api/retouch/uploads");
+  assert.deepEqual(completions, ["/api/uploads/upload-1/complete", "/api/retouch/uploads/upload-2/complete"]);
+  assert.equal(prepares, 2); assert.equal(puts, 2);
 });
 
 test("validation, authorization, and non-busy conflicts are not retried", async t => {

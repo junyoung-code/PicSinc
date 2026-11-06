@@ -1,0 +1,94 @@
+.page {
+  width: 100%;
+  max-width: 402px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: max(12px, env(safe-area-inset-top)) 0 max(24px, env(safe-area-inset-bottom));
+}
+.header {
+  min-height: 44px;
+  margin: 0 16px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: var(--moira-border);
+  border-radius: var(--moira-radius);
+  background: var(--moira-accent);
+}
+.header strong { font-size: 16px; line-height: 22px; }
+.header span { font-size: 11px; line-height: 18px; font-weight: 700; }
+.content { padding: 24px 24px 0; }
+.heading { margin-bottom: 20px; }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 3px 12px;
+  border: var(--moira-border);
+  border-radius: var(--moira-radius);
+  background: var(--moira-mint);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+}
+.heading h1 { margin: 10px 0 0; font-size: 24px; line-height: 36px; letter-spacing: -.75px; word-break: keep-all; }
+.cards { display: grid; gap: 20px; }
+.card {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  border: var(--moira-border);
+  border-radius: var(--moira-radius);
+  background: var(--moira-surface);
+  color: var(--moira-ink);
+  text-decoration: none;
+}
+.card:focus-visible { outline: 3px solid var(--moira-ink); outline-offset: 4px; }
+.card:hover .arrow { background: var(--moira-mint); }
+.friends, .result { border-bottom: var(--moira-border); }
+.friends { background: var(--moira-subtle); }
+.friendsArt { position: relative; aspect-ratio: 350 / 174; }
+.floatingPhoto {
+  position: absolute;
+  left: 34.3%;
+  top: -1%;
+  width: 33.15%;
+  padding: 6px;
+  border: var(--moira-border);
+  border-radius: var(--moira-radius);
+  background: var(--moira-surface);
+  transform: rotate(4deg);
+}
+.floatingPhoto img, .finishedPhoto img { display: block; width: 100%; height: auto; aspect-ratio: 104 / 155; object-fit: cover; }
+.lilac { position: absolute; left: 7.43%; top: 45.4%; width: 20.57%; height: auto; }
+.pink { position: absolute; left: 71.43%; top: 34.48%; width: 20%; height: auto; }
+.photoBadge {
+  position: absolute;
+  right: 4.57%;
+  bottom: 7.47%;
+  min-height: 28px;
+  padding: 3px 10px;
+  border: var(--moira-border);
+  border-radius: var(--moira-radius);
+  background: var(--moira-pink);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 700;
+}
+.result { background: var(--moira-canvas); }
+.resultArt { position: relative; aspect-ratio: 350 / 174; display: flex; align-items: center; justify-content: center; gap: 20px; padding: 10px; }
+.finishedPhoto { width: 30%; padding: 6px; border: var(--moira-border); border-radius: var(--moira-radius); background: var(--moira-surface); }
+.resultBadge { color: var(--moira-ink); font-size: 16px; line-height: 26px; font-weight: 700; }
+.cardCopy { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px; }
+.cardCopy h2 { margin: 0 0 4px; font-size: 20px; line-height: 28px; }
+.cardCopy p { margin: 0; color: var(--moira-muted); font-size: 12px; line-height: 20px; word-break: keep-all; }
+.arrow { flex: 0 0 30px; height: 30px; display: grid; place-items: center; border: var(--moira-border); border-radius: var(--moira-radius); background: var(--moira-sky); font-size: 18px; }
+@media (max-width: 360px) {
+  .content { padding-right: 16px; padding-left: 16px; }
+  .heading h1 { font-size: 22px; line-height: 32px; }
+  .cardCopy { padding: 12px; }
+  .photoBadge { padding: 2px 7px; font-size: 11px; min-height: 26px; }
+}

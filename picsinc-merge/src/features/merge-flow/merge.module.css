@@ -1,0 +1,56 @@
+.merge { --primary:#25232b; --muted:#706b79; --line:#25232b; color:#25232b; font-family:'Noto Sans KR',sans-serif; }
+.merge :global(.phone-shell) { max-width:402px; border-radius:0; box-shadow:none; overflow:visible; }
+.merge :global(.top-bar) { height:68px; padding:10px 16px; justify-content:flex-start; gap:8px; font-size:16px; font-weight:900; }
+.merge :global(.top-bar > .top-spacer:first-child) { display:none; }
+.merge :global(.top-bar > .icon-button:last-child), .merge :global(.top-bar > .top-spacer:last-child) { margin-left:auto; }
+.merge :global(.icon-button.back) { width:44px; margin-left:-12px; margin-right:-4px; flex-shrink:0; font-size:0; background:url('/images/merge-ui/back.svg') center / 20px 20px no-repeat; }
+.merge :global(.progress-track) { height:3px; background:#f4f2fb; }
+.merge :global(.progress-track > div) { background:#e8deff; }
+.merge :global(.screen-content) { padding:16px 24px 24px; }
+.merge :global(.screen-footer) { padding:12px 24px max(26px,env(safe-area-inset-bottom)); gap:16px; }
+.merge h1 { font-size:24px; line-height:32px; font-weight:900; letter-spacing:0; margin:0 0 16px; }
+.merge h2 { font-size:14px; line-height:24px; color:var(--muted); }
+.merge :global(.description) { line-height:22px; margin-bottom:16px; }
+.merge :global(.primary-button), .merge :global(.secondary-button) { min-height:56px; border:3px solid #25232b; border-radius:4px; box-shadow:4px 4px 0 #25232b; background:#e8deff; color:#25232b; font-size:16px; font-weight:900; }
+.merge :global(.secondary-button) { background:white; }
+.merge :global(.primary-button):active:not(:disabled), .merge :global(.secondary-button):active:not(:disabled) { transform:translate(2px,2px); box-shadow:2px 2px 0 #25232b; }
+.merge :global(.intro) { text-align:left; }
+.merge :global(.name-field) { margin:24px 0 0; font-size:14px; line-height:24px; gap:8px; }
+.merge :global(.name-field input) { height:48px; border:3px solid #25232b; border-radius:0; box-shadow:4px 4px 0 #25232b; }
+.merge :global(.photo-picker) { min-height:240px; border:3px solid #25232b; border-radius:4px; box-shadow:4px 4px 0 #25232b; background:#f4f2fb; gap:16px; }
+.merge :global(.upload-plus) { border:3px solid #25232b; border-radius:4px; background:#e8deff; color:#25232b; font-weight:900; }
+.merge :global(.photo-picker strong) { font-size:16px; }
+.merge :global(.notice), .merge :global(.status-message) { border:2px solid #25232b; border-radius:4px; background:#f4f2fb; color:#706b79; }
+.merge :global(.photo-consent input) { accent-color:#66508b; }
+.merge :global(.share-field) { background:#f4f2fb; border:2px solid #25232b; border-radius:4px; margin:16px 0; }
+.merge :global(.small-button) { background:transparent; }
+.merge :global(.room-time) { border:0; border-radius:0; margin:16px 0 24px; }
+.merge :global(.participant-list) { gap:16px; }
+.merge :global(.participant-list li) { border:2px solid #25232b; border-radius:4px; gap:12px; }
+.merge :global(.avatar) { width:40px; height:40px; object-fit:contain; background:none; border-radius:0; }
+.merge :global(.badge) { border:2px solid #25232b; border-radius:4px; color:#25232b; background:#f4f2fb; font-size:12px; white-space:normal; flex-shrink:0; }
+.merge :global(.badge.complete) { background:#bcebcb; }
+.merge :global(.step-number) { border:2px solid #25232b; border-radius:4px; color:#25232b; background:#e8deff; }
+.merge :global(.result-heading) { text-align:left; }
+.merge :global(.result-heading h1) { font-size:28px; line-height:36px; }
+.merge :global(.photo-preview) { width:auto; max-width:min(100%,220px); height:auto; max-height:390px; border:3px solid #25232b; padding:10px; border-radius:4px; box-shadow:7px 7px 0 #25232b; margin:24px auto 28px; }
+.merge :global(.thumb) { border-radius:4px; }
+.merge :global(.thumb[aria-pressed="true"]) { border-color:#25232b; background:#e8deff; }
+.merge :global(.help-sheet), .merge :global(.delete-room-dialog) { color:#25232b; border:3px solid #25232b; border-radius:8px 8px 0 0; }
+.merge :global(.delete-room-buttons button) { border:2px solid #25232b; border-radius:4px; color:#25232b; background:#e8deff; }
+.merge :global(.delete-room-buttons button:last-child) { background:#ffafe0; }
+.merge :global(.copy-toast) { background:#25232b; border-radius:4px; }
+.merge :global(.loading-screen h1) { line-height:36px; }
+.tag { display:table; min-width:156px; max-width:100%; overflow-wrap:anywhere; padding:6px 16px; border-radius:4px; background:#25232b; color:white; font-size:12px; line-height:20px; font-weight:700; text-align:center; margin:0 0 12px; }
+.welcome h1 { font-size:32px; line-height:40px; margin-bottom:8px; }
+.welcome > p:not(.tag) { color:#706b79; font-size:16px; line-height:24px; margin-bottom:24px; }
+.collage { height:208px; position:relative; border:3px solid #25232b; border-radius:4px; background:#f4f2fb; box-shadow:6px 6px 0 #25232b; }
+.collage img { position:absolute; width:116px; height:174px; object-fit:cover; left:28px; top:12px; padding:6px; border:3px solid #25232b; border-radius:4px; background:white; box-shadow:4px 4px 0 #25232b; transform:rotate(7deg); }
+.collage strong { position:absolute; right:16px; top:40px; width:138px; padding:16px 10px; text-align:center; font-size:24px; line-height:32px; font-weight:900; border:3px solid #25232b; border-radius:4px; background:#ffafe0; box-shadow:4px 4px 0 #25232b; transform:rotate(-6deg); }
+.steps { display:flex; justify-content:space-between; gap:8px; list-style:none; padding:0 10px; margin:32px 0; font-size:12px; line-height:20px; font-weight:700; }
+.success { display:flex; gap:8px; align-items:center; border:3px solid #25232b; border-radius:4px; box-shadow:3px 3px 0 #25232b; background:#bcebcb; padding:8px 12px; font-size:12px; font-weight:700; overflow-wrap:anywhere; }
+.success img { width:20px; height:20px; flex-shrink:0; }
+@media (max-width:359px) { .merge :global(.screen-content), .merge :global(.screen-footer) { padding-left:18px; padding-right:18px; } .welcome h1 { font-size:28px; line-height:36px; } .collage img { left:16px; width:100px; height:156px; top:22px; } .collage strong { right:10px; width:124px; font-size:21px; } .steps { padding:0; font-size:10px; gap:4px; } }
+
+.merge :global(.overlap-editor button), .merge :global(.overlap-editor select) { border:2px solid #25232b; border-radius:4px; color:#25232b; }
+.merge :global(.overlap-editor button[aria-pressed="true"]) { background:#e8deff; }
