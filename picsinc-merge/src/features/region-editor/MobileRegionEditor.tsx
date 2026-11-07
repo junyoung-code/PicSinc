@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { DetectedRegions } from "./detected-regions";
 import { paintBrush, type Point } from "./mask-geometry";
 import { editableContours, visibleContours, smoothedDisplayContour, findContourHandle, finishContourGesture, spacedHandleIndices, viewportToImage, zoomAround, type PendingContour, type ViewTransform } from "./contour-geometry";
@@ -23,6 +24,7 @@ export interface MobileRegionEditorProps {
   participantNickname?: string;
   hideIdentity?: boolean;
   saveActionLabel?: string;
+  saveActionTargetId?: string;
   onDirtyChange?: (dirty: boolean) => void;
   onRetryDetection?: () => void;
   detectionError?: string;
@@ -55,7 +57,7 @@ async function encodeMask(mask: Uint8Array, width: number, height: number) {
   return new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("영역 PNG를 만들지 못했습니다.")), "image/png"));
 }
 
-export default function MobileRegionEditor({ appearance, imageUrl, width, height, detection, initialMaskUrl, initialSelectedIds = [], busy = false, detecting = false, onSave, saveLabel, participantNickname, hideIdentity = false, onDirtyChange, onRetryDetection, detectionError, onDetailOpen, regionClaims = [], currentParticipantId, onRegionToggle }: MobileRegionEditorProps) {
+export default function MobileRegionEditor({ appearance, imageUrl, width, height, detection, initialMaskUrl, initialSelectedIds = [], busy = false, detecting = false, onSave, saveLabel, participantNickname, hideIdentity = false, saveActionLabel, saveActionTargetId, onDirtyChange, onRetryDetection, detectionError, onDetailOpen, regionClaims = [], currentParticipantId, onRegionToggle }: MobileRegionEditorProps) {
   const rootRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -73,7 +75,23 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
   const [regions, setRegions] = useState<Region[]>([]);
   const [imageLoading, setImageLoading] = useState(true);
   const [maskLoading, setMaskLoading] = useState(true);
-  const loading = imageLoading || maskLoading;
+  const [imageError, setImageError] = useState("");
+  const [maskError, setMaskError] = useState("");
+  const [resourceReload, setResourceReload] = useState(0);
+  const [decodedDetection, setDecodedDetection] = useState<DetectedRegions | null>(null);
+  const [decodeError, setDecodeError] = useState("");
+  const [detectionReload, setDetectionReload] = useState(0);
+  const [actionTarget, setActionTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => { setActionTarget(saveActionTargetId ? document.getElementById(saveActionTargetId) : null); }, [saveActionTargetId]);
+  const loading = imageLoading || maskLoading || (!!detection && decodedDetection !== detection && !decodeError);
+  const resourceError = imageError || maskError;
+  const processing = !resourceError && (loading || detecting);
+  const analysisError = decodeError || detectionError;
+  const emptyDetection = !!detection && decodedDetection === detection && !regions.length;
+  const hasSelection = maskRef.current.some(Boolean);
+  const needsRecovery = !processing && (!!resourceError || !!(analysisError || emptyDetection || !detection) && !(appearance === "merge" && hasSelection));
+  const allowManual = appearance === "merge" && !resourceError;
+
   const dirtyRef = useRef(false);
   const expandedRef = useRef(false);
   const detailSnapshot = useRef<{ mask: Uint8Array; ids: string[]; dirty: boolean } | null>(null);
@@ -100,7 +118,7 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
   const [revision, setRevision] = useState(0);
 
   const initialIds = useRef(initialSelectedIds); initialIds.current = initialSelectedIds;
-  const locked = busy || loading || saving || claimPending || exitDialog;
+  const locked = busy || processing || !!resourceError || saving || claimPending || exitDialog;
 
   function changed() {
     let nextDirty = true;
@@ -124,30 +142,30 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
     setRevision(value => value + 1);
   }
   useEffect(() => {
-    let cancelled = false; setImageLoading(true); setError(""); imageRef.current = null;
+    let cancelled = false; setImageLoading(true); setImageError(""); imageRef.current = null;
     const image = new Image(); image.crossOrigin = "anonymous"; image.src = imageUrl;
     void image.decode().then(() => {
       if (cancelled) return;
       imageRef.current = image; setImageLoading(false); fit();
-    }).catch(reason => { if (!cancelled) { setError(reason instanceof Error ? reason.message : "사진을 불러오지 못했습니다."); setImageLoading(false); } });
+    }).catch(reason => { if (!cancelled) { setImageError("사진을 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요."); setImageLoading(false); } });
     return () => { cancelled = true; };
-  }, [imageUrl, width, height]);
+  }, [imageUrl, width, height, resourceReload]);
   useEffect(() => {
     // A refreshed snapshot after HTTP 409 must never replace an unsaved local draft.
     if (dirtyRef.current || savingRef.current) { setIncomingMask(true); return; }
-    let cancelled = false; setMaskLoading(true);
+    let cancelled = false; setMaskLoading(true); setMaskError("");
     void (async () => {
       const mask = initialMaskUrl ? await decodeMask(initialMaskUrl, width, height) : new Uint8Array(width * height);
       if (cancelled) return;
       if (dirtyRef.current || savingRef.current) { setIncomingMask(true); setMaskLoading(false); return; }
       maskRef.current = mask; setSelectedIds(initialIds.current); setDirty(false); dirtyCallback.current?.(false); setIncomingMask(false); refreshMask(); setMaskLoading(false);
-    })().catch(reason => { if (!cancelled) { setError(reason instanceof Error ? reason.message : "영역을 불러오지 못했습니다."); setMaskLoading(false); } });
+    })().catch(reason => { if (!cancelled) { setMaskError("저장된 영역을 불러오지 못했어요. 다시 불러와 주세요."); setMaskLoading(false); } });
     return () => { cancelled = true; };
-  }, [initialMaskUrl, width, height, maskReload]);
+  }, [initialMaskUrl, width, height, maskReload, resourceReload]);
   useEffect(() => {
-    let cancelled = false; regionRef.current = []; setRegions([]);
+    let cancelled = false; regionRef.current = []; setRegions([]); setDecodeError(""); setDecodedDetection(null);
     if (!detection) return;
-    if (detection.width !== width || detection.height !== height) { setError("검출 영역 크기가 원본과 다릅니다."); return; }
+    if (detection.width !== width || detection.height !== height) { setDecodeError("검출 영역 크기가 원본과 달라 표시하지 못했어요."); return; }
     void (async () => {
       const decoded: Region[] = [];
       // Decode sequentially so large images do not allocate every RGBA bitmap at once.
@@ -157,10 +175,10 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
         if (cancelled) return;
         decoded.push({ id: region.id, box: region.box, mask, contours: editableContours(mask, width, height) });
       }
-      if (!cancelled) { regionRef.current = decoded; setRegions(decoded); setRevision(v => v + 1); }
-    })().catch(() => { if (!cancelled) setError("검출 영역을 표시하지 못했습니다. 다시 찾거나 직접 선택해 주세요."); });
+      if (!cancelled) { regionRef.current = decoded; setRegions(decoded); setDecodedDetection(detection); setRevision(v => v + 1); }
+    })().catch(() => { if (!cancelled) setDecodeError("검출 영역을 표시하지 못했어요. 다시 불러와 주세요."); });
     return () => { cancelled = true; };
-  }, [detection, width, height]);
+  }, [detection, width, height, detectionReload]);
   useEffect(() => {
     if (!loading && regions.length && !initialMaskUrl && !dirtyRef.current && initialIds.current.length) {
       for (const region of regions) if (initialIds.current.includes(region.id)) {
@@ -392,27 +410,34 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
     catch (reason) { setError(reason instanceof Error ? reason.message : "저장하지 못했습니다. 선택 영역은 유지됩니다."); }
     finally { savingRef.current = false; setSaving(false); }
   }
+  const showActions = !expanded && !processing && !resourceError && (!needsRecovery || allowManual && hasSelection);
+  const submit = <button type="button" className={saveActionTargetId ? styles.headerSave : styles.save} disabled={locked || !imageRef.current || !hasSelection} onClick={() => void save()}>{saving ? "저장 중…" : saveActionTargetId ? saveActionLabel || "완료" : saveLabel}</button>;
   const controls = <div className={styles.tools} aria-label="영역 편집 도구">
     {([['points', '점 이동하기'], ['brush', '브러시'], ['erase', '지우기']] as [Tool, string][]).map(([value, label]) => <button key={value} type="button" aria-pressed={tool === value} disabled={locked} onClick={() => setTool(value)}>{label}</button>)}
   </div>;
-  return <section ref={rootRef} className={`${styles.editor} ${appearance === "merge" ? styles.merge : ""} ${expanded ? styles.expanded : ""}`} role={expanded ? "dialog" : undefined} aria-modal={expanded || undefined} aria-label="내 영역 선택">
+  return <section ref={rootRef} className={`${styles.editor} ${saveActionTargetId ? styles.roomSelection : ""} ${appearance === "merge" ? styles.merge : ""} ${expanded ? styles.expanded : ""}`} role={expanded ? "dialog" : undefined} aria-modal={expanded || undefined} aria-label="내 영역 선택">
     {expanded && <><div className={styles.dialogHeader}><button type="button" aria-label="영역 편집 닫기" onClick={() => requestDetailExit()}><img src="/images/figma-current/editor/back.svg" alt=""/></button><strong>내 영역 편집</strong><button type="button" onClick={() => requestDetailExit(true)}>완료</button></div><FlowProgress step={2}/></>}
     {!expanded && !hideIdentity && participantNickname && <div className={styles.identity}><strong>{participantNickname}으로 참여 중</strong></div>}
     {expanded && <div className={styles.editHint}><strong>보정할 영역을 직접 조정해요.</strong><p>보정할 부분만 선택 영역에 포함해요.</p></div>}
     <div className={styles.canvasFrame}><canvas ref={canvasRef} className={styles.canvas} style={expanded ? undefined : { aspectRatio: `${width} / ${height}` }} aria-label="사진 속 사람 영역을 눌러 선택하거나 해제할 수 있습니다." onPointerDown={down} onPointerMove={move} onPointerUp={event => end(event)} onPointerCancel={event => end(event, true)} onLostPointerCapture={event => { if (pointers.current.has(event.pointerId)) end(event, true); }} />
       {claimConflict && <div className={styles.claimToast} role="status"><span className={styles.claimIcon} aria-hidden="true" /><span><strong>{claimConflict.nickname}님이 선택한 영역이에요</strong><small>다른 얼굴을 선택해주세요.</small></span></div>}
-      {(loading || detecting) && <div className={styles.loadingOverlay} role="status"><span className={styles.spinner} aria-hidden="true" /><strong>{detecting ? "AI가 얼굴 영역을 탐지하고 있어요!" : "사진과 영역을 준비하고 있어요."}</strong></div>}
+      {processing && <div className={styles.loadingOverlay} role="status"><strong>{detecting ? <>AI가 얼굴 영역을<br/>탐지하고 있어요!</> : <>사진과 영역을<br/>준비하고 있어요.</>}</strong></div>}
     </div>
     <div className={styles.scrollControls}>
       {expanded && <>{controls}<div className={styles.historyTools}><button type="button" disabled={locked} onClick={resetDetail}>↻ 초기화</button><button type="button" disabled={locked || !undoMasks.current.length} onClick={() => restoreHistory()}>↶ 실행 취소</button><button type="button" disabled={locked || !redoMasks.current.length} onClick={() => restoreHistory(true)}>↷ 다시 실행</button></div></>}
-      {!expanded && <button type="button" className={styles.refine} disabled={locked || (!!regions.length && !maskRef.current.some(Boolean))} onClick={openEditor}>영역 편집하기</button>}
+      {showActions && <button type="button" className={styles.refine} disabled={locked || !hasSelection} onClick={openEditor}>영역 편집하기</button>}
       {expanded && (tool === "brush" || tool === "erase") && <label className={styles.brush}>브러시 크기 <input aria-label="브러시 크기" type="range" min="3" max="45" value={brushSize} onChange={event => setBrushSize(Number(event.target.value))} /></label>}
-      {(detectionError || (!detection && !busy)) && <p className={styles.hint}>{detectionError || "영역을 직접 선택하거나 사람 영역을 다시 찾아보세요."} {onRetryDetection && <button type="button" disabled={locked} onClick={onRetryDetection}>다시 찾기</button>}</p>}
-      {detection && !regions.length && !loading && <p className={styles.hint}>찾은 사람이 없습니다. 브러시로 직접 선택할 수 있어요.</p>}
+      {!expanded && needsRecovery && <div className={styles.recovery} role="alert">
+        <div className={styles.recoveryCopy}><strong>{resourceError ? "사진과 영역을 불러오지 못했어요" : analysisError ? "얼굴 영역을 찾지 못했어요" : "찾은 얼굴 영역이 없어요"}</strong><p>{resourceError || analysisError || "사진에서 선택할 수 있는 사람 영역을 찾지 못했어요."}</p><p>원본 사진과 편집한 영역은 그대로 유지돼요.</p></div>
+        <div className={styles.recoveryActions}>
+          {(resourceError || decodeError || onRetryDetection) && <button type="button" disabled={busy || saving} onClick={() => { if (resourceError) setResourceReload(v => v + 1); else if (decodeError) setDetectionReload(v => v + 1); else onRetryDetection?.(); }}>{resourceError || decodeError ? "다시 불러오기" : "다시 찾기"}</button>}
+          {allowManual && <button type="button" disabled={locked} onClick={openEditor}>직접 영역 선택하기</button>}
+        </div>
+      </div>}
       {error && <p role="alert" className={styles.error}>{error}</p>}
-      {incomingMask && <p className={styles.hint}>다른 기기에서 저장한 영역이 바뀌었어요. 지금 수정한 영역은 유지됩니다. <button type="button" disabled={locked} onClick={discardLocalDraft}>내 수정 버리고 저장된 영역 불러오기</button></p>}
+      {incomingMask && <div className={styles.draftNotice}><p>다른 기기에서 저장한 영역이 바뀌었어요. 지금 수정한 영역은 유지됩니다.</p><button type="button" disabled={locked} onClick={discardLocalDraft}>내 수정 버리고 저장된 영역 불러오기</button></div>}
     </div>
-    {!expanded && <button type="button" className={styles.save} disabled={locked || !imageRef.current || !maskRef.current.some(Boolean)} onClick={() => void save()}>{saving ? "저장 중…" : saveLabel}</button>}
+    {showActions && hasSelection && (saveActionTargetId ? actionTarget && createPortal(submit, actionTarget) : submit)}
     {exitDialog && <div className={styles.modalBackdrop}><div ref={modalRef} className={styles.exitModal} role="alertdialog" aria-modal="true" aria-labelledby="editor-exit-title" aria-describedby="editor-exit-description">
       <span className={styles.exitIcon} aria-hidden="true" />
       <h2 id="editor-exit-title">변경사항을 저장하지 않고 나갈까요?</h2>

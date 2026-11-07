@@ -21,6 +21,7 @@ export function originalDetectionMonitor(options: Options) {
   async function check(retry = false) {
     if (!active || pending || (!retry && Date.now() < nextAt)) return;
     pending = true;
+    if (retry) { state = { status: "queued" }; options.onState(state); }
     try {
       let next = retry ? await options.start() : await options.read();
       if (!active) return;
@@ -34,7 +35,7 @@ export function originalDetectionMonitor(options: Options) {
       }
     } catch (error) {
       if (active) {
-        if (state.status === "queued" || state.status === "running") {
+        if (!retry && (state.status === "queued" || state.status === "running")) {
           failures++;
           nextAt = Date.now() + pollingDelay(3000, failures);
           options.onError(error);

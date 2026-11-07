@@ -91,3 +91,34 @@
 .magnifier span{position:absolute;right:7px;bottom:5px;color:white;font-size:10px;text-shadow:0 1px 3px black}
 .touchActions{display:flex;justify-content:space-between;gap:14px}
 .touchActions button{min-height:36px;font-size:12px;color:#5b5b67}
+/* Figma 527:21565. Keep the mounted canvas and draft behind the failure screen. */
+.editorContentsHidden { visibility:hidden; }
+.saveFailure { position:fixed; z-index:60; inset:0; margin:auto; width:100%; max-width:402px; min-height:100dvh; overflow-y:auto; display:flex; flex-direction:column; padding:max(10px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom)); background:var(--moira-surface); }
+.failureContent { display:flex; flex-direction:column; gap:24px; margin:64px 8px 32px; }
+.failureContent>img { display:block; width:96px; height:96px; }
+.failureContent h1 { margin:0 0 8px; font-size:24px; font-weight:900; line-height:32px; }
+.failureContent>div>p { margin:0; font-size:16px; line-height:24px; }
+.failureCard { width:calc(100% - 16px); padding:12px 16px; background:var(--moira-pink); border:2px solid var(--moira-ink); border-radius:4px; box-shadow:4px 4px var(--moira-ink); }
+.failureCard strong { display:block; font-size:14px; line-height:24px; }
+.failureContent .failureCard p { margin:4px 0 0; font-size:12px; line-height:20px; overflow-wrap:anywhere; }
+.failureCard details { margin-top:4px; font-size:11px; line-height:20px; }
+.failureCard summary { cursor:pointer; }
+.editor .returnToEditor { flex-shrink:0; min-height:56px; margin:auto 8px 0; border-width:2px; box-shadow:4px 4px var(--moira-ink); font-weight:700; font-size:16px; }
+.progress { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; text-align:center; padding:20px; }
+.progress>span:last-child { font-size:12px; color:var(--moira-muted); }
+.spinner { display:block; width:30px; height:30px; border:3px solid var(--moira-accent); border-top-color:var(--moira-ink); border-radius:50%; animation:loading-spin .8s linear infinite; }
+.retryLoad { display:block; width:100%; min-height:48px; margin:12px 0; background:var(--moira-accent); box-shadow:3px 3px var(--moira-ink); font-weight:700; }
+@keyframes loading-spin { to { transform:rotate(360deg); } }
+@media(prefers-reduced-motion:reduce) { .spinner { animation:none; } }
+.collapsed:not(.globalEditor) .panel { min-height:112px; }
+.editor.collapsed:not(.globalEditor) .compare { width:40px; height:40px; border:0; border-radius:20px; padding:6px; background:var(--moira-ink); }
+.editor.collapsed:not(.globalEditor) .compare img { display:none; }
+.editor.collapsed:not(.globalEditor) .compare::after { content:""; display:block; width:24px; height:24px; background:url('./assets/collapsed-eye.svg') center/24px 24px no-repeat; }
+
+/* Figma 527:10234: first save and retry share this dedicated pending state. */
+.savingContent { margin:114px 8px 32px; text-align:center; }
+.savingIllustration { width:calc(100% + 48px); margin-left:-24px; aspect-ratio:402/231; }
+.savingIllustration img { display:block; width:100%; height:100%; object-fit:contain; }
+.savingContent h1 { margin:0 0 8px; font-size:24px; font-weight:900; line-height:32px; word-break:keep-all; }
+.savingContent p { margin:0; font-size:12px; font-weight:500; line-height:20px; }
+@media(max-height:650px) { .savingContent { margin-top:48px; } }

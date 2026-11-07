@@ -6,15 +6,15 @@ import theme from '@/features/home/theme.module.css';
 import RoomDialog from './RoomDialog';
 import styles from './room.module.css';
 
-export default function RetouchShell({ title, onBack, backDisabled = false, children, footer, action, progress = 0, showProgress = false, brand = false, hideBack = false, centered = false }: {
-  title: string; onBack?: () => void; backDisabled?: boolean; children: ReactNode; footer?: ReactNode; action?: ReactNode; progress?: number; showProgress?: boolean; brand?: boolean; hideBack?: boolean; centered?: boolean;
+export default function RetouchShell({ title, onBack, backDisabled = false, children, footer, action, progress = 0, showProgress = false, brand = false, hideBack = false, centered = false, showHelp = true }: {
+  title: string; onBack?: () => void; backDisabled?: boolean; children: ReactNode; footer?: ReactNode; action?: ReactNode; progress?: number; showProgress?: boolean; brand?: boolean; hideBack?: boolean; centered?: boolean; showHelp?: boolean;
 }) {
   const [help, setHelp] = useState(false);
   return <main className={`${theme.theme} ${styles.shell}`}>
     <header className={`${styles.header} ${brand ? styles.brandHeader : ''}`}>
       {!hideBack && (onBack || backDisabled ? <button aria-label="이전 화면" disabled={backDisabled} onClick={onBack}><img src="/images/retouch-ui/back.svg" alt="" /></button> : <Link href="/" aria-label="홈으로"><img src="/images/retouch-ui/back.svg" alt="" /></Link>)}
       {brand ? <Link className={styles.wordmark} href="/" aria-label="MOIRA 홈"><img src="/images/figma-current/moira-logo.svg" alt="MOIRA" /></Link> : <strong>{title}</strong>}
-      <div className={styles.headerAction}>{action || <button className={styles.help} aria-label="도움말" onClick={() => setHelp(true)}>?</button>}</div>
+      <div className={styles.headerAction}>{action ?? (showHelp && <button className={styles.help} aria-label="도움말" onClick={() => setHelp(true)}>?</button>)}</div>
     </header>
     {showProgress ? <FlowProgress progress={progress}/> : <div className={styles.progressSpace}/>}
     <div className={`${styles.content} ${centered ? styles.centered : ''}`}>{children}</div>

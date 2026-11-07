@@ -97,3 +97,78 @@ test('Figma retouch screens keep assets and actions inside 402, 390 and 320px', 
   await expect(page).toHaveURL(/\/$/);
   expect(errors).toEqual([]);
 });
+
+// Fault injection verifies retry wiring and draft preservation; it is not a live API test.
+test('editor loading and save failures retry without replacing the touch draft', async ({ page }) => {
+  const width = 400, height = 400;
+  const pixels = Buffer.alloc(width * height * 3);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const i = (y * width + x) * 3; pixels[i] = x % 256; pixels[i + 1] = y % 256; pixels[i + 2] = (x + y) % 256;
+  }
+  const photo = await sharp(pixels, { raw: { width, height, channels: 3 } }).png().toBuffer();
+  const base = '/api/sessions/editor-retry';
+  let editorId: string | null = null, imageFetches = 0, failedSaves = 2, uploads = 0;
+  const savedStates: unknown[] = [];
+  let releaseImage: (() => void) | undefined;
+  const firstImageGate = new Promise<void>(resolve => { releaseImage = resolve; });
+  await page.route('**/api/**', async route => {
+    const request = route.request(), path = new URL(request.url()).pathname;
+    if (path === base) return route.fulfill({ json: {
+      session: { id: 'editor-retry', inviteToken: 'editor-retry', ownerParticipantId: 'owner', originalAssetId: 'original', version: 1, expiresAt: new Date(Date.now() + 86400000).toISOString() },
+      currentParticipantId: 'owner', participants: [{ id: 'owner', nickname: '민선' }, { id: 'friend', nickname: '예솔' }],
+      assets: [{ id: 'original', width, height }], originalSelections: [], selections: [], result: null,
+    } });
+    if (path === `${base}/collaboration`) {
+      if (request.method() === 'POST') {
+        const body = request.postDataJSON();
+        if (body.action === 'acquire') editorId = 'owner';
+        if (body.action === 'save') {
+          savedStates.push(body.state);
+          if (failedSaves-- > 0) return route.fulfill({ status: 503, json: { error: '연결 오류: 저장 재시도가 필요해요.' } });
+          editorId = null;
+        }
+      }
+      return route.fulfill({ json: { enabled: true, phase: 'global', rosterIds: ['owner', 'friend'], completedIds: ['owner', 'friend'], latestAssetId: 'result', version: 0, history: [], editorId, editToken: editorId ? 'edit-token' : null, leaseUntil: editorId ? new Date(Date.now() + 90000).toISOString() : null } });
+    }
+    if (path.startsWith(`${base}/assets/`)) {
+      if (request.resourceType() === 'fetch') {
+        imageFetches++;
+        if (imageFetches === 1) { await firstImageGate; return route.fulfill({ status: 503, body: '' }); }
+      }
+      return route.fulfill({ contentType: 'image/png', body: photo });
+    }
+    if (path === `${base}/uploads/edited`) { uploads++; return route.fulfill({ json: { uploadId: 'editor-upload', signedUrl: new URL('/api/editor-storage', request.url()).href, token: 'test', path: 'test' } }); }
+    if (path === '/api/editor-storage') return route.fulfill({ status: 200, body: '' });
+    if (path === '/api/uploads/editor-upload/complete') return route.fulfill({ json: { asset: { id: 'edited' } } });
+    return route.fulfill({ json: {} });
+  });
+  await page.goto('/retouch/rooms/editor-retry');
+  await page.getByRole('button', { name: '터치 보정으로 전체 다듬기', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: '사진을 불러오고 있어요' })).toBeVisible();
+  releaseImage?.();
+  await page.getByRole('button', { name: '다시 불러오기', exact: true }).click();
+  const save = page.getByRole('button', { name: '전체 사진 편집 완료', exact: true });
+  await expect(save).toBeEnabled();
+  await page.locator('#brush-size').fill('6');
+  const canvas = page.locator('canvas[aria-label="보정 미리보기"]');
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x + box.width * .4, box.y + box.height * .4);
+  await page.mouse.down(); await page.mouse.move(box.x + box.width * .4 + 12, box.y + box.height * .4, { steps: 4 }); await page.mouse.up();
+  await expect(save).toBeEnabled();
+  const draft = await canvas.evaluate((node: HTMLCanvasElement) => node.toDataURL());
+  await save.click();
+  const failure = page.getByRole('region', { name: '보정 저장 실패' });
+  await expect(failure.getByRole('heading', { name: '전체 사진 보정을 저장하지 못했어요' })).toBeVisible();
+  await expect(failure.getByRole('button', { name: '재시도', exact: true })).toBeEnabled();
+  await failure.getByRole('button', { name: '편집으로 돌아가기', exact: true }).last().click();
+  await expect(page.locator('#brush-size')).toHaveValue('6');
+  expect(await canvas.evaluate((node: HTMLCanvasElement) => node.toDataURL())).toBe(draft);
+  failedSaves = 2;
+  await save.click();
+  await failure.getByRole('button', { name: '재시도', exact: true }).click();
+  await expect(page.getByRole('button', { name: '터치 보정으로 전체 다듬기', exact: true })).toBeVisible();
+  expect(savedStates.length).toBe(5);
+  for (const state of savedStates) expect(state).toEqual(savedStates[0]);
+  expect(uploads).toBe(1);
+  expect(imageFetches).toBe(2);
+});

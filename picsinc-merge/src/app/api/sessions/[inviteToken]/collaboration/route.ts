@@ -5,7 +5,7 @@ import type { CollaborationAction } from '@/features/photo-session/collaboration
 import { apiError, credentials } from '../../session-api';
 export const maxDuration=60;
 export async function GET(_: Request,{params}:{params:Promise<{inviteToken:string}>}) {
-  try { const {inviteToken}=await params; return NextResponse.json(await collaboration({inviteToken,...await credentials(inviteToken)},{action:'read'})); }
+  try { const {inviteToken}=await params; return NextResponse.json(await collaboration({inviteToken,...await credentials(inviteToken)},{action:'read'}), {headers:{'Cache-Control':'no-store'}}); }
   catch(error) { return apiError(error); }
 }
 export async function POST(request: Request,{params}:{params:Promise<{inviteToken:string}>}) {

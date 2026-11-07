@@ -1,4 +1,5 @@
 /** Shared JSON contract for collaborative rooms. No server imports. */
+import type { JobView } from '@/core/processing';
 export type CollaborationPhase = 'lobby' | 'personal' | 'composing' | 'global' | 'review' | 'final';
 export interface CollaborationHistory { version: number; participantId: string; assetId: string; createdAt: string }
 export interface CollaborationView {
@@ -15,7 +16,7 @@ export interface CollaborationView {
   version: number;
   latestAssetId: string | null;
   history: CollaborationHistory[];
-  job?: { id: string; status: 'queued' | 'running' | 'ready' | 'failed' };
+  job?: JobView;
 }
 export type CollaborationAction =
   | { action: 'enable' | 'start' | 'personal-begin' | 'compose' | 'acquire' | 'end-global' | 'finalize' }

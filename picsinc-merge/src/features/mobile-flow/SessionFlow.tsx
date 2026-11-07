@@ -4,6 +4,7 @@ import { uploadAsset, detectRemote, composeRemote } from "@/core/remote-client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Notice, PhotoPicker, StatusMessage } from "@/components/mobile-shell";
 import MobileShell, { MergeWelcome, MergeSteps } from "@/features/merge-flow/MergeShell";
+import MergeResultPreview from "@/features/merge-flow/MergeResultPreview";
 import mergeStyles from "@/features/merge-flow/merge.module.css";
 import MobileRegionEditor from "@/features/region-editor/MobileRegionEditor";
 import RegionEditor from "@/features/region-editor/RegionEditor";
@@ -194,7 +195,8 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     const image = new Image();
     image.crossOrigin = "anonymous";
     image.onload = () => { recordStep("result", true); setMerging(false); };
-    image.onerror = () => { recordStep("result", true); setMerging(false); setMessage("미리보기를 불러오지 못했어요. 다시 열어 주세요."); };
+    // The result view owns its retry UI, so a failed preload must not leave a stale error after retry.
+    image.onerror = () => { recordStep("result", true); setMerging(false); };
     image.src = assetUrl(snapshot.result.previewAssetId);
   }
 
@@ -215,7 +217,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
       onError: error => { if (error instanceof RequestError && error.status === 410) report(error); },
     });
     const check = () => { if (document.visibilityState === "visible") void monitor.check(); };
-    retryDetection.current = () => { setDetectionState({ status: "queued" }); void monitor.check(true); };
+    retryDetection.current = () => { void monitor.check(true); };
     check();
     const timer = window.setInterval(() => { if (monitor.polling()) check(); }, 3000);
     window.addEventListener("focus", check); document.addEventListener("visibilitychange", check);
@@ -337,7 +339,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     {canJoin ? <><MergeWelcome inviter={inviter} /><form onSubmit={event => { event.preventDefault(); void join(); }}><label className="name-field">내 이름<input required autoComplete="nickname" maxLength={40} value={nickname} onChange={event => setNickname(event.target.value)} placeholder="친구들이 알아볼 이름" /></label></form><MergeSteps /></> : <div className="loading-screen"><div className="spinner" /><p>보정방을 불러오고 있어요.</p></div>}
     <StatusMessage message={message} />{message && !canJoin && <button className="secondary-button" onClick={() => location.reload()}>다시 불러오기</button>}
   </MobileShell>;
-  if (merging) return <MobileShell title="사진 합치는 중" progress={90} helpTopic="status"><div className="loading-screen merging-screen" role="status"><img className={mergeStyles.composingCharacters} src="/images/figma-current/merge/composing-characters.png" alt="" width="402" height="231" /><h1>{mergeDelayed ? <>평소보다 오래<br />걸리고 있어요</> : <>각자의 보정을<br />한 장에 담고 있어요</>}</h1><p className="description">{mergeDelayed ? "사진을 안전하게 합치고 있어요." : message || "선택한 얼굴만 원본 사진에 자연스럽게 합치는 중이에요."}</p><p className="merge-delay-note">사진 합치기는 5분 정도 걸릴 수 있어요.<br />이용자가 많으면 더 지연될 수 있어요.</p></div></MobileShell>;
+  if (merging) return <MobileShell title="사진 합치는 중" progress={90} helpTopic="status"><div className="loading-screen merging-screen" role="status"><img className={mergeStyles.composingCharacters} src="/images/figma-current/merge/composing-characters.png" alt="" width="402" height="231" /><h1>{mergeDelayed ? <>평소보다 오래<br />걸리고 있어요</> : <>각자의 보정을<br />한 장에 담고 있어요</>}</h1><p className="description">{mergeDelayed ? <>사진을 안전하게 합치고 있어요.<br />잠시만 기다려 주세요.</> : message || "선택한 얼굴만 원본 사진에 자연스럽게 합치는 중이에요."}</p></div></MobileShell>;
 
   const roster = <ul className="participant-list">{photoDisplay.participants.map(person => <li key={person.id}><img className="avatar" src={`/images/figma-current/home/${person.id === data.session.ownerParticipantId ? "lilac" : "pink"}.png`} alt="" /><span className="participant-name">{person.nickname}{!owner && person.id === me?.id ? " (나)" : ""}</span>{(step !== "invite" || person.id === data.session.ownerParticipantId) && <span className={`badge ${person.submitted ? "complete" : person.id === data.session.ownerParticipantId && step === "invite" ? "owner" : ""}`}>{person.submitted ? "제출 완료" : person.id === data.session.ownerParticipantId && step === "invite" ? "대표자" : "보정 중"}</span>}</li>)}</ul>;
   const shareField = <div className="share-field"><input aria-label="친구에게 보낼 초대 링크" value={shareUrl} readOnly onFocus={event => event.currentTarget.select()} /><button className="small-button" onClick={() => void copy()}>복사</button></div>;
@@ -367,10 +369,10 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   } else if (step === "overlap") {
     content = <><h1>겹친 부분에 사용할<br />사진을 골라주세요</h1><p className="description">표시된 겹침을 확인하고 영역별 보정본을 지정해 주세요. 저장한 뒤 다시 병합합니다.</p><div className="overlap-editor"><RegionEditor inviteToken={inviteToken} overlapOnly onDirtyChange={setDirty} onSaved={() => { setDirty(false); void refresh().then(() => recordStep("status")).catch(report); }} /></div></>;
   } else {
-    content = <><div className="result-heading"><p className={mergeStyles.tag}>우리의 보정, 완료!</p><h1>모두의 마음에 드는<br />우리 사진 완성.</h1><p className="description">각자의 취향이 한 장에 모였어요.</p></div>{data.result && <img className="photo-preview" src={assetUrl(data.result.previewAssetId)} alt="함께 보정한 최종 사진" onError={() => sendFestivalEvent("stage_failed", inviteToken, { stage: "result_view", errorCode: "image_load_failed", clientEventId: crypto.randomUUID() })} />}
+    content = <><div className="result-heading"><p className={mergeStyles.tag}>우리의 보정, 완료!</p><h1>모두의 마음에 드는<br />우리 사진 완성.</h1><p className="description">각자의 취향이 한 장에 모였어요.</p></div>{data.result && <MergeResultPreview key={data.result.previewAssetId} src={assetUrl(data.result.previewAssetId)} onError={() => sendFestivalEvent("stage_failed", inviteToken, { stage: "result_view", errorCode: "image_load_failed", clientEventId: crypto.randomUUID() })} />}
       {data.result && currentResult && <p className={mergeStyles.success}><img src="/images/merge-ui/check.svg" alt="" />{data.participants.filter(person => person.submitted).map(person => person.nickname).join(" · ")}의 보정이 모두 반영됐어요.</p>}
-      {data.result && data.result.version !== data.session.version && <Notice>제출 내용이 바뀌었어요. 아래 사진은 이전 결과입니다. 대표자가 다시 병합해 주세요.</Notice>}
-      {Boolean(data.result?.unassignedOverlapPixels) && <Notice>겹친 영역에 임시로 적용된 보정본이 있어요. 대표자가 확인하고 수정할 수 있어요.</Notice>}
+      {data.result && data.result.version !== data.session.version && <><Notice>제출 내용이 바뀌었어요. 위 사진은 이전 결과입니다. 대표자가 다시 병합해 주세요.</Notice>{owner && <button className="secondary-button" onClick={() => navigate("status")}>제출 현황으로 돌아가기</button>}</>}
+      {Boolean(data.result?.unassignedOverlapPixels) && <><Notice>겹친 영역에 임시로 적용된 보정본이 있어요. 대표자가 확인하고 수정할 수 있어요.</Notice>{owner && <button className="secondary-button" onClick={() => navigate("overlap")}>겹친 영역 확인하기</button>}</>}
     </>;
     footer = <><a className="secondary-button" href="/sessions/new">다른 사진으로 새로 하기</a>{data.result && <a className="primary-button" href={assetUrl(data.result.resultAssetId)} download onClick={() => sendFestivalEvent("save_clicked", inviteToken, { assetId: data.result!.resultAssetId, clientEventId: crypto.randomUUID() })}>사진 저장하기</a>}</>;
   }

@@ -8,6 +8,7 @@ import { authorizeProcessing } from './processing-service';
 import { SessionError } from './errors';
 import { decodeMask, verifyPhotoBytes } from './image-validation';
 import type { CollaborationAction, CollaborationView } from './collaboration-types';
+import { readCompositionJob } from './collaboration-job';
 export type { CollaborationAction, CollaborationView, CollaborationPhase } from './collaboration-types';
 
 type Auth = { inviteToken: string; participantId: string; sessionToken: string };
@@ -65,6 +66,14 @@ export async function collaboration(auth: Auth, input: CollaborationAction | { a
     return {asset,buffer:Buffer.from(await (await files.get(asset.storageKey)).arrayBuffer())};
   };
   try {
+    if (input.action === 'read') {
+      const current = await rpc('read');
+      if (current.enabled && current.phase === 'composing') {
+        const job = await readCompositionJob(db, session);
+        if (job) return {...current, job};
+      }
+      return current;
+    }
     if (input.action==='personal-begin') {
       const current=await rpc('read');
       if (current.personalToken) return current;

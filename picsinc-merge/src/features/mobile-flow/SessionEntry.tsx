@@ -16,6 +16,7 @@ export default function SessionEntry({ inviteToken }: { inviteToken: string }) {
   const [loaded, setLoaded] = useState<{snapshot: FlowSnapshot; room: CollaborationView} | null>(null);
   const [expired, setExpired] = useState(false);
   const [deleted, setDeleted] = useState(false), [closed, setClosed] = useState(false);
+  const [joined, setJoined] = useState(false);
   const [join, setJoin] = useState(false), [nickname, setNickname] = useState(""), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const base = `/api/sessions/${encodeURIComponent(inviteToken)}`;
   async function load() {
@@ -30,15 +31,16 @@ export default function SessionEntry({ inviteToken }: { inviteToken: string }) {
     else if (e instanceof RequestError && e.status === 403) { setJoin(true); setError(''); return; }
     setError((e as Error).message);
   }
-  useEffect(() => { setLoaded(null); setJoin(false); setExpired(false); setDeleted(false); setClosed(false); setError(""); void load().catch(report); }, [base]);
+  useEffect(() => { setLoaded(null); setJoin(false); setJoined(false); setExpired(false); setDeleted(false); setClosed(false); setError(""); void load().catch(report); }, [base]);
   async function participate() {
     if (busy || !nickname.trim()) return;
     setBusy(true); setError("");
     try {
+      if (joined) { await load(); return; }
       const form = new FormData(); form.set("nickname", nickname.trim());
       const participantsUrl = retouchRoom ? `/api/retouch/rooms/${encodeURIComponent(inviteToken)}/participants` : `${base}/participants`;
       const result = await request<{recoveryUrl: string}>(participantsUrl, { method: "POST", body: form });
-      rememberRecovery(inviteToken, result.recoveryUrl); await load();
+      rememberRecovery(inviteToken, result.recoveryUrl); setJoined(true); await load();
     } catch (e) { report(e); } finally { setBusy(false); }
   }
   if (deleted) return <DeletedRoomScreen/>;

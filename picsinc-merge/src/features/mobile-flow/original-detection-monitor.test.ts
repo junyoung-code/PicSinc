@@ -43,3 +43,20 @@ test("invitation status does not fetch masks; reconnect can recover a network fa
   await monitor.check(); assert.equal(failures, 1); assert.equal(monitor.polling(), false);
   failed = false; await monitor.check(); assert.equal(failures, 1);
 });
+
+ test("retry clears the failure immediately, stays single-flight, and reports a rejected restart", async () => {
+  const states: OriginalDetectionState[] = [];
+  let reject!: (e: Error) => void, starts = 0;
+  const monitor = originalDetectionMonitor({
+    read: async () => ({status: "failed", error: "old failure"}),
+    start: () => { starts++; return new Promise((_, fail) => { reject = fail; }); },
+    result: async () => result, canApply: () => true,
+    onState: state => states.push(state), onResult: () => {}, onError: () => {},
+  });
+  await monitor.check(); const retry = monitor.check(true);
+  assert.deepEqual(states.at(-1), {status: "queued"});
+  await monitor.check(true); assert.equal(starts, 1);
+  reject(new Error("restart failed")); await retry;
+  assert.deepEqual(states.at(-1), {status: "failed", error: "restart failed"});
+  assert.equal(monitor.polling(), false);
+});

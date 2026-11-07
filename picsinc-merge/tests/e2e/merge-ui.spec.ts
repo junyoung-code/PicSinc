@@ -103,3 +103,76 @@ for (const width of [402, 390, 320]) test(`merge flow and PNG saving at ${width}
   expect(writes).toContain(`${base}/selection`);
   expect(errors).toEqual([]);
 });
+
+// Exception fixtures validate recoverable UI states, without creating real jobs or changing photos.
+test('merge delay, failure and retry preserve submitted work', async ({ page }) => {
+  const photo = await readFile('public/images/figma-current/character-photo.png');
+  const base = '/api/sessions/merge-errors';
+  let failJob = false, completed = false, compositions = 0;
+  const snapshot = () => ({
+    session: { id: 'room', inviteToken: 'merge-errors', originalAssetId: 'original', ownerParticipantId: 'owner', version: 1, expiresAt: new Date(Date.now() + 86400000).toISOString() },
+    currentParticipantId: 'owner', participants: [{ id: 'owner', nickname: '민선', submitted: true }],
+    assets: [{ id: 'original', kind: 'original', width: 104, height: 155 }], originalSelections: [], selections: [],
+    result: completed ? { version: 1, resultAssetId: 'final', previewAssetId: 'final', unassignedOverlapPixels: 0 } : null,
+  });
+  await page.clock.install();
+  await page.route('**/api/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === base) return route.fulfill({ json: snapshot() });
+    if (path.endsWith('/compose')) {
+      compositions += 1;
+      if (compositions > 1) { completed = true; return route.fulfill({ json: { result: snapshot().result } }); }
+      return route.fulfill({ json: { job: { id: 'merge-job', status: 'running' } } });
+    }
+    if (path.endsWith('/jobs/merge-job')) return route.fulfill({ json: { job: { id: 'merge-job', status: failJob ? 'failed' : 'running', error: failJob ? '사진을 합치지 못했어요. 다시 시도해 주세요.' : undefined } } });
+    if (path.endsWith('/assets/final')) return route.fulfill({ contentType: 'image/png', body: photo });
+    return route.fulfill({ json: {} });
+  });
+  await page.goto('/sessions/merge-errors?step=status');
+  await page.getByRole('button', { name: '사진 합치기', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '각자의 보정을 한 장에 담고 있어요' })).toBeVisible();
+  await page.clock.fastForward(31_000);
+  await expect(page.getByRole('heading', { name: '평소보다 오래 걸리고 있어요' })).toBeVisible();
+  await expect(page.getByText('잠시만 기다려 주세요.', { exact: false })).toBeVisible();
+  await expect(page.getByText(/(?:최대 3분|5분 정도)/)).toHaveCount(0);
+  failJob = true;
+  await page.clock.runFor(4000);
+  await expect(page.getByText('사진을 합치지 못했어요. 다시 시도해 주세요.')).toBeVisible();
+  await expect(page.getByText('제출 완료', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '사진 합치기', exact: true }).click();
+  await expect(page.getByRole('link', { name: '사진 저장하기' })).toBeVisible();
+  expect(compositions).toBe(2);
+});
+
+for (const owner of [true, false]) test(`merge result preview recovery and owner-only actions (${owner ? 'owner' : 'participant'})`, async ({ page }) => {
+  const photo = await readFile('public/images/figma-current/character-photo.png');
+  const base = '/api/sessions/merge-result-errors';
+  let previewRequests = 0;
+  await page.route('**/api/**', route => {
+    const url = new URL(route.request().url());
+    if (url.pathname === base) return route.fulfill({ json: {
+      session: { id: 'room', inviteToken: 'merge-result-errors', originalAssetId: 'original', ownerParticipantId: 'owner', version: 2, expiresAt: new Date(Date.now() + 86400000).toISOString() },
+      currentParticipantId: owner ? 'owner' : 'friend', participants: [{ id: 'owner', nickname: '민선', submitted: true }, { id: 'friend', nickname: '예솔', submitted: true }],
+      assets: [{ id: 'original', kind: 'original', width: 104, height: 155 }], originalSelections: [], selections: [],
+      result: { version: 1, resultAssetId: 'final', previewAssetId: 'preview', unassignedOverlapPixels: 12 },
+    } });
+    if (url.pathname.endsWith('/assets/preview')) {
+      previewRequests += 1;
+      return url.searchParams.has('retry') ? route.fulfill({ contentType: 'image/png', body: photo }) : route.fulfill({ status: 503, body: '' });
+    }
+    return route.fulfill({ json: {} });
+  });
+  await page.goto('/sessions/merge-result-errors?step=result');
+  await expect(page.getByRole('alert')).toContainText('완성된 사진을 불러오지 못했어요');
+  await expect(page.getByRole('link', { name: '사진 저장하기' })).toHaveAttribute('href', `${base}/assets/final`);
+  await page.getByRole('button', { name: '사진 다시 불러오기' }).click();
+  await expect.poll(() => page.getByAltText('함께 보정한 최종 사진').evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(previewRequests).toBeGreaterThanOrEqual(2);
+  await expect(page.getByRole('button', { name: '겹친 영역 확인하기' })).toHaveCount(owner ? 1 : 0);
+  await expect(page.getByRole('button', { name: '제출 현황으로 돌아가기' })).toHaveCount(owner ? 1 : 0);
+  if (owner) {
+    await page.getByRole('button', { name: '제출 현황으로 돌아가기' }).click();
+    await expect(page.getByRole('button', { name: '사진 합치기', exact: true })).toBeEnabled();
+  }
+});
