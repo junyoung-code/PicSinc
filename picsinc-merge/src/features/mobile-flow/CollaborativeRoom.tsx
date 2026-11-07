@@ -13,6 +13,9 @@ import { jsonRequest, request, RequestError } from "./client";
 import { saveEditorSelection } from "./save-editor-selection";
 import { visiblePolling } from "./polling";
 import ParticipantStatus from "./ParticipantStatus";
+import RoomDialog from '@/features/retouch-room-flow/RoomDialog';
+import { DeletedRoomScreen, DeleteRoomDialog } from './room-deletion';
+import ResultLightbox from '@/features/retouch-room-flow/ResultLightbox';
 
 type Editor = { scope: "personal" | "global"; token: string; version: number; imageId: string; maskId?: string };
 type Claim = { regionId: string; participantId: string; nickname: string };
@@ -22,6 +25,9 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   const [detection, setDetection] = useState<DetectedRegions | null>(null), [detecting, setDetecting] = useState(false);
   const [error, setError] = useState(""), [detectionError, setDetectionError] = useState(""), [busy, setBusy] = useState(false), [expired, setExpired] = useState(false);
   const [shareUrl, setShareUrl] = useState(""), [now, setNow] = useState(Date.now());
+  const [confirm, setConfirm] = useState<'start' | 'skip' | 'finalize' | 'delete' | null>(null);
+  const [deleted, setDeleted] = useState(false), [lightbox, setLightbox] = useState(false);
+  const [finalizing, setFinalizing] = useState(false), [finalizeFailed, setFinalizeFailed] = useState(false);
   const revision = useRef(0), claimRevision = useRef(0), initialClaims = useRef<Claim[] | null>(null);
   const dirty = useRef(false), detailBack = useRef<(() => boolean) | null>(null), saving = useRef(false);
   const pendingSave = useRef<{ edit: RoomEditRecord['edit']; assetId: string } | null>(null);
@@ -34,8 +40,8 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   const ownIds = (initialClaims.current ?? []).filter(c => c.participantId === me).map(c => c.regionId);
   const savedIdsMatch = !!selection && selection.selectedRegionIds.length === ownIds.length && ownIds.every(id => selection.selectedRegionIds.includes(id));
   const assetUrl = (id: string) => `${base}/assets/${encodeURIComponent(id)}`;
-  const report = (e: unknown) => { if (e instanceof RequestError && e.status === 410) setExpired(true); setError((e as Error).message); };
-  const roster = <ParticipantStatus participants={snapshot.participants} completedIds={room.completedIds} currentId={me} rosterIds={room.rosterIds}/>;
+  const report = (e: unknown) => { if (e instanceof RequestError && e.code === 'SESSION_DELETED') setDeleted(true); else if (e instanceof RequestError && e.status === 410) setExpired(true); setError((e as Error).message); };
+  const roster = <ParticipantStatus participants={snapshot.participants} completedIds={room.completedIds} currentId={me} rosterIds={room.rosterIds} ownerId={snapshot.session.ownerParticipantId} compact={!!editor || room.phase === 'personal' && !done}/>;
 
   async function refresh() {
     const started = revision.current;
@@ -50,7 +56,8 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   async function act(body: CollaborationAction) {
     if (busy) return;
     setBusy(true); setError("");
-    try { await command(body); await refresh(); } catch (e) { report(e); } finally { setBusy(false); }
+    if (body.action === 'finalize') { setFinalizing(true); setFinalizeFailed(false); }
+    try { await command(body); await refresh(); } catch (e) { report(e); if (body.action === 'finalize') setFinalizeFailed(true); } finally { setBusy(false); setFinalizing(false); }
   }
   useEffect(() => {
     setShareUrl(`${location.origin}/retouch/rooms/${encodeURIComponent(inviteToken)}`);
@@ -179,35 +186,48 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     } catch (e) { report(e); } finally { setBusy(false); }
   }
   const remaining = Math.max(0, Date.parse(snapshot.session.expiresAt) - now);
+  if (deleted) return <DeletedRoomScreen/>;
   if (expired || !remaining) return <MobileShell title="보정방 만료"><h1>보정방이 만료됐어요</h1><p>방 생성 후 24시간이 지났어요.</p><a href="/retouch/rooms/new">새 보정방 만들기</a></MobileShell>;
+  if (finalizing || finalizeFailed && room.phase !== 'final') return <MobileShell title={finalizeFailed ? '최종 완료 실패' : '최종 완료 처리 중'} hideBack={!finalizeFailed} onBack={() => { setFinalizeFailed(false); setError(''); }} showProgress progress={85} action={finalizeFailed ? <button onClick={() => void act({action:'finalize'})}>재시도</button> : undefined} footer={finalizeFailed ? <button className="secondary-button" onClick={() => { setFinalizeFailed(false); setError(''); }}>결과 확인으로 돌아가기</button> : undefined}><div className={finalizeFailed ? styles.failureState : styles.processingState}><img src="/images/figma-current/home/lilac.png" width="96" height="96" alt=""/><div className={styles.heading}><h1>{finalizeFailed ? '사진 최종 완료를\n처리하지 못했어요' : '최종 보정본을\n저장하고 있어요'}</h1><p className="description">{finalizeFailed ? '지금까지 저장된 보정 결과는 유지돼요.' : '저장이 끝날 때까지 잠시 기다려 주세요'}</p></div>{finalizeFailed && <div className={styles.errorCard} role="alert"><strong>최종 완료를 처리하지 못했어요</strong><p>{error || '저장된 사진은 유지돼요. 다시 시도해 주세요.'}</p></div>}</div></MobileShell>;
   if (editor) {
     const valid = editor.scope === "personal" ? room.phase === "personal" && room.personalToken === editor.token && !done : room.phase === "global" && room.editToken === editor.token && room.editorId === me && Date.parse(room.leaseUntil ?? "") > now;
-    return <RetouchEditor key={editor.token} participants={<>{roster}<StatusMessage message={error}/>{!valid && <p role="alert">편집권이 만료되었거나 단계가 바뀌었어요. 뒤로 가서 최신 상태를 확인해주세요.</p>}</>} room={{imageUrl:assetUrl(editor.imageId),maskUrl:editor.maskId?assetUrl(editor.maskId):undefined,scope:editor.scope,nickname:snapshot.participants.find(p=>p.id===me)?.nickname??"나",disabled:!valid,onSave:save,onCancel:()=>void cancelEditor(),onDirtyChange:value=>{dirty.current=value;}}}/>;
+    return <RetouchEditor key={editor.token} participants={<>{editor.scope === "personal" && roster}<StatusMessage message={error}/>{!valid && <p role="alert">편집권이 만료되었거나 단계가 바뀌었어요. 뒤로 가서 최신 상태를 확인해주세요.</p>}</>} room={{imageUrl:assetUrl(editor.imageId),maskUrl:editor.maskId?assetUrl(editor.maskId):undefined,scope:editor.scope,nickname:snapshot.participants.find(p=>p.id===me)?.nickname??"나",disabled:!valid,onSave:save,onCancel:()=>void cancelEditor(),onDirtyChange:value=>{dirty.current=value;}}}/>;
   }
   const editorName = snapshot.participants.find(p => p.id === room.editorId)?.nickname;
   const locked = !!room.editorId && Date.parse(room.leaseUntil ?? "") > now;
+  const allDone = room.rosterIds.length > 0 && room.completedIds.length === room.rosterIds.length;
+  const startConfirm = room.phase === 'lobby' && confirm === 'start';
+  const title = { lobby: owner ? startConfirm ? '참여자 확정' : '친구 초대하기' : '친구들과 시작 기다리기', personal: done ? '친구 기다리기' : '내 얼굴 선택', composing: '최종 사진 만들기', global: '전체 사진 보정', review: '최종 사진 확인', final: '완성 사진' }[room.phase];
   let footer: React.ReactNode;
-  if (room.phase === "lobby" && owner) footer = <button className="primary-button" disabled={busy} onClick={()=>void act({action:"start"})}>모두 모였어요 · 얼굴 인식 시작</button>;
-  if ((room.phase === "personal" && room.rosterIds.length > 0 && room.completedIds.length === room.rosterIds.length || room.phase === "composing") && owner) footer = <button className="primary-button" disabled={busy} onClick={()=>void act({action:"compose"})}>{room.phase === "composing" ? "합성 상태 확인·재시도" : "전체 사진 단계로"}</button>;
-  if (room.phase === "global") footer = <><button className="primary-button" disabled={busy || locked && room.editorId !== me} onClick={()=>void openGlobal()}>전체 사진 터치 보정</button>{owner && <button className="secondary-button" disabled={busy || locked} onClick={()=>void act({action:"end-global"})}>추가 보정 없이 결과 확인</button>}</>;
-  if (room.phase === "review" && owner) footer = <button className="primary-button" disabled={busy} onClick={()=>void act({action:"finalize"})}>최종 완료</button>;
-  return <MobileShell title={room.phase === "final" ? "완성 사진" : "MOIRA / 함께 보정하기"} action={room.phase === "final" ? <button disabled={busy} aria-label="사진 저장" onClick={()=>void downloadFinal()}>{busy?"저장 중…":"저장"}</button> : undefined} progress={{lobby:15,personal:40,composing:65,global:75,review:90,final:100}[room.phase]} footer={room.phase === "final" ? <a className="secondary-button" href="/retouch/rooms/new">처음부터 다시 하기</a> : footer}>
-    {room.phase === "final" && <span className={styles.badge}>우리의 보정, 완료!</span>}
-    <h1>{{lobby:"친구들을 기다려요",personal:done?"내 보정이 저장됐어요":"내 영역을 선택해요",composing:"모두의 보정을 합치고 있어요",global:"전체 사진을 함께 확인해요",review:"최종 결과를 확인해요",final:"모두의 마음에 드는\n우리 사진 완성."}[room.phase]}</h1>
-    {room.phase === "lobby" && <><p className="description">모두 참여한 뒤 대표자가 인식을 시작하면 입장이 마감돼요.</p><button className="secondary-button" onClick={()=>void navigator.clipboard.writeText(shareUrl).then(()=>setError("초대 링크를 복사했어요.")).catch(()=>setError("링크를 길게 눌러 복사해주세요."))}>초대 링크 복사</button><input aria-label="초대 링크" value={shareUrl} readOnly className="collaboration-link"/><p>남은 시간 {Math.floor(remaining/3600000)}시간 {Math.floor(remaining/60000)%60}분</p></>}
-    {room.phase !== "final" && roster}
-    {room.phase === "final" && <p className="description">각자의 취향이 한 장에 모였어요.</p>}
-    {room.phase === "personal" && !done && <>
-      {room.personalToken && <button className="secondary-button" disabled={busy} onClick={()=>void openPersonal().catch(()=>{})}>내 영역 보정 이어가기</button>}
+  if (room.phase === 'lobby' && owner) footer = <div className={styles.actions}><button className="secondary-button" disabled={busy} onClick={() => setConfirm(startConfirm ? null : 'delete')}>{startConfirm ? '취소' : '처음부터 다시'}</button><button className="primary-button" disabled={busy} onClick={() => { if (startConfirm) { setConfirm(null); void act({action:'start'}); } else setConfirm('start'); }}>시작하기</button></div>;
+  if ((room.phase === 'personal' && allDone || room.phase === 'composing') && owner) footer = <button className="primary-button" disabled={busy} onClick={() => void act({action:'compose'})}>{room.phase === 'composing' ? '합성 상태 확인·재시도' : '전체 사진 확인하기'}</button>;
+  if (room.phase === 'global') footer = <><button className="primary-button" disabled={busy || locked && room.editorId !== me} onClick={() => void openGlobal()}>{locked && room.editorId !== me ? '친구의 보정을 기다려 주세요' : '터치 보정으로 전체 다듬기'}</button>{owner && <button className="secondary-button" disabled={busy || locked} onClick={() => setConfirm('skip')}>터치 보정 건너뛰기</button>}</>;
+  if (room.phase === 'review' && owner) footer = <button className="primary-button" disabled={busy} onClick={() => setConfirm('finalize')}>최종 완료</button>;
+  const heading = { lobby: owner ? startConfirm ? '이 참여자들과 함께\n보정을 시작할까요?' : '함께할 친구를 초대해요' : '입장했어요!\n친구들과 곧 시작해요.', personal: done ? '내 보정이 끝났어요' : '사진 속 내 얼굴을\n모두 선택해주세요', composing: error ? '사진을 완성하지 못했어요' : '우리 사진을 완성하고 있어요', global: '모두의 보정이 모였어요', review: owner ? '모두의 보정을 확인해주세요' : '대표자의 최종 완료를 기다려요', final: '모두의 마음에 드는\n우리 사진 완성.' }[room.phase];
+  const description = { lobby: owner ? startConfirm ? '시작하면 참여 인원이 확정되고 초대가 마감돼요.' : '링크만 보내면 앱 없이 참여할 수 있어요.' : '대표자가 시작하면\n내 얼굴 선택 화면으로 이동해요.', personal: done ? '모두 끝나면 전체 사진을 보정하거나,\n건너뛰고 바로 결과를 확인할 수 있어요.' : '보정 영역을 선택해서 편집할 수 있어요.', composing: error ? '저장한 보정은 유지돼요. 다시 시도해 주세요.' : '각자의 보정을 한 장에 모으고 있어요.\n잠시만 기다려 주세요.', global: '어색한 곳은 다음 단계에서 터치 보정으로 고칠 수 있어요.', review: '최종 완료하면 완성 사진을 함께 저장할 수 있어요.', final: '각자의 취향이 한 장에 모였어요.' }[room.phase];
+  return <MobileShell title={title} hideBack={room.phase !== 'global' && room.phase !== 'review'} onBack={startConfirm ? () => setConfirm(null) : undefined} showProgress progress={{lobby:10,personal:done?60:35,composing:85,global:60,review:85,final:100}[room.phase]} action={room.phase === 'final' ? <button disabled={busy} aria-label="사진 저장" onClick={() => void downloadFinal()}>{busy ? '저장 중…' : '저장'}</button> : undefined} footer={room.phase === 'final' ? <a className={styles.textLink} href="/retouch/rooms/new">다른 사진으로 새로 시작하기</a> : footer}>
+    {room.phase === 'final' && <span className={`${styles.badge} ${styles.resultBadge}`}>우리의 보정, 완료!</span>}
+    <div className={styles.heading}><h1 className={room.phase === 'final' ? styles.heroTitle : undefined}>{heading}</h1><p className="description">{description}</p></div>
+    {room.phase === 'lobby' && owner && !startConfirm && <div className={styles.share}><div className={styles.shareRow}><input aria-label="초대 링크" value={shareUrl} readOnly/><button aria-label="초대 링크 복사" onClick={() => void navigator.clipboard.writeText(shareUrl).then(() => setError('초대 링크를 복사했어요.')).catch(() => setError('링크를 길게 눌러 복사해주세요.'))}>복사</button></div><div className={styles.time}><span>남은 시간 · 24시간 제한</span><strong>{Math.floor(remaining/3600000)}시간 {Math.floor(remaining/60000)%60}분</strong></div></div>}
+    {room.phase === 'personal' && done && <p aria-live="polite">{room.rosterIds.length}명 중 {room.completedIds.length}명 보정 완료</p>}
+    {(room.phase === 'lobby' || room.phase === 'personal' && done) && roster}
+    {room.phase === 'lobby' && !owner && <><div className={styles.infoCard}><strong>대표자가 참여 인원을 확인하고 있어요.</strong><p>이 화면에서 잠시 기다려 주세요.<br/>이미 참여한 기기에서는 다시 접속할 수 있어요.</p></div><a href="/" className="secondary-button">보정방 나가기</a></>}
+    {room.phase === 'personal' && !done && <>
+      {room.personalToken && <button className="secondary-button" disabled={busy} onClick={() => void openPersonal().catch(() => {})}>내 영역 보정 이어가기</button>}
       {!room.personalToken && claims === null && <p role="status">선택 상태를 불러오고 있어요.</p>}
-      {!room.personalToken && claims !== null && <MobileRegionEditor imageUrl={assetUrl(original.id)} width={original.width} height={original.height} detection={detection} detecting={detecting} detectionError={detectionError} busy={busy} initialMaskUrl={savedIdsMatch?assetUrl(selection!.maskAssetId):undefined} initialSelectedIds={ownIds} regionClaims={claims} currentParticipantId={me} participantNickname={snapshot.participants.find(p=>p.id===me)?.nickname} onRegionToggle={toggleClaim} onSave={openPersonal} saveLabel="이 영역 보정하기" saveActionLabel="보정 시작" onDirtyChange={v=>{dirty.current=v;}} onDetailOpen={fn=>{detailBack.current=fn;history.pushState({roomDetail:true},"",location.href);}} onRetryDetection={()=>void request(`${base}/original-detection`,{method:"POST"}).then(()=>setDetectionError("")).catch(report)}/>}
+      {!room.personalToken && claims !== null && <MobileRegionEditor hideIdentity imageUrl={assetUrl(original.id)} width={original.width} height={original.height} detection={detection} detecting={detecting} detectionError={detectionError} busy={busy} initialMaskUrl={savedIdsMatch?assetUrl(selection!.maskAssetId):undefined} initialSelectedIds={ownIds} regionClaims={claims} currentParticipantId={me} participantNickname={snapshot.participants.find(p=>p.id===me)?.nickname} onRegionToggle={toggleClaim} onSave={openPersonal} saveLabel="이 영역 보정하기" saveActionLabel="보정 시작" onDirtyChange={v=>{dirty.current=v;}} onDetailOpen={fn=>{detailBack.current=fn;history.pushState({roomDetail:true},"",location.href);}} onRetryDetection={()=>void request(`${base}/original-detection`,{method:"POST"}).then(()=>setDetectionError("")).catch(report)}/>}
     </>}
-    {room.phase === "personal" && done && <p className="description">친구들의 개인 보정이 끝나면 전체 사진을 보정할 수 있어요.</p>}
-    {room.phase === "composing" && <Notice>개인 보정은 모두 저장됐어요. 합성 결과가 준비되면 전체 사진 단계로 이동해요.</Notice>}
-    {room.phase === "global" && <p aria-live="polite">{locked?`${editorName??"친구"}님이 전체 사진을 보정 중이에요. 잠시 기다려주세요.`:"한 번에 한 명씩 원하는 부분을 보정할 수 있어요."}</p>}
-    {room.phase === "review" && !owner && <p>대표자가 최종 완료할 때까지 기다려주세요.</p>}
-    {room.latestAssetId && ["global","review","final"].includes(room.phase) && <img className={styles.result} src={assetUrl(room.latestAssetId)} alt={room.phase==="final"?"확정된 최종 사진":"저장된 보정 결과"}/>}
-    {room.phase === "final" && <p className={styles.done}><img src="/images/retouch-ui/check.svg" alt="" />모두의 보정이 반영됐어요</p>}
+    {room.phase === 'personal' && done && !allDone && <div className={styles.waiting}>친구들의 보정을 기다려 주세요</div>}
+    {room.phase === 'personal' && done && allDone && !owner && <div className={styles.waiting}>대표자가 전체 사진을 확인하고 있어요</div>}
+    {room.phase === 'composing' && <div className={styles.waiting} role="status">{error ? '연결을 확인한 뒤 다시 시도해 주세요' : '모두의 보정을 반영하는 중…'}</div>}
+    {room.phase === 'global' && locked && <Notice>{editorName ?? '친구'}님이 전체 사진을 보정 중이에요. 잠시 기다려주세요.</Notice>}
+    {room.latestAssetId && ['global','review'].includes(room.phase) && <div className={styles.photoStage}><img className={styles.previewPhoto} src={assetUrl(room.latestAssetId)} alt="저장된 보정 결과"/></div>}
+    {room.phase === 'final' && room.latestAssetId && <button className={styles.imageButton} aria-label="완성 사진 크게 보기" onClick={() => setLightbox(true)}><img className={styles.result} src={assetUrl(room.latestAssetId)} alt="확정된 최종 사진"/></button>}
+    {room.phase === 'final' && <p className={styles.done}><img src="/images/retouch-ui/check.svg" alt=""/>{snapshot.participants.filter(p=>room.completedIds.includes(p.id)).map(p=>p.nickname).join(' · ') || '모두'}의 보정이 모두 반영됐어요</p>}
     <StatusMessage message={error}/>
+    {confirm === 'delete' && <DeleteRoomDialog base={base} onCancel={() => setConfirm(null)} onDeleted={() => location.assign('/retouch/rooms/new')}/>}
+    {confirm === 'skip' && <RoomDialog title="터치 보정을 건너뛸까요?" confirmLabel="건너뛰고 결과 확인" cancelLabel="돌아가기" busy={busy} onCancel={() => setConfirm(null)} onConfirm={() => { setConfirm(null); void act({action:'end-global'}); }}><p>추가 터치 없이 사진을 완성해요.<br/>최종 완료 후에는 보정을 바꿀 수 없어요.</p></RoomDialog>}
+    {confirm === 'finalize' && <RoomDialog title="사진을 최종 완료할까요?" confirmLabel="사진 최종 완료" cancelLabel="계속 확인하기" busy={busy} onCancel={() => setConfirm(null)} onConfirm={() => { setConfirm(null); void act({action:'finalize'}); }}><p>모두의 보정이 한 장에 반영돼요.<br/>최종 완료 후에는 보정을 바꿀 수 없어요.</p></RoomDialog>}
+    {lightbox && room.latestAssetId && <ResultLightbox src={assetUrl(room.latestAssetId)} onClose={() => setLightbox(false)}/>}
   </MobileShell>;
 }

@@ -59,7 +59,7 @@ test('whole-photo touch has no face controls, keeps prior pixels on restore, ret
  for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*3;data[i]=(x*7)%256;data[i+1]=(y*5)%256;data[i+2]=100;}
  const png=await sharp(data,{raw:{width,height,channels:3}}).png().toBuffer(),server=await backend(page,initial('global'),png,width,height);
  await page.goto(`/sessions/${roomId}/collaboration`);
- await page.getByRole('button',{name:'전체 사진 터치 보정',exact:true}).click();
+ await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();
  const save=page.getByRole('button',{name:'전체 사진 편집 완료',exact:true});await expect(save).toBeEnabled();
  await expect(page.getByRole('button',{name:'얼굴 보정',exact:true})).toHaveCount(0);
  await expect(page.getByRole('navigation',{name:'보정 부위'})).toHaveCount(0);
@@ -75,10 +75,10 @@ test('whole-photo touch has no face controls, keeps prior pixels on restore, ret
  const restored=await pixels(page);expect(restored.equals(original)).toBeTruthy();
  server.failNextSave();await save.click();await expect(page.getByRole('alert').filter({hasText:'저장에 실패'})).toBeVisible();await expect(save).toBeEnabled();
  expect(server.state().editorId).toBe('owner');await save.click();
- await expect(page.getByRole('button',{name:'추가 보정 없이 결과 확인'})).toBeEnabled();expect(server.saved().state.scope).toBe('global');
- await page.getByRole('button',{name:'추가 보정 없이 결과 확인'}).click();await page.getByRole('button',{name:'최종 완료',exact:true}).click();
+ await expect(page.getByRole('button',{name:'터치 보정 건너뛰기'})).toBeEnabled();expect(server.saved().state.scope).toBe('global');
+ await page.getByRole('button',{name:'터치 보정 건너뛰기'}).click();await page.getByRole('button',{name:'건너뛰고 결과 확인',exact:true}).click();await page.getByRole('button',{name:'최종 완료',exact:true}).click();await page.getByRole('button',{name:'사진 최종 완료',exact:true}).click();
  await expect(page.getByRole('button',{name:'사진 저장',exact:true})).toBeVisible();
- await page.reload();await expect(page.getByRole('button',{name:'전체 사진 터치 보정'})).toHaveCount(0);
+ await page.reload();await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기'})).toHaveCount(0);
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'사진 저장',exact:true}).click();expect((await download).suggestedFilename()).toBe('moira-final.png');
  await page.screenshot({path:'private/retouch-e2e/room-final.png',fullPage:true});
 });
@@ -99,9 +99,9 @@ test('personal editor uses the server mask for preview and records saved control
  for(let y=0;y<outputHeight;y++){const a=(y*outputWidth+Math.ceil(outputWidth/2))*4,b=(y+1)*outputWidth*4;expect(after.subarray(a,b).equals(before.subarray(a,b))).toBeTruthy();}
  await page.screenshot({path:'private/retouch-e2e/room-personal.png',fullPage:true});
  server.failNextSave();await save.click();await expect(page.getByRole('alert').filter({hasText:'저장에 실패'})).toBeVisible();
- await expect(page.getByText('1 / 2명 완료')).toBeVisible();await expect(save).toBeEnabled();
+ await expect(page.getByRole('region',{name:'친구 보정 현황'}).getByText('보정 완료')).toBeVisible();await expect(save).toBeEnabled();
  expect((await pixels(page)).equals(after)).toBeTruthy();await save.click();
- await expect(page.getByRole('heading',{name:'내 보정이 저장됐어요'})).toBeVisible();expect(server.saved().state.edit.settings).toBeTruthy();
+ await expect(page.getByRole('heading',{name:'내 보정이 끝났어요'})).toBeVisible();expect(server.saved().state.edit.settings).toBeTruthy();
  await expect(page.getByRole('button',{name:'내 영역 보정 이어가기'})).toHaveCount(0);
  expect(runtimeErrors).toEqual([]);
 });
@@ -125,7 +125,7 @@ test('editor back and cancel return to one room history entry',async({page})=>{
  const png=await sharp({create:{width:400,height:400,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  await backend(page,initial('global'),png,400,400);
  await page.goto('/retouch');await page.goto(`/sessions/${roomId}/collaboration`);
- const open=page.getByRole('button',{name:'전체 사진 터치 보정',exact:true});
+ const open=page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true});
  await open.click();await expect(page.getByRole('button',{name:'전체 사진 편집 완료',exact:true})).toBeEnabled();
  await page.goBack();await expect(open).toBeVisible();
  await open.click();await expect(page.getByRole('button',{name:'전체 사진 편집 완료',exact:true})).toBeEnabled();
@@ -166,16 +166,16 @@ test('lobby starts recognition and personal completion waits for everyone', asyn
  const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  const server=await backend(page,{...initial('lobby'),rosterIds:[],completedIds:[],latestAssetId:null},png,40,40);
  await page.goto(`/retouch/rooms/${roomId}`);
- await expect(page.getByText('0 / 2명 완료')).toBeVisible();
- await page.getByRole('button',{name:'모두 모였어요 · 얼굴 인식 시작'}).click();
- await expect(page.getByRole('heading',{name:'내 영역을 선택해요'})).toBeVisible();
+ await expect(page.getByText('현재 참여자 · 2명')).toBeVisible();
+ await page.getByRole('button',{name:'시작하기',exact:true}).click();await expect(page.getByRole('heading',{name:'이 참여자들과 함께 보정을 시작할까요?'})).toBeVisible();await page.getByRole('button',{name:'시작하기',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'사진 속 내 얼굴을 모두 선택해주세요'})).toBeVisible();
  expect(server.actions).toContain('start');
  server.update({completedIds:['owner']});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
- await expect(page.getByRole('heading',{name:'내 보정이 저장됐어요'})).toBeVisible();
- await expect(page.getByRole('button',{name:'전체 사진 단계로',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('heading',{name:'내 보정이 끝났어요'})).toBeVisible();
+ await expect(page.getByRole('button',{name:'전체 사진 확인하기',exact:true})).toHaveCount(0);
  server.update({completedIds:['owner','friend']});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
- await page.getByRole('button',{name:'전체 사진 단계로',exact:true}).click();
- await expect(page.getByRole('heading',{name:'모두의 보정을 합치고 있어요'})).toBeVisible();
+ await page.getByRole('button',{name:'전체 사진 확인하기',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'우리 사진을 완성하고 있어요'})).toBeVisible();
  await expect(page.getByRole('button',{name:'이 영역 보정하기'})).toHaveCount(0);
 });
 
@@ -184,18 +184,18 @@ test('other editor blocks global entry and review blocks every new edit', async 
  const server=await backend(page,{...initial('global'),editorId:'friend',leaseUntil:new Date(Date.now()+90000).toISOString()},png,40,40);
  await page.goto(`/retouch/rooms/${roomId}`);
  await expect(page.getByText('예솔님이 전체 사진을 보정 중이에요. 잠시 기다려주세요.')).toBeVisible();
- await expect(page.getByRole('button',{name:'전체 사진 터치 보정',exact:true})).toBeDisabled();
- await expect(page.getByRole('button',{name:'추가 보정 없이 결과 확인'})).toBeDisabled();
+ await expect(page.getByRole('button',{name:'친구의 보정을 기다려 주세요',exact:true})).toBeDisabled();
+ await expect(page.getByRole('button',{name:'터치 보정 건너뛰기'})).toBeDisabled();
  server.update({editorId:null,leaseUntil:null,latestAssetId:'friend-saved'});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
- await expect(page.getByRole('button',{name:'전체 사진 터치 보정',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true})).toBeEnabled();
  await expect(page.getByRole('img',{name:'저장된 보정 결과'})).toHaveAttribute('src',`${base}/assets/friend-saved`);
  const nextBase=page.waitForRequest(request=>new URL(request.url()).pathname===`${base}/assets/friend-saved` && request.resourceType()==='fetch');
- await page.getByRole('button',{name:'전체 사진 터치 보정',exact:true}).click();await nextBase;
+ await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();await nextBase;
  await expect(page.getByRole('button',{name:'전체 사진 편집 완료',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'뒤로 가기',exact:true}).click();
- await page.getByRole('button',{name:'추가 보정 없이 결과 확인'}).click();
+ await page.getByRole('button',{name:'터치 보정 건너뛰기'}).click();await page.getByRole('button',{name:'건너뛰고 결과 확인',exact:true}).click();
  await expect(page.getByRole('button',{name:'최종 완료',exact:true})).toBeVisible();
- await expect(page.getByRole('button',{name:'전체 사진 터치 보정',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true})).toHaveCount(0);
  await page.reload();await expect(page.getByRole('button',{name:'최종 완료',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'이 영역 보정하기'})).toHaveCount(0);
 });
@@ -204,7 +204,7 @@ test('participant waits for owner finalization and retries the same final PNG', 
  const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  const server=await backend(page,initial('review'),png,40,40,undefined,'friend');
  await page.goto(`/retouch/rooms/${roomId}`);
- await expect(page.getByText('대표자가 최종 완료할 때까지 기다려주세요.')).toBeVisible();
+ await expect(page.getByRole('heading',{name:'대표자의 최종 완료를 기다려요'})).toBeVisible();
  await expect(page.getByRole('button',{name:'최종 완료',exact:true})).toHaveCount(0);
  server.update({phase:'final'});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  const save=page.getByRole('button',{name:'사진 저장',exact:true});await expect(save).toBeVisible();
@@ -214,19 +214,19 @@ test('participant waits for owner finalization and retries the same final PNG', 
  const owner=await context.newPage();await backend(owner,initial('final'),png,40,40);await owner.goto(`/retouch/rooms/${roomId}`);
  expect((await getPNG(owner)).equals(png)).toBeTruthy();await owner.close();
  await page.reload();await expect(save).toBeVisible();
- await expect(page.getByRole('button',{name:'전체 사진 터치 보정'})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기'})).toHaveCount(0);
 });
 
 test('saving blocks back navigation until the upload is accepted',async({page})=>{
  const png=await sharp({create:{width:400,height:400,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  const server=await backend(page,initial('global'),png,400,400);
- await page.goto(`/retouch/rooms/${roomId}`);await page.getByRole('button',{name:'전체 사진 터치 보정',exact:true}).click();
+ await page.goto(`/retouch/rooms/${roomId}`);await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();
  const save=page.getByRole('button',{name:'전체 사진 편집 완료',exact:true});await expect(save).toBeEnabled();
  server.holdSave();await save.click();await expect.poll(()=>server.actions.includes('save')).toBeTruthy();
  await page.goBack();await expect(page.getByRole('button',{name:'저장 중…',exact:true})).toBeVisible();
  expect(await page.evaluate(()=>{const e=new Event('beforeunload',{cancelable:true});dispatchEvent(e);return e.defaultPrevented;})).toBeTruthy();
  expect(server.actions).not.toContain('cancel');server.releaseSave();
- await expect(page.getByRole('button',{name:'전체 사진 터치 보정',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true})).toBeVisible();
 });
 
 test('retouch room rejects merge token without rendering upload flow',async({page})=>{
@@ -236,7 +236,7 @@ test('retouch room rejects merge token without rendering upload flow',async({pag
  await expect(page.getByRole('heading',{name:'공동 보정방 주소를 확인해주세요'})).toBeVisible();
  await expect(page.getByRole('link',{name:'새 보정방 만들기'})).toHaveAttribute('href','/retouch/rooms/new');
  await expect(page.locator('input[type=file]')).toHaveCount(0);
- await expect(page.getByRole('button',{name:'모두 모였어요 · 얼굴 인식 시작'})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'시작하기'})).toHaveCount(0);
 });
 
 
@@ -249,8 +249,8 @@ test('new room participation checks room kind before joining',async({page})=>{
   return route.fulfill({status:500,json:{error:'일반 방 참여 요청이 발생했어요.'}});
  });
  await page.goto(`/retouch/rooms/${roomId}`);
- await page.getByRole('textbox',{name:'내 이름'}).fill('새 친구');
- await page.getByRole('button',{name:'참여하기',exact:true}).click();
+ await page.getByRole('textbox',{name:'내 닉네임'}).fill('새 친구');
+ await page.getByRole('button',{name:'이 보정방에 참여하기',exact:true}).click();
  await expect(page.getByRole('status')).toHaveText('공동 보정방 주소를 확인해주세요.');
  expect(calls).toContain(`/api/retouch/rooms/${roomId}/participants`);
  expect(calls).not.toContain(`${base}/participants`);
@@ -264,19 +264,19 @@ test('new participants see roster-locked and expired room responses',async({page
   if(path===`/api/retouch/rooms/${roomId}/participants`)return route.fulfill({status:expired?410:409,json:{error:expired?'방이 만료됐어요.':'인식이 시작되어 새로 참여할 수 없어요.'}});
   return route.fulfill({status:404,json:{error:'Unexpected request'}});
  });
- await page.goto(`/retouch/rooms/${roomId}`);await page.getByRole('textbox',{name:'내 이름'}).fill('새 친구');
- await page.getByRole('button',{name:'참여하기',exact:true}).click();
- await expect(page.getByRole('status')).toHaveText('인식이 시작되어 새로 참여할 수 없어요.');
- expired=true;await page.getByRole('button',{name:'참여하기',exact:true}).click();
+ await page.goto(`/retouch/rooms/${roomId}`);await page.getByRole('textbox',{name:'내 닉네임'}).fill('새 친구');
+ await page.getByRole('button',{name:'이 보정방에 참여하기',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'이 보정방은 이미 시작됐어요.'})).toBeVisible();
+ expired=true;await page.reload();await page.getByRole('textbox',{name:'내 닉네임'}).fill('새 친구');await page.getByRole('button',{name:'이 보정방에 참여하기',exact:true}).click();
  await expect(page.getByRole('heading',{name:'보정방이 만료됐어요'})).toBeVisible();
  await expect(page.getByRole('link',{name:'새 보정방 만들기'})).toHaveAttribute('href','/retouch/rooms/new');
- await expect(page.getByRole('button',{name:'참여하기',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'이 보정방에 참여하기',exact:true})).toHaveCount(0);
 });
 
 test('unsaved global back can stay or discard, and lease loss blocks saving',async({page})=>{
  const png=await sharp({create:{width:400,height:400,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  const server=await backend(page,initial('global'),png,400,400);
- await page.goto(`/retouch/rooms/${roomId}`);await page.getByRole('button',{name:'전체 사진 터치 보정',exact:true}).click();
+ await page.goto(`/retouch/rooms/${roomId}`);await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();
  const save=page.getByRole('button',{name:'전체 사진 편집 완료',exact:true});await expect(save).toBeEnabled();
  const box=(await page.locator('canvas[aria-label="보정 미리보기"]').boundingBox())!;
  await page.mouse.move(box.x+box.width*.3,box.y+box.height*.3);await page.mouse.down();await page.mouse.move(box.x+box.width*.4,box.y+box.height*.3,{steps:4});await page.mouse.up();
@@ -285,7 +285,7 @@ test('unsaved global back can stay or discard, and lease loss blocks saving',asy
  server.update({editorId:'friend',editToken:null,leaseUntil:new Date(Date.now()+90000).toISOString()});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await expect(page.getByRole('alert').filter({hasText:'편집권이 만료'})).toBeVisible();await expect(save).toBeDisabled();
  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'뒤로 가기',exact:true}).click();
- await expect(page.getByRole('button',{name:'전체 사진 터치 보정',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'친구의 보정을 기다려 주세요',exact:true})).toBeVisible();
  expect(server.actions).not.toContain('save');
 });
 
@@ -297,20 +297,20 @@ test('new room participation enters lobby and preserves the returned recovery UR
  const recoveryUrl=`/retouch/rooms/${roomId}/recover#token=fixture-recovery`;
  await page.route(`**${base}`,route=>joined?route.fallback():route.fulfill({status:403,json:{error:'참여해주세요.'}}));
  await page.route(`**/api/retouch/rooms/${roomId}/participants`,route=>{joined=true;return route.fulfill({status:201,json:{participant:{id:'friend'},recoveryUrl}});});
- await page.goto(`/retouch/rooms/${roomId}`);await page.getByRole('textbox',{name:'내 이름'}).fill('예솔');await page.getByRole('button',{name:'참여하기',exact:true}).click();
- await expect(page.getByRole('heading',{name:'친구들을 기다려요'})).toBeVisible();
- await expect(page.getByRole('button',{name:'모두 모였어요 · 얼굴 인식 시작'})).toHaveCount(0);
+ await page.goto(`/retouch/rooms/${roomId}`);await page.getByRole('textbox',{name:'내 닉네임'}).fill('예솔');await page.getByRole('button',{name:'이 보정방에 참여하기',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'입장했어요! 친구들과 곧 시작해요.'})).toBeVisible();
+ await expect(page.getByRole('button',{name:'시작하기'})).toHaveCount(0);
  expect(await page.evaluate(key=>sessionStorage.getItem(key),`picsinc-recovery:${roomId}`)).toBe(new URL(recoveryUrl,page.url()).toString());
- await page.reload();await expect(page.getByRole('heading',{name:'친구들을 기다려요'})).toBeVisible();
+ await page.reload();await expect(page.getByRole('heading',{name:'입장했어요! 친구들과 곧 시작해요.'})).toBeVisible();
 });
 
 test('a room already open expires and offers a new retouch room',async({page})=>{
  const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  await backend(page,{...initial('lobby'),rosterIds:[],completedIds:[]},png,40,40);
- await page.goto(`/retouch/rooms/${roomId}`);await expect(page.getByRole('heading',{name:'친구들을 기다려요'})).toBeVisible();
+ await page.goto(`/retouch/rooms/${roomId}`);await expect(page.getByRole('heading',{name:'함께할 친구를 초대해요'})).toBeVisible();
  await page.route(`**${base}`,route=>route.fulfill({status:410,json:{error:'방이 만료됐어요.'}}));
  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await expect(page.getByRole('heading',{name:'보정방이 만료됐어요'})).toBeVisible();
  await expect(page.getByRole('link',{name:'새 보정방 만들기'})).toHaveAttribute('href','/retouch/rooms/new');
- await expect(page.getByRole('button',{name:'모두 모였어요 · 얼굴 인식 시작'})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'시작하기'})).toHaveCount(0);
 });

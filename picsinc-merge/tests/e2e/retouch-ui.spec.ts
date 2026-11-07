@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFile, mkdir } from 'node:fs/promises';
 import sharp from 'sharp';
 
-const output = 'private/retouch-e2e/ui-20261106';
+const output = 'private/retouch-e2e/ui-20261107';
 // Layout coverage uses mocked room responses; it does not replace live API tests.
 test('Figma retouch screens keep assets and actions inside 402, 390 and 320px', async ({ page }) => {
   await mkdir(output, { recursive: true });
@@ -35,20 +35,21 @@ test('Figma retouch screens keep assets and actions inside 402, 390 and 320px', 
     await expect(page.getByRole('link', { name: '공동 보정방 만들기' })).toBeVisible();
     await capture('entry', width);
     await page.getByRole('link', { name: '공동 보정방 만들기' }).click();
-    await page.getByLabel('대표자 이름').fill('민선');
+    await page.getByLabel('내 이름').fill('민선');
     await capture('new', width);
+    await page.getByRole('button', { name: '원본 사진 올리기 →', exact: true }).click();
     await page.getByLabel('원본 사진 선택').setInputFiles({ name: 'my-upload.png', mimeType: 'image/png', buffer: photo });
     await expect(page.getByRole('checkbox')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '공동 보정방 만들기' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: '이 사진으로 보정방 만들기' })).toBeEnabled();
     await capture('upload', width);
     joined = false;
     await page.goto('/retouch/rooms/ui-style');
-    await page.getByLabel('내 이름').fill('예솔');
-    await expect(page.getByRole('button', { name: '참여하기' })).toBeEnabled();
+    await page.getByLabel('내 닉네임').fill('예솔');
+    await expect(page.getByRole('button', { name: '이 보정방에 참여하기' })).toBeEnabled();
     await capture('join', width);
     joined = true; phase = 'lobby';
     await page.reload();
-    await expect(page.getByRole('heading', { name: '친구들을 기다려요' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '함께할 친구를 초대해요' })).toBeVisible();
     await capture('lobby', width);
     phase = 'final';
     await page.reload();
@@ -64,12 +65,29 @@ test('Figma retouch screens keep assets and actions inside 402, 390 and 320px', 
   await page.locator('#retouch-strength').fill('25');
   await expect(page.getByRole('button', { name: 'PNG 저장', exact: true })).toBeEnabled();
   await capture('editor', 402);
-  const geometry = await page.locator('img[src^="/images/retouch-ui/"]').evaluateAll(images => images.map(image => {
+  const geometry = await page.locator('img[src^="/images/figma-current/editor/"]').evaluateAll(images => images.map(image => {
     const img = image as HTMLImageElement, rect = img.getBoundingClientRect();
     return { file: img.src.split('/').pop(), width: rect.width, height: rect.height, loaded: img.naturalWidth > 0 };
   }));
   expect(geometry).toHaveLength(7); // back, compare and the five original face-shape icons.
-  expect(geometry.every(icon => icon.loaded && icon.width >= 16 && icon.width <= 20 && icon.height >= 17 && icon.height <= 20)).toBe(true);
+  expect(geometry.every(icon => icon.loaded && icon.width >= 16 && icon.width <= 24 && icon.height >= 17 && icon.height <= 24)).toBe(true);
+  await expect(page.getByRole('button', { name: '얼굴 보정', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: '보정 도구 접기', exact: true }).click();
+  await expect(page.locator('#retouch-strength')).toHaveCount(0);
+  await page.getByRole('button', { name: '보정 도구 펼치기', exact: true }).click();
+  await expect(page.locator('#retouch-strength')).toHaveValue('25');
+  for (const group of ['눈', '입술', '코', '눈썹']) {
+    await page.getByRole('navigation', { name: '보정 부위' }).getByRole('button', { name: group, exact: true }).click();
+    const sourceIcons = page.getByLabel('세부 보정 항목').locator('img');
+    await expect.poll(() => sourceIcons.evaluateAll(images => images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
+    expect(await sourceIcons.count()).toBeGreaterThanOrEqual(4);
+  }
+  await page.getByRole('button', { name: '터치 보정', exact: true }).click();
+  await expect(page.getByRole('button', { name: '클래식', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: '복원', exact: true }).click();
+  await expect(page.getByRole('button', { name: '복원', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: '얼굴 보정', exact: true }).click();
+  await page.getByRole('navigation', { name: '보정 부위' }).getByRole('button', { name: '얼굴형', exact: true }).click();
   page.once('dialog', dialog => dialog.dismiss());
   await page.getByRole('link', { name: '기능 선택으로' }).click();
   await expect(page).toHaveURL(/\/retouch$/);

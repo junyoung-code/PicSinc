@@ -38,6 +38,7 @@ export async function currentSchemaDatabase(beforeAnalytics?: (db: PGlite) => Pr
   }
   const installed=await db.query<{present:boolean}>("select to_regclass('public.session_collaboration') is not null as present");
   if (!installed.rows[0].present) await db.exec(await sqlFile("src/integrations/storage/collaboration.sql"));
-  await db.exec(await sqlFile("src/integrations/storage/retouch-rooms.sql"));
+  // The numbered migration already installs the explicit retouch-room schema.
+  // Applying its original draft again would add retouch_room twice.
   return db;
 }

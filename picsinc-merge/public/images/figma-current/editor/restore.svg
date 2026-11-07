@@ -1,0 +1,13 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Editable vector / touch-restore">
+<g id="Vector">
+<path d="M3.75 15L12.75 6C13.75 5 14.75 5 15.75 6L20.25 10.5L10.5 20.25H8.25L3.75 15Z" fill="#E8DEFF"/>
+<mask id="stroke0_0_949" fill="white">
+<path d="M3.75 15L12.75 6C13.75 5 14.75 5 15.75 6L20.25 10.5L10.5 20.25H8.25L3.75 15Z"/>
+</mask>
+<path d="M3.75 15L12.75 6C13.75 5 14.75 5 15.75 6L20.25 10.5L10.5 20.25H8.25L3.75 15Z" stroke-width="1.5" stroke="#25232B" mask="url(#stroke0_0_949)"/>
+</g>
+<path id="Vector_2" d="M8.25 10.5L3.75 15L8.25 20.25H10.5L14 16.75M8.25 10.5L12.75 6C13.75 5 14.75 5 15.75 6L20.25 10.5L14 16.75M8.25 10.5L14 16.75M12 21H21" stroke-width="1.275" stroke-linecap="round" stroke-linejoin="round" stroke="#25232B"/>
+<path id="Vector_3" d="M4.5 6.75C6 4.25 8.25 3.25 11.25 3.75M7.5 6.75H4.5L5.25 3.75" stroke-width="1.275" stroke-linecap="round" stroke-linejoin="round" stroke="#6E52DC"/>
+</g>
+</svg>

@@ -1,16 +1,17 @@
-/* Figma 505:2033 / Y2K A. Apply theme at a screen boundary; no global overrides. */
+/* Current Figma Neo palette, page 505:2001. Resolved variable values. */
 .theme {
-  --moira-canvas: #fbf9ff;
+  --moira-canvas: #fcfaff;
   --moira-surface: #fff;
-  --moira-ink: #1b1b3a;
-  --moira-muted: #73708b;
-  --moira-sky: #8ed1fc;
-  --moira-accent: var(--moira-sky);
-  --moira-mint: #a7ebd9;
-  --moira-pink: #ffb5de;
-  --moira-subtle: #f0e9ff;
+  --moira-ink: #25232b;
+  --moira-muted: #706b79;
+  --moira-sky: #cfe9ff;
+  --moira-accent: #e8deff;
+  --moira-mint: #bcebcb;
+  --moira-pink: #ffafe0;
+  --moira-subtle: #f4f2fb;
   --moira-border: 2px solid var(--moira-ink);
-  --moira-radius: 6px;
+  --moira-radius: 4px;
+  --moira-shadow: 4px 4px 0 var(--moira-ink);
   --moira-font: 'Noto Sans KR', system-ui, sans-serif;
   font-family: var(--moira-font);
   color: var(--moira-ink);

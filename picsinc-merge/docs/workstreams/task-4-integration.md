@@ -1,5 +1,16 @@
 # ④ 전체 연결과 검증
 
+## 현재 Figma 전체 정합 작업 — 2026-11-07
+
+- 사용자 요청: 현재 Figma에 홈·병합·공동방·개인/전체 보정·결과를 맞추고 실제 연결 검증 후 배포한다. 제품 규칙은 MASTER_SPEC을 따른다.
+- 이번 분담은 아래 경로만 병렬 편집한다. 같은 main checkout을 사용한다. 하위 에이전트는 커밋·push·패키지 설치·공통 문서 수정·추가 에이전트 생성을 하지 않는다.
+- 화면 A: `src/features/home/FeatureHome.tsx`, `home.module.css`, `src/app/sessions/new/page.tsx`, `src/features/merge-flow/`, `src/features/mobile-flow/SessionFlow.tsx`, `tests/e2e/merge-ui.spec.ts`, 홈 테스트, `public/images/figma-current/home/`, `merge/`.
+- 화면 B: `src/features/retouch-room-entry/`, `src/features/retouch-room-flow/`, `src/features/mobile-flow/SessionEntry.tsx`, `CollaborativeRoom.tsx`, `ParticipantStatus.tsx`, `room-deletion.tsx`, `tests/e2e/retouch-room*.spec.ts`, `public/images/figma-current/room/`.
+- 화면 C: `src/features/face-retouch/ui/`, `src/features/region-editor/`, `tests/e2e/retouch-ui.spec.ts`, `public/images/figma-current/editor/`.
+- 메인: 공통 theme·components·globals·메타데이터·공용 브랜드 에셋·명세/상태·테스트 DB 준비·실제 연결 검증·Git/배포. 화면 간 계약 변경은 메인과 먼저 조율한다.
+- 실제 Figma 노드별 get_design_context와 스크린샷을 확인하고 재사용 가능한 기존 자산을 우선한다. 결과 보고에 변경 파일·검사·부족한 부분을 남긴다.
+
+
 ## 역할과 범위
 
 메인이 [MASTER_SPEC.md](../../MASTER_SPEC.md)의 모바일 흐름에 맞춰 ① 공유 작업, ② 영역 편집, ③ 기존 합성 기능을 연결합니다. 공통 화면·데이터 계약·설정·의존성·DB 전환과 최종 검증을 담당합니다. 진행 상황과 검증 결과는 [STATE.md](../../STATE.md)에만 기록합니다.

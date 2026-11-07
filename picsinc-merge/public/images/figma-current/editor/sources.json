@@ -1,0 +1,170 @@
+{
+  "fileKey": "RuyZOuRcQIN6M5RYjR6vJE",
+  "assets": [
+    {
+      "name": "back",
+      "url": "https://www.figma.com/api/mcp/asset/17a37a38-ae26-4721-8cd0-136a44f058e3.svg",
+      "node": "face"
+    },
+    {
+      "name": "eye",
+      "url": "https://www.figma.com/api/mcp/asset/50b8f03d-4b4e-489f-b5f7-19aa452b7cc7.svg",
+      "node": "face"
+    },
+    {
+      "name": "faceWidth",
+      "url": "https://www.figma.com/api/mcp/asset/8d79b83b-6bc2-4277-8b32-770f1b8d4f82.svg",
+      "node": "face"
+    },
+    {
+      "name": "lowerFace",
+      "url": "https://www.figma.com/api/mcp/asset/9ae4483a-c717-467f-b8e3-92a6428e0eb4.svg",
+      "node": "face"
+    },
+    {
+      "name": "cheekbone",
+      "url": "https://www.figma.com/api/mcp/asset/1da75180-3d58-47ba-a903-3757b983fc92.svg",
+      "node": "face"
+    },
+    {
+      "name": "chinLength",
+      "url": "https://www.figma.com/api/mcp/asset/856b291e-2852-4b25-a833-9de5f5fafd94.svg",
+      "node": "face"
+    },
+    {
+      "name": "jawAngle",
+      "url": "https://www.figma.com/api/mcp/asset/9ab6343b-30ec-489e-bab9-6c1c7752d760.svg",
+      "node": "face"
+    },
+    {
+      "name": "touch",
+      "url": "https://www.figma.com/api/mcp/asset/63198909-13b4-4fac-bf1f-7b3da377ca72.svg",
+      "node": "touch"
+    },
+    {
+      "name": "restore",
+      "url": "https://www.figma.com/api/mcp/asset/1cca5c1a-6457-4f10-aaec-f89dc6b3297d.svg",
+      "node": "touch"
+    },
+    {
+      "name": "eyeSize",
+      "url": "https://www.figma.com/api/mcp/asset/b4806ef1-2705-4fe3-b0ab-a84d1b62908d.svg",
+      "node": "eyes"
+    },
+    {
+      "name": "eyeHeight",
+      "url": "https://www.figma.com/api/mcp/asset/677707f9-0b3b-4889-8243-bfe8d83d20c1.svg",
+      "node": "eyes"
+    },
+    {
+      "name": "eyeThickness",
+      "url": "https://www.figma.com/api/mcp/asset/c9ced3bd-29d0-49bf-a0c5-9e4e435bbf75.svg",
+      "node": "eyes"
+    },
+    {
+      "name": "eyeLength",
+      "url": "https://www.figma.com/api/mcp/asset/6fc84db4-cfba-4923-b6b1-52d7aee5c385.svg",
+      "node": "eyes"
+    },
+    {
+      "name": "eyeSpacing",
+      "url": "https://www.figma.com/api/mcp/asset/5c75e877-2aff-4dba-afd9-2da3e05df8ff.svg",
+      "node": "eyes"
+    },
+    {
+      "name": "eyeLower",
+      "url": "https://www.figma.com/api/mcp/asset/fc089b3f-93c4-4838-a7c9-29d5e447bdf6.svg",
+      "node": "eyes"
+    },
+    {
+      "name": "eyeAngle",
+      "url": "https://www.figma.com/api/mcp/asset/a2b239a1-ca0a-42ec-80f8-2c43c7a17c4e.svg",
+      "node": "eyes"
+    },
+    {
+      "name": "eyeRedness",
+      "url": "https://www.figma.com/api/mcp/asset/3a07b0d2-278e-4348-af1b-b1ffeb026c6b.svg",
+      "node": "eyes"
+    },
+    {
+      "name": "eyeInner",
+      "url": "https://www.figma.com/api/mcp/asset/05bd5a2c-73bc-4446-b990-a32e6305095d.svg",
+      "node": "eyes"
+    },
+    {
+      "name": "eyeOuter",
+      "url": "https://www.figma.com/api/mcp/asset/a253b45c-b425-427b-8bb9-33b62cdc9c03.svg",
+      "node": "eyes"
+    },
+    {
+      "name": "lipSize",
+      "url": "https://www.figma.com/api/mcp/asset/7bb064da-750d-4bb6-a476-a8371875a241.svg",
+      "node": "lips"
+    },
+    {
+      "name": "lipWidth",
+      "url": "https://www.figma.com/api/mcp/asset/8706611f-4d39-4f0b-94b6-ad1db1f383a0.svg",
+      "node": "lips"
+    },
+    {
+      "name": "lipPosition",
+      "url": "https://www.figma.com/api/mcp/asset/f46f4f9d-402c-4299-8ac3-48233a380050.svg",
+      "node": "lips"
+    },
+    {
+      "name": "lipFullness",
+      "url": "https://www.figma.com/api/mcp/asset/74ff738e-679e-4a47-bef9-45ba8b1fab9a.svg",
+      "node": "lips"
+    },
+    {
+      "name": "noseSize",
+      "url": "https://www.figma.com/api/mcp/asset/225321fa-e8b5-44e3-9251-9cf8e98f70d0.svg",
+      "node": "nose"
+    },
+    {
+      "name": "noseLength",
+      "url": "https://www.figma.com/api/mcp/asset/18a6824e-1ce5-44d5-a280-acdb14f874c0.svg",
+      "node": "nose"
+    },
+    {
+      "name": "noseAlar",
+      "url": "https://www.figma.com/api/mcp/asset/15262971-08c7-490d-a68f-3c5fe3e14dee.svg",
+      "node": "nose"
+    },
+    {
+      "name": "noseBridge",
+      "url": "https://www.figma.com/api/mcp/asset/b6fe1a7e-3a12-4780-9623-be13eb940601.svg",
+      "node": "nose"
+    },
+    {
+      "name": "noseDorsum",
+      "url": "https://www.figma.com/api/mcp/asset/3e099cc3-d7ce-486f-8f73-8cc85c954fbf.svg",
+      "node": "nose"
+    },
+    {
+      "name": "noseTip",
+      "url": "https://www.figma.com/api/mcp/asset/623c30f2-cfa5-4166-b38b-23be64cfb37a.svg",
+      "node": "nose"
+    },
+    {
+      "name": "browHeight",
+      "url": "https://www.figma.com/api/mcp/asset/ee43f076-96ac-4de6-9180-d222a323f22a.svg",
+      "node": "brows"
+    },
+    {
+      "name": "browThickness",
+      "url": "https://www.figma.com/api/mcp/asset/518f3d05-2308-4724-87f0-4a91757baa40.svg",
+      "node": "brows"
+    },
+    {
+      "name": "browSpacing",
+      "url": "https://www.figma.com/api/mcp/asset/387914a1-dbb2-4ae5-b424-45822d8ce8b2.svg",
+      "node": "brows"
+    },
+    {
+      "name": "browAngle",
+      "url": "https://www.figma.com/api/mcp/asset/3542d31d-ad4f-40cd-8275-7ea716bc3984.svg",
+      "node": "brows"
+    }
+  ]
+}

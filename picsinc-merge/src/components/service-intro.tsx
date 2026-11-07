@@ -7,9 +7,9 @@ const steps = [
 export default function ServiceIntro({ onStart }: { onStart: () => void }) {
   return <main className="phone-shell service-intro">
     <div className="service-intro-content">
-      <div className="service-intro-logo"><img src="/images/figma/picsync-splash-logo.png" alt="PicSync" /></div>
+      <div className="service-intro-logo"><img src="/images/figma-current/moira-logo.svg" alt="MOIRA" /></div>
       <h1>친구들과 각자 보정하고<br />한 장으로 합쳐보세요</h1>
-      <p className="service-intro-description">평소 쓰던 보정 앱은 그대로 사용하세요.<br />PicSync가 각자의 보정 결과만 모아드려요.</p>
+      <p className="service-intro-description">평소 쓰던 보정 앱은 그대로 사용하세요.<br />MOIRA가 각자의 보정 결과만 모아드려요.</p>
       <ol className="service-intro-steps">
         {steps.map((step, index) => <li key={step.title}>
           <span className="service-intro-number" aria-hidden="true">{index + 1}</span>

@@ -15,7 +15,7 @@ import { TouchGuide, TouchMagnifier } from "./TouchFeedback";
 import { loadRoomMask } from "../image-io/room-mask";
 import styles from "./retouch.module.css";
 import theme from "@/features/home/theme.module.css";
-import WindowBar from "@/features/home/WindowBar";
+import { FlowProgress } from "@/components/FlowProgress";
 import Link from "next/link";
 
 type Photo = { id:number; bitmap:ImageBitmap; url:string; name:string; region?:HTMLCanvasElement; outline?:string };
@@ -24,6 +24,7 @@ const empty=initialState([]);
 export type RoomEditRecord = { schemaVersion: 1; scope: "personal" | "global"; faces: Face[]; edit: EditState };
 export type RoomEditorProps = { imageUrl: string; maskUrl?: string; scope: "personal" | "global"; nickname: string; disabled?: boolean; onSave: (blob: Blob, state: RoomEditRecord) => Promise<void>; onCancel: () => void; onDirtyChange?: (dirty: boolean) => void };
 export default function RetouchEditor({ room, participants }: { room?: RoomEditorProps; participants?: ReactNode } = {}) {
+  const [collapsed,setCollapsed]=useState(false),[showViewTools,setShowViewTools]=useState(false);
   const [photo,setPhoto]=useState<Photo|null>(null),[faces,setFaces]=useState<Face[]>([]),[selected,setSelected]=useState("");
   const [detectedFaces,setDetectedFaces]=useState<Face[]>([]);
   const [edit,setEdit]=useState<EditState>(empty),[group,setGroup]=useState<typeof groups[number]>("얼굴형"),[control,setSelectedControl]=useState<ControlId>("faceWidth");
@@ -83,6 +84,13 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
     const resize=()=>{const el=viewport.current;if(!el)return;const scale=Math.min(el.clientWidth/photo.bitmap.width,el.clientHeight/photo.bitmap.height);setFit({width:photo.bitmap.width*scale,height:photo.bitmap.height*scale});};
     const observer=new ResizeObserver(resize);observer.observe(viewport.current);resize();return ()=>observer.disconnect();
   },[photo]);
+  useEffect(()=>{
+    if(room?.scope!=="personal"||collapsed||fit.width<=1||!viewport.current)return;
+    const face=faces.find(item=>item.id===selected);if(!face)return;
+    const box=bounds(oval.map(index=>face.landmarks[index]));
+    const z=Math.max(1,Math.min(5,viewport.current.clientWidth/(box.width*fit.width*2),viewport.current.clientHeight/(box.height*fit.height*1.5)));
+    setZoom(z);setPan({x:(.5-box.x-box.width/2)*fit.width*z,y:(.5-box.y-box.height/2)*fit.height*z});
+  },[room?.scope,selected,faces,fit.width,fit.height,collapsed]);
   useEffect(()=>{
     if(!photo||!renderer.current||!preview.current) return;
     const current=++generation.current;setRendering(true);
@@ -233,20 +241,21 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
       renderer.current.draw(photo.bitmap.width,photo.bitmap.height,false);
       const blob=await png(canvas.current!);renderer.current.ensureHealthy();
       if(room){await room.onSave(blob,{schemaVersion:1,scope:room.scope,faces:detectedFaces,edit:editRef.current});return;}
-      download(blob,`${photo.name.replace(/\.[^.]+$/,"")}-picsync.png`);
+      download(blob,`${photo.name.replace(/\.[^.]+$/,"")}-moira.png`);
       setNotice(`원본 해상도 ${photo.bitmap.width} × ${photo.bitmap.height} PNG를 만들었어요. 다운로드 목록을 확인해주세요.`);
     }catch(e){setError((e as Error).message);}finally{drawPreview();setSaving(false);}
   }
   function resetTouch(){clearTouchHistory();update(clearTouch(editRef.current,touchOwner));}
 
   const saveLabel = saving ? "저장 중…" : room ? room.scope === "global" ? "전체 사진 편집 완료" : "내 얼굴 보정 완료" : "PNG 저장";
-  return <main className={`${theme.theme} ${styles.editor}`}>
+  return <main className={`${theme.theme} ${styles.editor} ${room ? styles.roomEditor : ""} ${room?.scope === "global" ? styles.globalEditor : ""} ${collapsed ? styles.collapsed : ""} ${mode !== "face" ? styles.touchEditor : ""}`}>
     <header className={styles.header}>
-      {room ? <button className={styles.back} aria-label="뒤로 가기" disabled={saving} onClick={room.onCancel}><img src="/images/retouch-ui/back.svg" alt="" /></button> : <Link className={styles.back} href="/" aria-label="기능 선택으로" onClick={event=>{if(hasEdits(editRef.current)&&!window.confirm("변경사항을 저장하지 않고 나갈까요?"))event.preventDefault();}}><img src="/images/retouch-ui/back.svg" alt="" /></Link>}
-      <strong>{room ? room.scope === "global" ? "전체 사진 보정" : "내 얼굴 보정" : "MOIRA / 함께 보정하기"}</strong>
-      <button className={styles.save} aria-label={saveLabel} disabled={room?.disabled||!selected||!photo||loading||rendering||saving||!!engineError||!!calculationError||!field.current} onClick={()=>void save()}>{saving?"저장 중…":room?"완료":"PNG 저장"}</button>
+      {room ? <button className={styles.back} aria-label="뒤로 가기" disabled={saving} onClick={room.onCancel}><img src="/images/figma-current/editor/back.svg" alt="" /></button> : <Link className={styles.back} href="/" aria-label="기능 선택으로" onClick={event=>{if(hasEdits(editRef.current)&&!window.confirm("변경사항을 저장하지 않고 나갈까요?"))event.preventDefault();}}><img src="/images/figma-current/editor/back.svg" alt="" /></Link>}
+      <strong>{room ? room.scope === "global" ? "전체 사진 터치 보정" : "내 얼굴 보정" : "MOIRA / 함께 보정하기"}</strong>
+      <button className={styles.save} aria-label={saveLabel} disabled={room?.disabled||!selected||!photo||loading||rendering||saving||!!engineError||!!calculationError||!field.current} onClick={()=>void save()}>{saving?"저장 중…":room?room.scope==="global"?"저장":"완료":"PNG 저장"}</button>
     </header>
-    {participants && <div className={styles.participants}>{participants}</div>}
+    {room && <FlowProgress step={3} />}
+    {participants && <div className={room?.scope === "global" ? styles.messages : styles.participants}>{participants}</div>}
     {!room && !photo && <nav className={styles.entry} aria-label="공동 보정"><span className={styles.badge}>친구들과, 한 장으로</span><h1>각자 마음에 들게,<br/>한 장에 모이게.</h1><p>같은 사진에서 친구들과 내 얼굴만 보정해요.</p><Link href="/retouch/rooms/new">공동 보정방 만들기 <span aria-hidden="true">→</span></Link></nav>}
     {!room && <div className={styles.openRow}><span>{photo ? photo.name : "혼자 보정할 사진이 있나요?"}</span><label className={styles.open}>사진 열기<input aria-label="사진 열기" type="file" accept="image/jpeg,image/png" disabled={saving} onChange={e=>{const f=e.target.files?.[0];if(f)void openPhoto(f);e.target.value="";}}/></label></div>}
     <div className={styles.viewport} ref={viewport} onPointerDown={startPointer} onPointerMove={movePointer} onPointerUp={e=>endPointer(e)} onPointerCancel={e=>endPointer(e,true)} onLostPointerCapture={e=>endPointer(e,true)} onPointerLeave={()=>{if(!pointers.current.size)setCursor(null);}}>
@@ -256,37 +265,53 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
         <img className={styles.original} src={photo.url} alt="업로드한 원본" draggable={false}/>
         <canvas key={photo.id} ref={canvas} className={styles.canvas} aria-label="보정 미리보기" style={{visibility:engineError||calculationError?"hidden":"visible"}}/>
         {photo.outline&&!compare&&<img src={photo.outline} alt="내 편집 영역" className={styles.canvas}/> }
-        {mode==="face"&&!compare&&faces.map((f,i)=>{const b=bounds(oval.map(n=>f.landmarks[n]));return <div key={f.id} className={`${styles.faceBox} ${selected===f.id?styles.selectedFace:""}`} style={{left:`${b.x*100}%`,top:`${b.y*100}%`,width:`${b.width*100}%`,height:`${b.height*100}%`}}><span>{room?.nickname??`얼굴 ${i+1}`}</span></div>;})}
+        {mode==="face"&&!compare&&(!room||collapsed)&&faces.map((f,i)=>{const b=bounds(oval.map(n=>f.landmarks[n]));return <div key={f.id} className={`${styles.faceBox} ${selected===f.id?styles.selectedFace:""}`} style={{left:`${b.x*100}%`,top:`${b.y*100}%`,width:`${b.width*100}%`,height:`${b.height*100}%`}}><span>{room?.nickname??`얼굴 ${i+1}`}</span></div>;})}
         {cursor&&active&&!compare&&!engineError&&!calculationError&&(mode==="touch"||mode==="restore")&&<TouchGuide point={cursor} start={mode==="touch"?touchStart:null} radius={radius*(mode==="touch"?TOUCH_SUPPORT:1)} width={photo.bitmap.width} height={photo.bitmap.height}/>}
       </div>:<div className={styles.empty}><div className={styles.friends}><img src="/images/home/lilac.png" width="72" height="72" alt=""/><img src="/images/home/pink.png" width="70" height="70" alt=""/></div><h2>내 사진으로 보정하기</h2><p>사진을 열고 얼굴을 선택하세요.<br/>사진과 보정은 이 탭 안에서 처리해요.</p><small>JPEG·PNG / 20MB / 1,600만 픽셀</small></div>}
       {photo&&cursor&&touchStart&&active&&!compare&&!calculationError&&!engineError&&(mode==="touch"||mode==="restore")&&<TouchMagnifier source={canvas} refresh={refreshLens} point={cursor} imageWidth={photo.bitmap.width} imageHeight={photo.bitmap.height} displayScale={fit.width/photo.bitmap.width*zoom} right={!!viewport.current&&!!stage.current&&stage.current.getBoundingClientRect().left+cursor.x/photo.bitmap.width*stage.current.getBoundingClientRect().width<viewport.current.getBoundingClientRect().left+viewport.current.clientWidth/2}/>}
       {loading&&<div className={styles.progress} role="status">얼굴 기준점을 찾고 있어요…</div>}
-      {photo&&<div className={styles.topTools}><button disabled={!selectable} onClick={()=>{setZoom(Math.max(1,zoom-.5));}}>−</button><span>{zoom.toFixed(1)}×</span><button disabled={!selectable} onClick={()=>setZoom(Math.min(5,zoom+.5))}>＋</button><button disabled={!selectable} onClick={()=>{setZoom(1);setPan({x:0,y:0});}}>맞춤</button></div>}
-      {photo&&<button className={styles.compare} aria-label="누르고 원본 비교" title="누르고 원본 비교" disabled={saving} onPointerDown={e=>{e.stopPropagation();setCompare(true);}} onPointerUp={()=>setCompare(false)} onPointerCancel={()=>setCompare(false)} onPointerLeave={()=>setCompare(false)} onKeyDown={e=>{if(e.code==="Space"||e.code==="Enter")setCompare(true);}} onKeyUp={()=>setCompare(false)}><img src="/images/retouch-ui/eye.svg" alt="" /></button>}
+      {photo&&showViewTools&&<div className={styles.topTools}><button disabled={!selectable} onClick={()=>{setZoom(Math.max(1,zoom-.5));}}>−</button><span>{zoom.toFixed(1)}×</span><button disabled={!selectable} onClick={()=>setZoom(Math.min(5,zoom+.5))}>＋</button><button disabled={!selectable} onClick={()=>{setZoom(1);setPan({x:0,y:0});}}>맞춤</button></div>}
+      {photo&&<button className={styles.compare} aria-label="누르고 원본 비교" title="누르고 원본 비교" disabled={saving} onPointerDown={e=>{e.stopPropagation();setCompare(true);}} onPointerUp={()=>setCompare(false)} onPointerCancel={()=>setCompare(false)} onPointerLeave={()=>setCompare(false)} onKeyDown={e=>{if(e.code==="Space"||e.code==="Enter")setCompare(true);}} onKeyUp={()=>setCompare(false)}><img src="/images/figma-current/editor/eye.svg" alt="" /></button>}
       {compare&&<span className={styles.originalBadge}>원본</span>}
     </div>
     {!photo && (error || engineError || calculationError) && <p className={styles.emptyError} role="alert">{error || engineError || calculationError}</p>}
-    {photo && <section className={styles.panel}>
-      <div className={styles.handle} aria-hidden="true"/><div className={styles.windowTitle}><WindowBar title={mode==="face"?"face_editor.exe":"touch_editor.exe"}/></div>
-      <div className={styles.faceRow} aria-label="얼굴 선택">{room?.scope==="global"?<span>영역에 상관없이 원하는 부분을 보정해요</span>:faces.length?faces.map((f,i)=><button key={f.id} aria-pressed={f.id===selected} disabled={saving||loading} onClick={()=>setSelected(f.id)}>얼굴 {i+1}</button>):<span>사진에서 얼굴을 찾으면 여기에 표시돼요</span>}</div>
-
-      <div className={styles.modeRow}>{([["face","얼굴 보정"],["touch","터치 보정"],["restore","부분 복원"],["move","사진 이동"]] as const).filter(([id])=>id!=="face"||room?.scope!=="global").map(([id,label])=><button key={id} aria-pressed={mode===id} disabled={!active||(id==="face"&&!faces.length)} onClick={()=>{cancelInteraction.current();setMode(id);}}>{room&&id==="touch"?"클래식":room&&id==="restore"?"복원":label}</button>)}</div>
-      {mode==="face"?<>
-        <nav className={styles.tabs} aria-label="보정 부위">{groups.map(g=><button key={g} aria-pressed={group===g} onClick={()=>{setGroup(g);setSelectedControl(controls.find(c=>c[2]===g)![0]);}}>{g}</button>)}</nav>
-        <div className={styles.sliderTitle}><label htmlFor="retouch-strength">{controlInfo[1]} <output>{value>0?"+":""}{value}</output></label><button disabled={!active||value===0} onClick={()=>update(setControl(editRef.current,selected,control,0))}>항목 초기화</button></div>
-        <input id="retouch-strength" className={styles.slider} type="range" min={controlDefinition.min} max={controlDefinition.max} step="1" value={value} disabled={!active} onChange={e=>update(setControl(editRef.current,selected,control,Number(e.target.value)))}/>
-        <div className={styles.scale}><span>{controlDefinition.left} {controlDefinition.min}</span>{controlDefinition.min<0&&<span>원본 0</span>}<span>{controlDefinition.right} +{controlDefinition.max}</span></div>
-        <p className={styles.help}>{controlInfo[3]}{rendering&&<span role="status"> · 미리보기 갱신 중</span>}</p>
-        <div className={styles.features} aria-label="세부 보정 항목">{controls.filter(c=>c[2]===group).map(([id,label])=><button key={id} aria-label={label} aria-pressed={control===id} data-control={id} onClick={()=>setSelectedControl(id)}><FeatureIcon id={id}/><span>{id==="lowerFace"?"줄이기":label}</span>{!!edit.settings[selected]?.[id]&&<i/>}</button>)}</div>
-
-      </>:<div className={styles.touchPanel}>{mode==="move"?<p>사진을 드래그해 이동하거나 두 손가락으로 확대하세요.</p>:<><label htmlFor="brush-size">브러시 크기 <output>{brush}</output></label><input id="brush-size" className={styles.slider} type="range" min="1" max="20" step="0.1" value={brush} disabled={!active} onChange={e=>setBrush(Number(e.target.value))}/>{mode==="touch"&&<><label htmlFor="touch-strength">보정 강도 <output>{touchStrength}</output></label><input id="touch-strength" className={styles.slider} type="range" min="2" max="20" step="0.5" value={touchStrength} disabled={!active} onChange={e=>setTouchStrength(Number(e.target.value))}/></>}<p>{mode==="touch"?(room?.scope==="global"?"영역에 상관없이 원하는 부분을 보정해요":"내 영역을 원하는 방향으로 살짝 밀어주세요."):"이번 편집에서 추가한 터치만 되돌려요. 얼굴 보정과 이전 저장 결과는 유지돼요."}</p><div className={styles.touchActions}><button disabled={!active||!canUndo||!!touchStart} onClick={undoTouch}>마지막 터치 취소</button><button disabled={!active} onClick={resetTouch}>{room?"이번 터치 초기화":"선택 얼굴 터치 초기화"}</button></div></>}</div>}
-      <div className={styles.messages} aria-live="polite">{error||engineError||calculationError?<p role="alert">{error||engineError||calculationError}</p>:notice?<p>{notice}</p>:<p>{room?.scope==="global"?"클래식으로 밀고 복원으로 이번 터치를 되돌려요.":"부위별로 −100부터 +100까지 조절할 수 있어요."}</p>}{limited&&<p className={styles.warning}>다른 얼굴과 가까운 변형은 보호 영역에서 제한돼요.</p>}{strained&&<p className={styles.warning}>윤곽이 접히지 않도록 변형 강도를 제한했어요.</p>}</div>
-      <div className={styles.footer}><span>{room?"완료 버튼을 눌러 방에 저장해주세요":"이 탭을 닫으면 설정이 사라져요"}</span>{room?.scope!=="global"&&<button disabled={!active} onClick={()=>{if(window.confirm(room?"선택한 얼굴의 보정 항목을 초기화할까요? 이번 터치는 유지돼요.":"선택한 얼굴의 모든 항목과 터치를 초기화할까요?")){clearTouchHistory();update(resetFace(editRef.current,selected));}}}>{room?"선택 얼굴 항목 초기화":"선택 얼굴 전체 초기화"}</button>}</div>
+    {photo && <section className={styles.panel} aria-label="보정 도구">
+      <button className={styles.handle} aria-label={collapsed?"보정 도구 펼치기":"보정 도구 접기"} aria-expanded={!collapsed} onClick={()=>{setCollapsed(!collapsed);if(!collapsed){setZoom(1);setPan({x:0,y:0});}}}><span/></button>
+      {room?.scope!=="global"&&<div className={styles.modeRow}>
+        <button aria-pressed={mode==="face"} disabled={!active||!faces.length} onClick={()=>{cancelInteraction.current();setMode("face");setCollapsed(false);}}>얼굴 보정</button>
+        <button aria-pressed={mode!=="face"} disabled={!active} onClick={()=>{cancelInteraction.current();setMode("touch");setCollapsed(false);}}>터치 보정</button>
+      </div>}
+      {!collapsed&&<div id="retouch-tool-content">
+        {mode==="face"?<>
+          <nav className={styles.tabs} aria-label="보정 부위">{groups.map(g=><button key={g} aria-pressed={group===g} onClick={()=>{setGroup(g);setSelectedControl(controls.find(c=>c[2]===g)![0]);}}>{g}</button>)}</nav>
+          <div className={styles.sliderTitle}><label htmlFor="retouch-strength">{displayLabel(control)} · <output>{value>0?"+":""}{value}</output></label></div>
+          <input id="retouch-strength" className={styles.slider} aria-valuetext={`${controlDefinition.left} ${controlDefinition.min}부터 ${controlDefinition.right} ${controlDefinition.max}, 현재 ${value}`} type="range" min={controlDefinition.min} max={controlDefinition.max} step="1" value={value} disabled={!active} onChange={e=>update(setControl(editRef.current,selected,control,Number(e.target.value)))}/>
+          <div className={styles.features} aria-label="세부 보정 항목">{controls.filter(c=>c[2]===group).slice().sort((a,b)=>a[0]==="browHeadSpacing"?1:b[0]==="browHeadSpacing"?-1:0).map(([id,label])=><button key={id} aria-label={label} aria-pressed={control===id} data-control={id} onClick={()=>setSelectedControl(id)}><FeatureIcon id={id}/><span>{displayLabel(id)}</span>{!!edit.settings[selected]?.[id]&&<i/>}</button>)}</div>
+        </>:<div className={styles.touchPanel}>
+          <label htmlFor="brush-size">브러시 크기 · <output>{brush}</output></label><input id="brush-size" className={styles.slider} type="range" min="1" max="20" step="0.1" value={brush} disabled={!active} onChange={e=>setBrush(Number(e.target.value))}/>
+          <div className={styles.features} aria-label="터치 보정 도구">{([["touch","클래식"],["restore","복원"]] as const).map(([id,label])=><button key={id} aria-label={label} aria-pressed={mode===id} disabled={!active} onClick={()=>{cancelInteraction.current();setMode(id);}}><span className={styles.featureIcon}><img src={`/images/figma-current/editor/${id}.svg`} alt=""/></span><span>{label}</span></button>)}</div>
+        </div>}
+      </div>}
     </section>}
+    {photo&&<details className={styles.options}>
+      <summary>보기 및 보정 설정</summary>
+      {(!room||faces.length>1)&&<div className={styles.faceRow} aria-label="얼굴 선택">{faces.map((f,i)=><button key={f.id} aria-pressed={f.id===selected} disabled={saving||loading} onClick={()=>setSelected(f.id)}>얼굴 {i+1}</button>)}</div>}
+      <div className={styles.touchActions}><button aria-pressed={showViewTools} onClick={()=>setShowViewTools(!showViewTools)}>확대 도구</button><button aria-pressed={mode==="move"} disabled={!active} onClick={()=>{cancelInteraction.current();setMode(mode==="move"?"touch":"move");}}>사진 이동</button></div>
+      {mode==="face"?<><p className={styles.help}>{controlInfo[3]} · {controlDefinition.left} {controlDefinition.min} / {controlDefinition.right} +{controlDefinition.max}</p><button disabled={!active||value===0} onClick={()=>update(setControl(editRef.current,selected,control,0))}>항목 초기화</button></>:<>
+        {mode==="touch"&&<><label htmlFor="touch-strength">보정 강도 · {touchStrength}</label><input id="touch-strength" className={styles.slider} type="range" min="2" max="20" step="0.5" value={touchStrength} disabled={!active} onChange={e=>setTouchStrength(Number(e.target.value))}/></>}
+        <p className={styles.help}>{mode==="move"?"사진을 드래그해 이동하거나 두 손가락으로 확대하세요.":mode==="touch"?(room?.scope==="global"?"영역에 상관없이 원하는 부분을 보정해요.":"선택한 영역을 원하는 방향으로 살짝 밀어주세요."):"이번 편집에서 추가한 터치만 되돌려요. 얼굴 보정과 이전 저장 결과는 유지돼요."}</p>
+        <div className={styles.touchActions}><button disabled={!active||!canUndo||!!touchStart} onClick={undoTouch}>마지막 터치 취소</button><button disabled={!active} onClick={resetTouch}>{room?"이번 터치 초기화":"선택 얼굴 터치 초기화"}</button></div>
+      </>}
+      {notice&&<p className={styles.help}>{notice}</p>}
+      {room?.scope!=="global"&&<button disabled={!active} onClick={()=>{if(window.confirm(room?"선택한 얼굴의 보정 항목을 초기화할까요? 이번 터치는 유지돼요.":"선택한 얼굴의 모든 항목과 터치를 초기화할까요?")){clearTouchHistory();update(resetFace(editRef.current,selected));}}}>{room?"선택 얼굴 항목 초기화":"선택 얼굴 전체 초기화"}</button>}
+    </details>}
+    <div className={styles.messages} aria-live="polite">{photo&&(error||engineError||calculationError)&&<p role="alert">{error||engineError||calculationError}</p>}{limited&&<p className={styles.warning}>다른 얼굴과 가까운 변형은 보호 영역에서 제한돼요.</p>}{strained&&<p className={styles.warning}>윤곽이 접히지 않도록 변형 강도를 제한했어요.</p>}</div>
   </main>;
 }
+function displayLabel(id:ControlId){
+  const labels:Partial<Record<ControlId,string>>={lowerFace:"줄이기",lipPosition:"위치",lipFullness:"도톰하게",browSpacing:"간격",browHeadSpacing:"앞머리"};
+  return labels[id]??controls.find(c=>c[0]===id)![1];
+}
 function FeatureIcon({id}:{id:ControlId}){
-  if (["faceWidth","lowerFace","cheekbone","chinLength","jawAngle"].includes(id)) return <span className={styles.featureIcon} aria-hidden="true"><img src={`/images/retouch-ui/${id}.svg`} alt="" /></span>;
-  const group=controls.find(c=>c[0]===id)![2];
-  return <svg viewBox="0 0 32 32" aria-hidden="true">{group==="얼굴형"?<><path d="M9 5c-4 5-4 16 7 23C27 21 27 10 23 5"/><path d="M3 10v12m26-12v12M3 16h4m18 0h4"/></>:group==="눈"?<><path d="M3 16c7-10 19-10 26 0-7 10-19 10-26 0Z"/><circle cx="16" cy="16" r="4"/></>:group==="입술"?<><path d="m3 17 7-6c3-2 4 1 6 1s3-3 6-1l7 6c-7 10-19 10-26 0Z"/><path d="M3 17h26"/></>:group==="코"?<><path d="M13 4c0 12-4 13-5 19 4 5 12 5 16 0-1-6-5-7-5-19"/><path d="M11 23h3m4 0h3"/></>:<><path d="m3 13 7-4 8 1 11 7-12-4-7-1-7 3Z"/><path d="m4 23 9-3 13 4"/></>}</svg>;
+  return <span className={styles.featureIcon} aria-hidden="true"><img src={`/images/figma-current/editor/${id==="browHeadSpacing"?"browSpacing":id}.svg`} alt="" /></span>;
 }

@@ -1,0 +1,25 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="Editable vector / nose-wing">
+<path id="Vector" d="M9 3.75C9 9 6.75 12.75 6 15.75C4.5 18.75 7.5 21 9.75 18.75C11.25 20.25 12.75 20.25 14.25 18.75C16.5 21 19.5 18.75 18 15.75C17.25 12.75 15 9 15 3.75" stroke-width="1.275" stroke-linecap="round" stroke-linejoin="round" stroke="#25232B"/>
+<g id="Vector_2">
+<use xlink:href="#stroke0_0_1083" fill="#25232B"/>
+<mask id="stroke1_0_1083" fill="white">
+<use xlink:href="#stroke0_0_1083"/>
+</mask>
+<path d="M8.85 17.25C8.85 17.5814 8.58137 17.85 8.25 17.85C7.91863 17.85 7.65 17.5814 7.65 17.25C7.65 16.9186 7.91863 16.65 8.25 16.65C8.58137 16.65 8.85 16.9186 8.85 17.25Z" stroke-width="1.5" stroke="#25232B" mask="url(#stroke1_0_1083)"/>
+</g>
+<path id="Vector_3" d="M15.75 17.85C16.0814 17.85 16.35 17.5814 16.35 17.25C16.35 16.9186 16.0814 16.65 15.75 16.65C15.4186 16.65 15.15 16.9186 15.15 17.25C15.15 17.5814 15.4186 17.85 15.75 17.85Z" fill="#25232B"/>
+<path id="Vector_4" d="M3.75 15C4.75 14 6.25 14.25 8.25 15.75C9.75 17.75 9.5 19.25 7.5 20.25C5 21.25 3.75 19.5 3.75 15Z" fill="#25232B"/>
+<g id="Vector_5">
+<path d="M20.25 15C19.25 14 17.75 14.25 15.75 15.75C14.25 17.75 14.5 19.25 16.5 20.25C19 21.25 20.25 19.5 20.25 15Z" fill="#E8DEFF"/>
+<mask id="stroke2_0_1083" fill="white">
+<path d="M20.25 15C19.25 14 17.75 14.25 15.75 15.75C14.25 17.75 14.5 19.25 16.5 20.25C19 21.25 20.25 19.5 20.25 15Z"/>
+</mask>
+<path d="M20.25 15C19.25 14 17.75 14.25 15.75 15.75C14.25 17.75 14.5 19.25 16.5 20.25C19 21.25 20.25 19.5 20.25 15Z" stroke-width="1.5" stroke="#25232B" mask="url(#stroke2_0_1083)"/>
+</g>
+<path id="Vector_6" d="M3.49987 15.5C2.50013 16.5 4.49987 22 6.99987 20M20.0002 15.5C21.5002 17 19.0002 22 16.5002 20" stroke-width="1.275" stroke-linecap="round" stroke-linejoin="round" stroke="#6E52DC"/>
+</g>
+<defs>
+<path id="stroke0_0_1083" d="M8.25 17.85C8.58137 17.85 8.85 17.5814 8.85 17.25C8.85 16.9186 8.58137 16.65 8.25 16.65C7.91863 16.65 7.65 16.9186 7.65 17.25C7.65 17.5814 7.91863 17.85 8.25 17.85Z"/>
+</defs>
+</svg>

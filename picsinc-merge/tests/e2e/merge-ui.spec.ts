@@ -5,7 +5,7 @@ import sharp from 'sharp';
 // HTTP fixtures exercise the UI without creating rooms or uploading private media.
 for (const width of [402, 390, 320]) test(`merge flow and PNG saving at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 874 });
-  const output = 'private/merge-ui-20261106';
+  const output = 'private/merge-ui-20261107';
   await mkdir(output, { recursive: true });
   const photo = await readFile('public/images/home/four-cut.png');
   const { width: pw, height: ph } = await sharp(photo).metadata();
@@ -40,6 +40,8 @@ for (const width of [402, 390, 320]) test(`merge flow and PNG saving at ${width}
     await page.screenshot({ path: `${output}/${name}-${width}.png`, fullPage: true });
   }
   await page.goto('/sessions/new');
+  await expect(page.getByRole('heading', { name: '친구들과 각자 보정하고 한 장으로 합쳐보세요' })).toBeVisible();
+  await capture('intro');
   await page.getByRole('button', { name: '시작하기', exact: true }).click();
   await page.getByLabel('대표자 이름').fill('민선');
   await capture('start');
@@ -70,11 +72,13 @@ for (const width of [402, 390, 320]) test(`merge flow and PNG saving at ${width}
   await page.getByLabel('보정한 사진 선택', { exact: true }).setInputFiles({ name: 'edited.png', mimeType: 'image/png', buffer: photo });
   await page.getByRole('checkbox').check();
   await page.getByRole('button', { name: '계속', exact: true }).click();
-  await expect(page.getByRole('button', { name: '현재 결과로 병합하기' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '사진 합치기' })).toBeEnabled();
   await capture('status');
-  await page.getByRole('button', { name: '현재 결과로 병합하기' }).click();
+  await page.getByRole('button', { name: '사진 합치기' }).click();
   await expect(page.getByRole('link', { name: '사진 저장하기' })).toBeVisible();
   await capture('result');
+  await expect(page.getByRole('link', { name: '다른 사진으로 새로 하기' })).toHaveAttribute('href', '/sessions/new');
+  await expect(page.getByText('민선 · 예솔의 보정이 모두 반영됐어요.')).toBeVisible();
   await expect(page.getByRole('link', { name: '사진 저장하기' })).toHaveAttribute('href', `${base}/assets/final`);
   // Chromium's download navigation bypasses Playwright routing and reaches the real
   // auth-protected API. Check the API target above; use the identical static PNG
@@ -90,9 +94,10 @@ for (const width of [402, 390, 320]) test(`merge flow and PNG saving at ${width}
   await capture('participant-join');
   await page.getByRole('button', { name: '참여하기', exact: true }).click();
   await expect(page.getByRole('button', { name: '이미 보정했어요' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '원본 사진 저장하기' })).toHaveCount(0);
   submitted = true;
   await page.goto('/sessions/merge-ui?step=status');
-  await expect(page.getByRole('button', { name: '현재 결과로 병합하기' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '사진 합치기' })).toHaveCount(0);
   await capture('participant-wait');
   expect(writes).toContain(`${base}/original-selection`);
   expect(writes).toContain(`${base}/selection`);

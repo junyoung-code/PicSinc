@@ -1,0 +1,5 @@
+.progress { display: flex; justify-content: center; align-items: center; gap: 4px; height: 16px; flex-shrink: 0; }
+.progress span { width: 40px; border: 1px solid #25232b; border-radius: 2px; }
+.done { height: 6px; background: #bcebcb; }
+.current { height: 8px; background: #e8deff; }
+.progress .upcoming { height: 4px; background: #f4f2fb; border-color: #706b79; }

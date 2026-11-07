@@ -13,6 +13,8 @@ for (const width of [402, 390, 320]) {
     await page.clock.runFor(5100);
     const choices = page.getByRole("navigation", { name: "사진 기능 선택" });
     await expect(choices.getByRole("link")).toHaveCount(2);
+    await expect(page.getByRole("heading", { name: "다같이 모여라, MOIRA!" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "혼자 사진 보정하기" })).toHaveAttribute("href", "/retouch");
     await expect(page.getByLabel("MOIRA 시작 화면")).toHaveCount(0);
     await expect(page.getByRole("link", { name: "함께 보정", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "사진 합치기", exact: true })).toBeVisible();
@@ -34,8 +36,8 @@ for (const width of [402, 390, 320]) {
     }
     await page.screenshot({ path: testInfo.outputPath(`home-${width}.png`), fullPage: true });
     await page.getByRole("link", { name: "함께 보정", exact: true }).click();
-    await expect(page).toHaveURL(/\/retouch$/);
-    await expect(page.getByRole("link", { name: "공동 보정방 만들기", exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/\/retouch\/rooms\/new$/);
+    await expect(page.getByLabel("대표자 이름")).toBeVisible();
     await expect(page.getByLabel("MOIRA 시작 화면")).toHaveCount(0);
     await page.goBack();
     await expect(choices).toBeVisible();

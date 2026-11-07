@@ -1,0 +1,13 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Editable vector / brow-height">
+<g id="Vector">
+<path d="M3.75 13.5C7.5 8.25 13.5 7.5 19.5 10.5L18.75 12.75C13.5 10.5 9 12 4.5 15.75L3.75 13.5Z" fill="#E8DEFF"/>
+<mask id="stroke0_0_1052" fill="white">
+<path d="M3.75 13.5C7.5 8.25 13.5 7.5 19.5 10.5L18.75 12.75C13.5 10.5 9 12 4.5 15.75L3.75 13.5Z"/>
+</mask>
+<path d="M3.75 13.5C7.5 8.25 13.5 7.5 19.5 10.5L18.75 12.75C13.5 10.5 9 12 4.5 15.75L3.75 13.5Z" stroke-width="1.5" stroke="#25232B" mask="url(#stroke0_0_1052)"/>
+</g>
+<path id="Vector_2" d="M3.75 13.5C7.5 8.25 13.5 7.5 19.5 10.5L18.75 12.75C13.5 10.5 9 12 4.5 15.75L3.75 13.5Z" stroke-width="1.275" stroke-linecap="round" stroke-linejoin="round" stroke="#25232B"/>
+<path id="Vector_3" d="M21.75 5.25V18.75M23.25 6.75L21.75 5.25L20.25 6.75M23.25 17.25L21.75 18.75L20.25 17.25" stroke-width="1.125" stroke-linecap="round" stroke-linejoin="round" stroke="#6E52DC"/>
+</g>
+</svg>

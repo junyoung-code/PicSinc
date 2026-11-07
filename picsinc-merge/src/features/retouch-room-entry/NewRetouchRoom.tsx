@@ -2,13 +2,13 @@
 import { useRef, useState } from 'react';
 import { PhotoPicker, StatusMessage } from '@/components/mobile-shell';
 import MobileShell from '@/features/retouch-room-flow/RetouchShell';
-import WindowBar from '@/features/home/WindowBar';
 import styles from '@/features/retouch-room-flow/room.module.css';
 import { photoError, rememberRecovery, usePreview } from '@/features/mobile-flow/client';
 import { encodedSize, validateDimensions } from '@/features/face-retouch/image-io/headers';
 import { sendUpload } from '@/core/remote-client';
 
 export default function NewRetouchRoom() {
+  const [step, setStep] = useState<'name' | 'photo'>('name');
   const [nickname, setNickname] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false), [checking, setChecking] = useState(false);
@@ -36,19 +36,17 @@ export default function NewRetouchRoom() {
       location.assign(result.shareUrl);
     } catch (error) { setMessage(error instanceof Error ? error.message : '보정방을 만들지 못했어요. 다시 시도해 주세요.'); setBusy(false); }
   }
-  return <MobileShell title="공동 보정방 만들기" showProgress={false} backDisabled={busy} onBack={() => location.assign('/retouch')}
-    footer={<button className="primary-button" disabled={busy || checking || !file || !nickname.trim()} onClick={() => void create()}>{busy ? '보정방을 만들고 있어요…' : '공동 보정방 만들기'}</button>}>
-    <span className={styles.badge}>친구들과, 한 장으로</span>
-    <h1>각자 마음에 들게,<br/>한 장에 모이게.</h1>
-    <p className="description">사진 한 장을 올리고<br/>친구들과 내 얼굴만 보정해요.</p>
-    <div className={styles.photoWindow}>
-      <WindowBar title="our_photo.png" />
-      <PhotoPicker file={file} preview={preview} label="원본 사진 선택" onChange={next => void pick(next)} busy={busy} />
-      <img className={styles.lilac} src="/images/home/lilac.png" width="72" height="72" alt="" />
-      <img className={styles.pink} src="/images/home/pink.png" width="70" height="70" alt="" />
-    </div>
-    <label className="name-field">대표자 이름<input value={nickname} onChange={event => setNickname(event.target.value)} disabled={busy} maxLength={40} autoComplete="nickname" placeholder="친구들이 알아볼 이름" required /></label>
-    <StatusMessage message={checking ? '사진 크기를 확인하고 있어요…' : message} />
-    <div className={styles.steps}><span>01 사진 올리기</span><span>02 친구 초대</span><span>03 함께 보정</span></div>
+  return <MobileShell title={step === 'name' ? 'MOIRA' : '원본 사진 올리기'} brand={step === 'name'} hideBack={step === 'name'} showProgress={step === 'photo'} progress={10} backDisabled={busy} onBack={() => setStep('name')}
+    footer={<button className="primary-button" disabled={busy || checking || !nickname.trim() || step === 'photo' && !file} onClick={() => step === 'name' ? setStep('photo') : void create()}>{step === 'name' ? '원본 사진 올리기 →' : busy ? '보정방을 만들고 있어요…' : '이 사진으로 보정방 만들기'}</button>}>
+    {step === 'name' ? <>
+      <div className={styles.heading}><h1 className={styles.heroTitle}>다같이 찍은 사진<br/>다같이 보정하자</h1><p className="description">친구들과 실시간으로 모여서<br/>각자 얼굴만 보정해요.</p></div>
+      <div className={styles.introArt} aria-hidden="true"><div className={styles.introPhoto}><img src="/images/figma-current/character-photo.png" alt="" /></div><strong>각자 보정<br/>같이 완성!</strong></div>
+      <form onSubmit={event => { event.preventDefault(); if (nickname.trim()) setStep('photo'); }}><label className="name-field">내 이름<input value={nickname} onChange={event => setNickname(event.target.value)} maxLength={40} autoComplete="nickname" placeholder="친구들이 알아볼 이름" required /></label></form>
+      <div className={styles.steps}><span>01 방 준비</span><span>02 얼굴 선택</span><span>03 함께 보정</span><span>04 사진 완성</span></div>
+    </> : <>
+      <div className={styles.heading}><h1>모두가 보정할<br/>원본을 올려주세요</h1><p className="description">얼굴이 선명하게 나온 원본을 그대로 올려주세요.</p></div>
+      <div className={styles.photoWindow}><PhotoPicker file={file} preview={preview} label="원본 사진 선택" onChange={next => void pick(next)} busy={busy} /></div>
+      <StatusMessage message={checking ? '사진 크기를 확인하고 있어요…' : message} />
+    </>}
   </MobileShell>;
 }

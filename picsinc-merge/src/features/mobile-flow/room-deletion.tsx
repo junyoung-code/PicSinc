@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import MobileShell from "@/components/mobile-shell";
+import MobileShell from "@/features/retouch-room-flow/RetouchShell";
+import styles from '@/features/retouch-room-flow/room.module.css';
 import { request, RequestError } from "./client";
 
 export function DeletedRoomScreen() {
-  return <MobileShell title="PicSync" showProgress={false}>
+  return <MobileShell title="MOIRA" brand hideBack showProgress={false} footer={<a className="primary-button" href="/retouch/rooms/new">새 보정방 만들기</a>}>
     <section className="deleted-room" aria-labelledby="deleted-room-title">
       <img src="/images/figma/room-deleted.svg" width="72" height="72" alt="" />
       <h1 id="deleted-room-title">보정방이 삭제되었어요</h1>
@@ -38,7 +39,7 @@ export function DeleteRoomDialog({ base, onCancel, onDeleted }: { base: string; 
       pending.current = false; setBusy(false);
     }
   }
-  return <dialog ref={dialog} className="delete-room-dialog" aria-labelledby="delete-room-title" aria-describedby="delete-room-description" onCancel={event => { event.preventDefault(); if (!pending.current) onCancel(); }}>
+  return <dialog ref={dialog} className={`delete-room-dialog ${styles.dialog}`} aria-labelledby="delete-room-title" aria-describedby="delete-room-description" onCancel={event => { event.preventDefault(); if (!pending.current) onCancel(); }}>
     <div className="delete-room-icon" aria-hidden="true">!</div>
     <h2 id="delete-room-title">방을 삭제하고<br />처음부터 시작할까요?</h2>
     <p id="delete-room-description">참여자 전원의 작업과 업로드한 사진이 모두 사라지고,<br />기존 초대 링크도 더 이상 사용할 수 없어요.</p>

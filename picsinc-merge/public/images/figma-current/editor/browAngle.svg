@@ -1,0 +1,18 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="Editable vector / brow-angle">
+<g id="Group">
+<g id="Vector">
+<use xlink:href="#stroke0_0_1037" fill="#E8DEFF"/>
+<mask id="stroke1_0_1037" fill="white">
+<use xlink:href="#stroke0_0_1037"/>
+</mask>
+<path d="M4.24215 15.1825C6.81867 9.26755 12.5316 7.28647 19.0242 8.97344L18.7584 11.3302C13.1554 10.2209 9.06556 12.6237 5.44356 17.2274L4.24215 15.1825Z" stroke-width="1.5" stroke="#25232B" mask="url(#stroke1_0_1037)"/>
+</g>
+<path id="Vector_2" d="M4.24215 15.1825C6.81867 9.26755 12.5316 7.28647 19.0242 8.97344L18.7584 11.3302C13.1554 10.2209 9.06556 12.6237 5.44356 17.2274L4.24215 15.1825Z" stroke-width="1.275" stroke-linecap="round" stroke-linejoin="round" stroke="#25232B"/>
+</g>
+<path id="Vector_3" d="M16.5 3C19.5 3 21.25 4.5 21.75 7.5M22.5 4.5L21.75 7.5L19.5 6M7.5 21C4.5 21 2.75 19.5 2.25 16.5M4.5 18L2.25 16.5L1.5 19.5" stroke-width="1.125" stroke-linecap="round" stroke-linejoin="round" stroke="#6E52DC"/>
+</g>
+<defs>
+<path id="stroke0_0_1037" d="M4.24215 15.1825C6.81867 9.26755 12.5316 7.28647 19.0242 8.97344L18.7584 11.3302C13.1554 10.2209 9.06556 12.6237 5.44356 17.2274L4.24215 15.1825Z"/>
+</defs>
+</svg>
