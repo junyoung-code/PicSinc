@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import SplashScreen from "@/components/splash-screen";
 import WindowBar from "./WindowBar";
@@ -13,16 +13,12 @@ let splashCompleted = false;
 export default function FeatureHome() {
   const [showSplash, setShowSplash] = useState(() => !splashCompleted);
 
-  useEffect(() => {
-    if (splashCompleted) { setShowSplash(false); return; }
-    const timer = window.setTimeout(() => {
-      splashCompleted = true;
-      setShowSplash(false);
-    }, 1500);
-    return () => window.clearTimeout(timer);
+  const completeSplash = useCallback(() => {
+    splashCompleted = true;
+    setShowSplash(false);
   }, []);
 
-  if (showSplash) return <SplashScreen />;
+  if (showSplash) return <SplashScreen onComplete={completeSplash} />;
 
   return <main className={`${theme.theme} ${styles.page}`}>
     <header className={styles.header}><strong>MOIRA</strong><span>각자의 보정을 한 장으로</span></header>

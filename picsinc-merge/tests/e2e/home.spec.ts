@@ -8,11 +8,12 @@ for (const width of [402, 390, 320]) {
     await page.clock.install();
     await page.clock.pauseAt(new Date());
     await page.goto("/");
-    await expect(page.getByLabel("PicSync 시작 화면")).toBeVisible();
-    await page.clock.runFor(1600);
+    await expect(page.getByLabel("MOIRA 시작 화면")).toBeVisible();
+    await expect(page.locator("video")).toHaveAttribute("src", "/videos/moira-splash.mp4");
+    await page.clock.runFor(5100);
     const choices = page.getByRole("navigation", { name: "사진 기능 선택" });
     await expect(choices.getByRole("link")).toHaveCount(2);
-    await expect(page.getByLabel("PicSync 시작 화면")).toHaveCount(0);
+    await expect(page.getByLabel("MOIRA 시작 화면")).toHaveCount(0);
     await expect(page.getByRole("link", { name: "함께 보정", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "사진 합치기", exact: true })).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
@@ -35,14 +36,14 @@ for (const width of [402, 390, 320]) {
     await page.getByRole("link", { name: "함께 보정", exact: true }).click();
     await expect(page).toHaveURL(/\/retouch$/);
     await expect(page.getByRole("link", { name: "공동 보정방 만들기", exact: true })).toBeVisible();
-    await expect(page.getByLabel("PicSync 시작 화면")).toHaveCount(0);
+    await expect(page.getByLabel("MOIRA 시작 화면")).toHaveCount(0);
     await page.goBack();
     await expect(choices).toBeVisible();
-    await expect(page.getByLabel("PicSync 시작 화면")).toHaveCount(0);
+    await expect(page.getByLabel("MOIRA 시작 화면")).toHaveCount(0);
     await page.getByRole("link", { name: "사진 합치기", exact: true }).click();
     await expect(page).toHaveURL(/\/sessions\/new$/);
     await expect(page.getByRole("button", { name: "시작하기", exact: true })).toBeVisible();
-    await expect(page.getByLabel("PicSync 시작 화면")).toHaveCount(0);
+    await expect(page.getByLabel("MOIRA 시작 화면")).toHaveCount(0);
     await page.getByRole("button", { name: "시작하기", exact: true }).click();
     await expect(page.getByLabel("대표자 이름")).toBeVisible();
     expect(errors).toEqual([]);
@@ -54,7 +55,7 @@ test("direct merge entry does not show a duplicate splash", async ({ page }) => 
   await page.clock.pauseAt(new Date());
   await page.goto("/sessions/new");
   await expect(page.getByRole("button", { name: "시작하기", exact: true })).toBeVisible();
-  await expect(page.getByLabel("PicSync 시작 화면")).toHaveCount(0);
+  await expect(page.getByLabel("MOIRA 시작 화면")).toHaveCount(0);
 });
 
 // HTTP substitutes isolate entry routing; these do not verify a live room or DB.
@@ -72,7 +73,32 @@ for (const path of ["/sessions/home-invite", "/retouch/rooms/home-invite", "/ses
     expect(new URL(page.url()).pathname).toBe(path);
     // Next's same-URL history replacement may emit another navigation event.
     expect([...new Set(navigations)]).toEqual([path]);
-    await expect(page.getByLabel("PicSync 시작 화면")).toHaveCount(0);
+    await expect(page.getByLabel("MOIRA 시작 화면")).toHaveCount(0);
     await expect(page.getByRole("navigation", { name: "사진 기능 선택" })).toHaveCount(0);
   });
 }
+
+
+test("reduced motion shows the MOIRA poster and enters home", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await page.goto("/");
+  await expect(page.getByLabel("MOIRA 시작 화면")).toBeVisible();
+  await expect(page.getByRole("img", { name: "MOIRA", exact: true })).toBeVisible();
+  await expect(page.locator("video")).toHaveCount(0);
+  await page.clock.runFor(1600);
+  await expect(page.getByRole("navigation", { name: "사진 기능 선택" })).toBeVisible();
+});
+
+test("MOIRA video finishes before entering home", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("video")).toHaveAttribute("src", "/videos/moira-splash.mp4");
+  await expect(page.getByRole("navigation", { name: "사진 기능 선택" })).toBeVisible({ timeout: 7000 });
+});
+
+test("a missing splash video does not block home", async ({ page }) => {
+  await page.route("**/videos/moira-splash.mp4", route => route.abort());
+  await page.goto("/");
+  await expect(page.getByRole("navigation", { name: "사진 기능 선택" })).toBeVisible({ timeout: 7000 });
+});
