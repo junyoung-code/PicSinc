@@ -43,6 +43,7 @@ async function backend(page:Page,initialRoom:CollaborationView,png:Buffer,width:
   }
   if(path===`${base}/original-selection`){if(failSelection){failSelection=false;return json({error:'영역 저장 실패'},503);}return json({version:6});}
   if(path===`${base}/original-detection`)return json({status:'ready',resultUrl:`http://127.0.0.1:3112/api/detection`});
+  if(path===`${base}/assets/original/regions`)return json({job:{id:'detection',status:'ready',resultUrl:new URL('/api/detection',request.url()).href}});
   if(path==='/api/detection')return json({width,height,previewPngBase64:'',regions:mask?[{id:'region-1',box:{x:0,y:0,width,height},maskPngBase64:mask.toString('base64')}]:[]});
   if(path.startsWith(`${base}/assets/`) && failDownload && request.resourceType()==='fetch'){failDownload=false;return route.fulfill({status:503,body:''});}
   if(path.startsWith(`${base}/assets/`))return route.fulfill({contentType:'image/png',body:path.endsWith('/mask')&&mask?mask:png});
@@ -92,6 +93,8 @@ test('personal editor uses the server mask for preview and records saved control
  const server=await backend(page,state,png,width,height,mask);
  await page.goto(`/retouch/rooms/${roomId}`);await page.getByRole('button',{name:'내 영역 보정 이어가기'}).click();
  const save=page.getByRole('button',{name:'내 얼굴 보정 완료',exact:true});await expect(save).toBeEnabled({timeout:100000});
+ await expect(page.locator('#retouch-strength')).toHaveCount(0);
+ await page.getByRole('button',{name:/^얼굴 \d+ 보정$/}).first().click();
  await expect(page.getByRole('img',{name:'내 편집 영역'})).toBeVisible();
  const before=await pixels(page);await page.locator('#retouch-strength').fill('70');await expect(save).toBeEnabled();const after=await pixels(page);
  expect(before.equals(after)).toBeFalsy();

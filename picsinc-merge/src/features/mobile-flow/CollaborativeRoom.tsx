@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { StatusMessage } from "@/components/mobile-shell";
 import MobileShell from "@/features/retouch-room-flow/RetouchShell";
 import styles from "@/features/retouch-room-flow/room.module.css";
@@ -36,6 +36,8 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   const [saveView, setSaveView] = useState(false);
   const revision = useRef(0), claimRevision = useRef(0), initialClaims = useRef<Claim[] | null>(null);
   const dirty = useRef(false), detailBack = useRef<(() => boolean) | null>(null), saving = useRef(false);
+  const editorBack = useRef<(() => boolean) | null>(null);
+  const registerEditorBack = useCallback((handler: (() => boolean) | null) => { editorBack.current = handler; }, []);
   const retryDetection = useRef<() => void>(() => {});
   const pendingSave = useRef<{ edit: RoomEditRecord['edit']; assetId: string } | null>(null);
   const latest = useRef({ room, editor, snapshot }); latest.current = { room, editor, snapshot };
@@ -117,6 +119,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     const leave = (e: BeforeUnloadEvent) => { if (dirty.current || saving.current) { e.preventDefault(); e.returnValue = ""; } };
     const back = () => {
       if (detailBack.current) { if (detailBack.current()) detailBack.current = null; else history.pushState({roomDetail:true}, "", location.href); return; }
+      if (latest.current.editor && editorBack.current?.()) { history.pushState({roomEdit:true}, "", location.href); return; }
       if (latest.current.editor) void cancelEditor(true);
     };
     window.addEventListener("beforeunload", leave); window.addEventListener("popstate", back);
@@ -217,7 +220,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   if (room.phase === 'final' && saveView && room.latestAssetId) return <MobileShell title="사진 저장" hideBack showHelp={false} showProgress progress={100} action={<button onClick={() => setSaveView(false)}>닫기</button>}><h1>사진을 길게 눌러<br/>기기에 저장해 주세요.</h1><RoomPhotoPreview className={styles.savePhoto} src={assetUrl(room.latestAssetId)} alt="저장할 완성 사진"/><p>브라우저에 따라 ‘이미지 저장’ 또는<br/>‘사진에 추가’를 선택해 주세요.</p></MobileShell>;
   if (editor) {
     const valid = editor.scope === "personal" ? room.phase === "personal" && room.personalToken === editor.token && !done : room.phase === "global" && room.editToken === editor.token && room.editorId === me && Date.parse(room.leaseUntil ?? "") > now;
-    return <RetouchEditor key={editor.token} participants={<>{editor.scope === "personal" && roster}<StatusMessage message={error}/>{!valid && <p role="alert">편집권이 만료되었거나 단계가 바뀌었어요. 뒤로 가서 최신 상태를 확인해주세요.</p>}</>} room={{imageUrl:assetUrl(editor.imageId),maskUrl:editor.maskId?assetUrl(editor.maskId):undefined,scope:editor.scope,nickname:snapshot.participants.find(p=>p.id===me)?.nickname??"나",disabled:!valid,onSave:save,onCancel:()=>void cancelEditor(),onDirtyChange:value=>{dirty.current=value;}}}/>;
+    return <RetouchEditor key={editor.token} participants={<>{editor.scope === "personal" && roster}<StatusMessage message={error}/>{!valid && <p role="alert">편집권이 만료되었거나 단계가 바뀌었어요. 뒤로 가서 최신 상태를 확인해주세요.</p>}</>} room={{imageUrl:assetUrl(editor.imageId),maskUrl:editor.maskId?assetUrl(editor.maskId):undefined,scope:editor.scope,nickname:snapshot.participants.find(p=>p.id===me)?.nickname??"나",disabled:!valid,onSave:save,onCancel:()=>void cancelEditor(),onBackHandlerChange:registerEditorBack,onDirtyChange:value=>{dirty.current=value;}}}/>;
   }
   const editorName = snapshot.participants.find(p => p.id === room.editorId)?.nickname;
   const locked = !!room.editorId && Date.parse(room.leaseUntil ?? "") > now;

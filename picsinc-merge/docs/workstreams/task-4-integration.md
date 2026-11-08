@@ -1,5 +1,10 @@
 # ④ 전체 연결과 검증
 
+## 내 얼굴 선택·확대 보정 분담 — 2026-11-08
+
+- 구현 세션 1개(Sol High): `src/features/face-retouch/ui/`, `tests/e2e/retouch-face-selection.spec.ts`. 메인: `CollaborativeRoom.tsx`의 뒤로 가기 연결, 기존 회귀 검사·공통 문서·최종 검증과 Git. 같은 main checkout에서 담당 경로를 분리한다.
+- 제품 동작은 [협업 보정방 규칙](../../MASTER_SPEC.md#협업-보정방--별도-경로에-보존)을 따른다. `RoomEditorProps.onBackHandlerChange`로 상세→전체 보기 처리 여부를 부모에 연결하며 API·DB·검출·보정 엔진은 변경하지 않는다.
+
 ## 오류 상태 재점검 분담 — 2026-11-07
 
 - 기존 A/B/C 분담을 유지하되 `region-editor/` 전체와 CollaborativeRoom의 검출 구독·재시도·선택 완료 action 연결은 메인이 담당한다. C는 `face-retouch/ui/`만 수정한다.
