@@ -124,11 +124,15 @@
 @media(max-height:650px) { .savingContent { margin-top:48px; } }
 
 /* Personal overview: four rounded corner marks, with a full button hit area. */
-.editor .faceTarget { position:absolute; padding:0; border:0; border-radius:8px; background:transparent; touch-action:none; }
-.faceTarget span { position:absolute; width:20%; height:20%; min-width:10px; min-height:10px; max-width:24px; max-height:24px; border:solid white; border-width:0; filter:drop-shadow(0 1px 1px #0005); pointer-events:none; }
-.faceTarget span:nth-child(1) { left:0; top:0; border-left-width:3px; border-top-width:3px; border-top-left-radius:8px; }
-.faceTarget span:nth-child(2) { right:0; top:0; border-right-width:3px; border-top-width:3px; border-top-right-radius:8px; }
-.faceTarget span:nth-child(3) { left:0; bottom:0; border-left-width:3px; border-bottom-width:3px; border-bottom-left-radius:8px; }
-.faceTarget span:nth-child(4) { right:0; bottom:0; border-right-width:3px; border-bottom-width:3px; border-bottom-right-radius:8px; }
+.editor .faceTarget { position:absolute; padding:0; border:0; border-radius:8px; background:transparent; touch-action:none; -webkit-tap-highlight-color:transparent; }
+.faceCorners { position:absolute; inset:0; color:white; border-radius:8px; pointer-events:none; transition:color 120ms ease-out,background-color 120ms ease-out; }
+.faceCorners svg { position:absolute; width:24%; min-width:10px; max-width:24px; height:auto; fill:none; stroke:currentColor; stroke-width:4px; stroke-linecap:round; stroke-linejoin:round; }
+.faceCorners svg:nth-child(1) { left:0; top:0; }
+.faceCorners svg:nth-child(2) { right:0; top:0; transform:rotate(90deg); }
+.faceCorners svg:nth-child(3) { left:0; bottom:0; transform:rotate(-90deg); }
+.faceCorners svg:nth-child(4) { right:0; bottom:0; transform:rotate(180deg); }
+.faceTarget:not(:disabled):is(:active,:focus-visible) .faceCorners { color:#c4b5fd; background-color:#a78bfa1f; --face-scale:.96; }
+@media (hover:hover) { .faceTarget:not(:disabled):hover .faceCorners { color:#c4b5fd; background-color:#a78bfa1f; --face-scale:.96; } }
+@media (prefers-reduced-motion:no-preference) { .faceCorners { transform:scale(var(--face-scale,1)); transition:color 120ms ease-out,background-color 120ms ease-out,transform 120ms ease-out; } }
 .overviewHint { margin:12px 0 0; text-align:center; font-size:12px; color:var(--moira-muted); }
 .editor .faceList { display:block; margin:0 0 12px auto; min-height:36px; padding:4px 8px; font-size:12px; }

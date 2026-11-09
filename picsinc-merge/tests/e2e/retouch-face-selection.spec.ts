@@ -101,7 +101,7 @@ test('personal overview filters 16 detections to my four faces and saves every f
   const server = await backend(page, detected);
   await open(page); await overview(page, 4);
   await expect(page.getByRole('img', { name: '내 편집 영역', exact: true })).toHaveCount(0);
-  await expect(faceButton(page, 1).locator('span')).toHaveCount(4);
+  await expect(faceButton(page, 1).locator('svg')).toHaveCount(4);
   await expect(faceButton(page, 1)).toHaveText('');
   await expect(faceButton(page, 1)).toHaveCSS('border-top-width', '0px');
   await page.getByRole('button', { name: '얼굴 보정', exact: true }).click();
