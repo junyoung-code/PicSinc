@@ -13,6 +13,7 @@ import { imagePoint, TOUCH_SUPPORT } from "../touch/coordinates";
 import { TouchGesture } from "../touch/gesture";
 import { TouchGuide, TouchMagnifier } from "./TouchFeedback";
 import { loadRoomMask } from "../image-io/room-mask";
+import type { DetectedRegions } from "@/features/region-editor/detected-regions";
 import styles from "./retouch.module.css";
 import saveFailedCharacter from "./assets/save-failed-character.png";
 import savingCharacters from "./assets/saving-characters.png";
@@ -24,7 +25,7 @@ type Photo = { id:number; bitmap:ImageBitmap; url:string; name:string; region?:H
 type Mode = "face" | "touch" | "restore" | "move";
 const empty=initialState([]);
 export type RoomEditRecord = { schemaVersion: 1; scope: "personal" | "global"; faces: Face[]; edit: EditState };
-export type RoomEditorProps = { imageUrl: string; maskUrl?: string; scope: "personal" | "global"; nickname: string; disabled?: boolean; onSave: (blob: Blob, state: RoomEditRecord) => Promise<void>; onCancel: () => void; onDirtyChange?: (dirty: boolean) => void; onBackHandlerChange?: (handler: (() => boolean) | null) => void };
+export type RoomEditorProps = { imageUrl: string; maskUrl?: string; regions?: DetectedRegions["regions"]; scope: "personal" | "global"; nickname: string; disabled?: boolean; onSave: (blob: Blob, state: RoomEditRecord) => Promise<void>; onCancel: () => void; onDirtyChange?: (dirty: boolean) => void; onBackHandlerChange?: (handler: (() => boolean) | null) => void };
 export default function RetouchEditor({ room, participants }: { room?: RoomEditorProps; participants?: ReactNode } = {}) {
   const [collapsed,setCollapsed]=useState(room?.scope==="personal"),[showViewTools,setShowViewTools]=useState(false);
   const [photo,setPhoto]=useState<Photo|null>(null),[faces,setFaces]=useState<Face[]>([]),[selected,setSelected]=useState("");
@@ -169,7 +170,7 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
     try {
       if(room?.scope==="personal") {
         if(!room.maskUrl)throw new Error("내 영역을 먼저 저장해주세요.");
-        region=await loadRoomMask(room.maskUrl,bitmap.width,bitmap.height);
+        region=await loadRoomMask(room.maskUrl,bitmap.width,bitmap.height,room.regions);
       }
     }catch(e){bitmap.close();setError((e as Error).message);setLoading(false);return;}
     const next={id:current,bitmap,url:URL.createObjectURL(file),name:file.name,region:region?.canvas,outline:region?.outline};setPhoto(next);
@@ -178,7 +179,7 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
     }
     try{
       const copy=await createImageBitmap(bitmap);if(upload.current!==current){copy.close();return;}
-      const job=detectFaces(copy,room?.scope==="personal");detection.current=job;
+      const job=detectFaces(copy,region?.retryRegions);detection.current=job;
       const detected=await job.result;if(upload.current!==current)return;
       const accepted=detected.filter(f=>{const a=faceArea(f,bitmap.width,bitmap.height);return a.rx>=72&&a.ry>=96&&(!region||region.owns(f));});
       if(detected.length>=20){setError("얼굴 검출 한도 20개에 도달했어요. 누락된 얼굴은 보호할 수 없으니 더 적은 인원이 담긴 사진을 선택해주세요. 원본은 유지했어요.");return;}

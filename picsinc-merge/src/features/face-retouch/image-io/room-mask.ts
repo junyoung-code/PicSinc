@@ -1,6 +1,8 @@
 import type { Face } from "../state/model";
+import type { DetectionRegion } from "../detection/client";
+import type { DetectedRegions } from "@/features/region-editor/detected-regions";
 
-export async function loadRoomMask(url: string, width: number, height: number) {
+export async function loadRoomMask(url: string, width: number, height: number, regions: DetectedRegions['regions'] = []) {
   const image = new Image(); image.crossOrigin = "anonymous"; image.src = url; await image.decode();
   if (image.naturalWidth !== width || image.naturalHeight !== height) throw new Error("편집 영역과 사진의 크기가 다릅니다.");
   const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height;
@@ -13,5 +15,21 @@ export async function loadRoomMask(url: string, width: number, height: number) {
     const i = (y * width + x) * 4; edges.data.set([255, 100, 145, 255], i);
   }
   drawing.putImageData(edges, 0, 0);
-  return { canvas, outline: outline.toDataURL(), owns: (face: Face) => contains(face.landmarks[1].x * width, face.landmarks[1].y * height) };
+  const retryRegions: DetectionRegion[] = [];
+  for (const region of regions) {
+    const source = new Image(); source.src = `data:image/png;base64,${region.maskPngBase64}`; await source.decode();
+    if (source.naturalWidth !== width || source.naturalHeight !== height) throw new Error("검출 영역과 사진의 크기가 다릅니다.");
+    const x = Math.max(0, Math.floor(region.box.x)), y = Math.max(0, Math.floor(region.box.y));
+    const w = Math.min(width, Math.ceil(region.box.x + region.box.width)) - x;
+    const h = Math.min(height, Math.ceil(region.box.y + region.box.height)) - y;
+    if (w <= 0 || h <= 0) continue;
+    const crop = document.createElement("canvas"); crop.width = w; crop.height = h;
+    const ctx = crop.getContext("2d", { willReadFrequently: true })!;
+    ctx.drawImage(source, x, y, w, h, 0, 0, w, h);
+    const rgba = ctx.getImageData(0, 0, w, h).data, mask = new Uint8Array(w * h);
+    for (let i = 0; i < mask.length; i++) mask[i] = Number(rgba[i * 4] >= 128 && rgba[i * 4 + 3] > 0 && contains(x + i % w, y + Math.floor(i / w)));
+    if (mask.some(Boolean)) retryRegions.push({ x, y, width: w, height: h, mask });
+    crop.width = crop.height = 0; source.src = "";
+  }
+  return { canvas, retryRegions, outline: outline.toDataURL(), owns: (face: Face) => contains(face.landmarks[1].x * width, face.landmarks[1].y * height) };
 }

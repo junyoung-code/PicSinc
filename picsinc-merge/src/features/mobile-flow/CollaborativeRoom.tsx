@@ -21,7 +21,7 @@ import ResultLightbox from '@/features/retouch-room-flow/ResultLightbox';
 import RoomProcessState from '@/features/retouch-room-flow/RoomProcessState';
 import RoomPhotoPreview from '@/features/retouch-room-flow/RoomPhotoPreview';
 
-type Editor = { scope: "personal" | "global"; token: string; version: number; imageId: string; maskId?: string };
+type Editor = { scope: "personal" | "global"; token: string; version: number; imageId: string; maskId?: string; regions?: DetectedRegions["regions"] };
 type Claim = { regionId: string; participantId: string; nickname: string };
 export default function CollaborativeRoom({ inviteToken, initialSnapshot, initialRoom }: { inviteToken: string; initialSnapshot: FlowSnapshot; initialRoom: CollaborationView }) {
   const [snapshot, setSnapshot] = useState(initialSnapshot), [room, setRoom] = useState(initialRoom);
@@ -146,7 +146,9 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
       // The selection screen remounts after cancel: restore this visit's claims.
       initialClaims.current = claims;
       dirty.current = false; pendingSave.current = null;
-      setEditor({scope:"personal",token:r.personalToken,version:r.version,imageId:original.id,maskId:r.personalMaskAssetId});
+      const selectedIds = ids ?? selection?.selectedRegionIds ?? [];
+      const detected = detection ?? (selectedIds.length ? await detectRemote(base, original.id) : null);
+      setEditor({scope:"personal",token:r.personalToken,version:r.version,imageId:original.id,maskId:r.personalMaskAssetId,regions:detected?.regions.filter(region=>selectedIds.includes(region.id))});
       history.pushState({roomEdit:true},"",location.href); await refresh().catch(report);
     } catch (e) { report(e); throw e; } finally { setBusy(false); }
   }
@@ -220,7 +222,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   if (room.phase === 'final' && saveView && room.latestAssetId) return <MobileShell title="사진 저장" hideBack showHelp={false} showProgress progress={100} action={<button onClick={() => setSaveView(false)}>닫기</button>}><h1>사진을 길게 눌러<br/>기기에 저장해 주세요.</h1><RoomPhotoPreview className={styles.savePhoto} src={assetUrl(room.latestAssetId)} alt="저장할 완성 사진"/><p>브라우저에 따라 ‘이미지 저장’ 또는<br/>‘사진에 추가’를 선택해 주세요.</p></MobileShell>;
   if (editor) {
     const valid = editor.scope === "personal" ? room.phase === "personal" && room.personalToken === editor.token && !done : room.phase === "global" && room.editToken === editor.token && room.editorId === me && Date.parse(room.leaseUntil ?? "") > now;
-    return <RetouchEditor key={editor.token} participants={<>{editor.scope === "personal" && roster}<StatusMessage message={error}/>{!valid && <p role="alert">편집권이 만료되었거나 단계가 바뀌었어요. 뒤로 가서 최신 상태를 확인해주세요.</p>}</>} room={{imageUrl:assetUrl(editor.imageId),maskUrl:editor.maskId?assetUrl(editor.maskId):undefined,scope:editor.scope,nickname:snapshot.participants.find(p=>p.id===me)?.nickname??"나",disabled:!valid,onSave:save,onCancel:()=>void cancelEditor(),onBackHandlerChange:registerEditorBack,onDirtyChange:value=>{dirty.current=value;}}}/>;
+    return <RetouchEditor key={editor.token} participants={<>{editor.scope === "personal" && roster}<StatusMessage message={error}/>{!valid && <p role="alert">편집권이 만료되었거나 단계가 바뀌었어요. 뒤로 가서 최신 상태를 확인해주세요.</p>}</>} room={{imageUrl:assetUrl(editor.imageId),maskUrl:editor.maskId?assetUrl(editor.maskId):undefined,scope:editor.scope,regions:editor.regions,nickname:snapshot.participants.find(p=>p.id===me)?.nickname??"나",disabled:!valid,onSave:save,onCancel:()=>void cancelEditor(),onBackHandlerChange:registerEditorBack,onDirtyChange:value=>{dirty.current=value;}}}/>;
   }
   const editorName = snapshot.participants.find(p => p.id === room.editorId)?.nickname;
   const locked = !!room.editorId && Date.parse(room.leaseUntil ?? "") > now;
