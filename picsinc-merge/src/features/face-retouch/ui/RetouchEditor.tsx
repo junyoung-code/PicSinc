@@ -32,8 +32,7 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
   const [detectedFaces,setDetectedFaces]=useState<Face[]>([]);
   const [edit,setEdit]=useState<EditState>(empty),[group,setGroup]=useState<typeof groups[number]>("얼굴형"),[control,setSelectedControl]=useState<ControlId>("faceWidth");
   const [mode,setMode]=useState<Mode>("face"),[brush,setBrush]=useState(4),[compare,setCompare]=useState(false);
-  const [saveError,setSaveError]=useState(""),[loadAttempt,setLoadAttempt]=useState(0);
-  const sourceFile=useRef<File|null>(null);
+  const [saveError,setSaveError]=useState("");
   const [loading,setLoading]=useState(!!room),[rendering,setRendering]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
   const [engineError,setEngineError]=useState(""),[calculationError,setCalculationError]=useState(""),[limited,setLimited]=useState(false),[strained,setStrained]=useState(false),[zoom,setZoom]=useState(1),[pan,setPan]=useState({x:0,y:0});
   const touchStrength=6;
@@ -154,12 +153,12 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
       if (!cancelled) await openPhoto(new File([blob], "room.png", { type: blob.type }));
     }).catch(e => { if (!cancelled) {setError(e.message);setLoading(false);} });
     return () => { cancelled = true; };
-  }, [room?.imageUrl,loadAttempt]); // One immutable baseline for each editor mount.
+  }, [room?.imageUrl]); // One immutable baseline for each editor mount.
   useEffect(() => { room?.onDirtyChange?.(hasEdits(edit)); }, [edit]);
 
   async function openPhoto(file:File){
     if(hasEdits(editRef.current)&&!window.confirm("사진을 바꾸면 현재 보정이 사라져요. 새 사진을 열까요?"))return;
-    sourceFile.current=file;setSaveError("");
+    setSaveError("");
     const current=++upload.current;detection.current?.cancel();setLoading(true);setError("");setNotice("");
     let bitmap:ImageBitmap;
     try{bitmap=await decodePhoto(file);}catch(e){if(upload.current===current){setError((e as Error).message);setLoading(false);}return;}
@@ -303,7 +302,6 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
     </div>
     {!photo && (error || engineError || calculationError) && <p className={styles.emptyError} role="alert">{error || engineError || calculationError}</p>}
     {photo&&room?.scope==="personal"&&!loading&&!faces.length&&notice&&<p className={styles.messages} role="status">{notice}</p>}
-    {error&&!selected&&!loading&&!hasEdits(edit)&&<button className={styles.retryLoad} onClick={()=>{if(room)setLoadAttempt(value=>value+1);else if(sourceFile.current)void openPhoto(sourceFile.current);}}>다시 불러오기</button>}
     {calculationError&&!engineError&&<button className={styles.retryLoad} disabled={rendering||saving} onClick={()=>{setCalculationError("");update({...editRef.current});}}>미리보기 다시 시도</button>}
     {photo && <section className={styles.panel} aria-label="보정 도구">
       <button className={styles.handle} aria-label={collapsed?"보정 도구 펼치기":"보정 도구 접기"} aria-expanded={!collapsed} disabled={saving||loading||(room?.scope==="personal"&&collapsed&&mode==="face"&&faces.length>0)} onClick={()=>{if(room?.scope==="personal"&&!collapsed&&faces.length){overview();return;}cancelInteraction.current();setCollapsed(!collapsed);if(!collapsed){setZoom(1);setPan({x:0,y:0});}}}><span/></button>

@@ -370,15 +370,22 @@ test('latest global editor is shown and finalization failure preserves the same 
 });
 
 test('recognition retries never expose selection actions before ready', async ({page}) => {
- const png=await sharp({create:{width:400,height:400,channels:3,background:'#bcbcbc'}}).png().toBuffer();
- const mask=await sharp({create:{width:400,height:400,channels:3,background:'#ffffff'}}).png().toBuffer();
- await backend(page,initial('personal'),png,400,400,mask);
+ const png=await sharp({create:{width:400,height:1200,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ const mask=await sharp({create:{width:400,height:1200,channels:3,background:'#ffffff'}}).png().toBuffer();
+ await backend(page,initial('personal'),png,400,1200,mask);
  let status='running',retries=0;
  await page.route(`**${base}/original-detection`,route=>{
   if(route.request().method()==='POST'){retries++;status='running';}
   return route.fulfill({json:status==='ready'?{status,resultUrl:'http://127.0.0.1:3112/api/detection'}:status==='failed'?{status,error:'얼굴 분석 실패'}:{status}});
  });
  await page.goto(`/retouch/rooms/${roomId}`);
+ const canvas=page.locator('canvas').first();
+ await expect(page.getByRole('status').filter({hasText:'AI가 얼굴 영역을'})).toBeVisible();
+ const loadingBox=(await canvas.boundingBox())!;
+ expect(loadingBox.height/loadingBox.width).toBeCloseTo(3,1);
+ const overlayBox=(await page.getByRole('status').filter({hasText:'AI가 얼굴 영역을'}).boundingBox())!;
+ expect(overlayBox.width).toBeCloseTo(loadingBox.width,0);
+ expect(overlayBox.height).toBeCloseTo(loadingBox.height,0);
  await expect(page.getByRole('button',{name:'완료',exact:true})).toHaveCount(0);
  await expect(page.getByRole('button',{name:'영역 편집하기',exact:true})).toHaveCount(0);
  await expect(page.getByRole('button',{name:'다시 찾기',exact:true})).toHaveCount(0);
@@ -387,6 +394,9 @@ test('recognition retries never expose selection actions before ready', async ({
  await expect(page.getByRole('button',{name:'다시 찾기',exact:true})).toHaveCount(0);
  status='ready';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await expect(page.getByRole('button',{name:'영역 편집하기',exact:true})).toBeDisabled();
+ const readyBox=(await canvas.boundingBox())!;
+ expect(readyBox.width).toBeCloseTo(loadingBox.width,0);
+ expect(readyBox.height).toBeCloseTo(loadingBox.height,0);
  await expect(page.getByRole('button',{name:'완료',exact:true})).toHaveCount(0);
  await page.locator('canvas').first().click({position:{x:100,y:100}});
  await expect(page.getByRole('button',{name:'완료',exact:true})).toBeEnabled();

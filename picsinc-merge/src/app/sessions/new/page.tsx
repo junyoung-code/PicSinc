@@ -24,7 +24,7 @@ export default function NewSessionPage() {
     } catch (error) { setMessage(error instanceof Error ? error.message : "보정방을 만들지 못했어요."); setBusy(false); }
   }
   if (step === "intro") return <ServiceIntro onStart={() => setStep("name")} />;
-  return <MobileShell helpTopic={step === "name" ? "start" : "original"} title={step === "name" ? "시작하기" : "원본 사진 올리기"} progress={16} onBack={step === "photo" && !busy ? () => setStep("name") : undefined} footer={step === "name" ?
+  return <MobileShell helpTopic={step === "name" ? "start" : "original"} title={step === "name" ? "시작하기" : "원본 사진 올리기"} progress={16} onBack={!busy ? () => setStep(step === "photo" ? "name" : "intro") : undefined} footer={step === "name" ?
     <button className="primary-button" disabled={!nickname.trim()} onClick={() => { setStep("photo"); setMessage(""); }}>원본 사진 올리기</button> :
     <button className="primary-button" disabled={!file || !consented || busy} onClick={() => void create()}>{busy ? "보정방을 만들고 있어요…" : "이 사진으로 보정방 만들기"}</button>}>
     {step === "name" ? <><MergeWelcome /><form onSubmit={event => { event.preventDefault(); if (nickname.trim()) setStep("photo"); }}><label className="name-field host-name-field">대표자 이름<input value={nickname} onChange={event => setNickname(event.target.value)} placeholder="친구들이 알아볼 이름" autoComplete="nickname" maxLength={40} required /></label></form><MergeSteps /></> :

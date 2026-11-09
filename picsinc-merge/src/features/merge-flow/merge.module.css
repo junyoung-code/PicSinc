@@ -71,7 +71,8 @@
 .errorCard strong { display:block; font-size:14px; line-height:24px; }
 .errorCard p { margin:4px 0 16px; font-size:12px; line-height:20px; }
 .introPage { max-width:402px; width:100%; min-height:100dvh; margin:0 auto; background:white; display:flex; flex-direction:column; }
-.introContent { padding:32px 24px 12px; flex:1; }
+.introContent { position:relative; padding:32px 24px 12px; flex:1; }
+.introBack { position:absolute; top:32px; left:16px; width:44px; height:44px; display:grid; place-items:center; }
 .introLogo { display:flex; align-items:center; justify-content:center; width:114.5px; height:42.135px; padding:10px; margin:0 auto 28px; }
 .introLogo img { width:94.5px; height:22.135px; }
 .merge .introContent h1 { font-size:28px; line-height:36px; font-weight:900; margin:0 0 6px; }

@@ -36,7 +36,7 @@ export default function NewRetouchRoom() {
       location.assign(result.shareUrl);
     } catch (error) { setMessage(error instanceof Error ? error.message : '보정방을 만들지 못했어요. 다시 시도해 주세요.'); setBusy(false); }
   }
-  return <MobileShell title={step === 'name' ? 'MOIRA' : '원본 사진 올리기'} brand={step === 'name'} hideBack={step === 'name'} showProgress={step === 'photo'} progress={10} backDisabled={busy} onBack={() => setStep('name')}
+  return <MobileShell title={step === 'name' ? 'MOIRA' : '원본 사진 올리기'} brand={step === 'name'} showProgress={step === 'photo'} progress={10} backDisabled={busy} onBack={step === 'photo' ? () => setStep('name') : undefined}
     footer={<button className="primary-button" disabled={busy || checking || !nickname.trim() || step === 'photo' && !file} onClick={() => step === 'name' ? setStep('photo') : void create()}>{step === 'name' ? '원본 사진 올리기 →' : busy ? '보정방을 만들고 있어요…' : '이 사진으로 보정방 만들기'}</button>}>
     {step === 'name' ? <>
       <div className={styles.heading}><h1 className={styles.heroTitle}>다같이 찍은 사진<br/>다같이 보정하자</h1><p className="description">친구들과 실시간으로 모여서<br/>각자 얼굴만 보정해요.</p></div>

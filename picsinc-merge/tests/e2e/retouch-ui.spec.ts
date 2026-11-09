@@ -99,7 +99,7 @@ test('Figma retouch screens keep assets and actions inside 402, 390 and 320px', 
 });
 
 // Fault injection verifies retry wiring and draft preservation; it is not a live API test.
-test('editor loading and save failures retry without replacing the touch draft', async ({ page }) => {
+test('editor loading has no reload button and save failures preserve the touch draft', async ({ page }) => {
   const width = 400, height = 400;
   const pixels = Buffer.alloc(width * height * 3);
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
@@ -107,7 +107,7 @@ test('editor loading and save failures retry without replacing the touch draft',
   }
   const photo = await sharp(pixels, { raw: { width, height, channels: 3 } }).png().toBuffer();
   const base = '/api/sessions/editor-retry';
-  let editorId: string | null = null, imageFetches = 0, failedSaves = 2, uploads = 0;
+  let editorId: string | null = null, imageFetches = 0, failImage = true, failedSaves = 2, uploads = 0;
   const savedStates: unknown[] = [];
   let releaseImage: (() => void) | undefined;
   const firstImageGate = new Promise<void>(resolve => { releaseImage = resolve; });
@@ -131,9 +131,9 @@ test('editor loading and save failures retry without replacing the touch draft',
       return route.fulfill({ json: { enabled: true, phase: 'global', rosterIds: ['owner', 'friend'], completedIds: ['owner', 'friend'], latestAssetId: 'result', version: 0, history: [], editorId, editToken: editorId ? 'edit-token' : null, leaseUntil: editorId ? new Date(Date.now() + 90000).toISOString() : null } });
     }
     if (path.startsWith(`${base}/assets/`)) {
-      if (request.resourceType() === 'fetch') {
-        imageFetches++;
-        if (imageFetches === 1) { await firstImageGate; return route.fulfill({ status: 503, body: '' }); }
+      if (request.resourceType() === 'fetch' && editorId === 'owner') imageFetches++;
+      if (request.resourceType() === 'fetch' && editorId === 'owner' && failImage) {
+        await firstImageGate; return route.fulfill({ status: 503, body: '' });
       }
       return route.fulfill({ contentType: 'image/png', body: photo });
     }
@@ -145,10 +145,14 @@ test('editor loading and save failures retry without replacing the touch draft',
   await page.goto('/retouch/rooms/editor-retry');
   await page.getByRole('button', { name: '터치 보정으로 전체 다듬기', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: '사진을 불러오고 있어요' })).toBeVisible();
-  releaseImage?.();
-  await page.getByRole('button', { name: '다시 불러오기', exact: true }).click();
+  failImage = false; releaseImage?.();
+  await expect(page.getByRole('alert').filter({ hasText: '사진을 불러오지 못했어요.' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '다시 불러오기', exact: true })).toHaveCount(0);
+  await page.reload();
+  await page.getByRole('button', { name: '터치 보정으로 전체 다듬기', exact: true }).click();
   const save = page.getByRole('button', { name: '전체 사진 편집 완료', exact: true });
   await expect(save).toBeEnabled();
+  const readyFetches = imageFetches;
   await page.locator('#brush-size').fill('6');
   const canvas = page.locator('canvas[aria-label="보정 미리보기"]');
   const box = (await canvas.boundingBox())!;
@@ -170,5 +174,5 @@ test('editor loading and save failures retry without replacing the touch draft',
   expect(savedStates.length).toBe(5);
   for (const state of savedStates) expect(state).toEqual(savedStates[0]);
   expect(uploads).toBe(1);
-  expect(imageFetches).toBe(2);
+  expect(imageFetches).toBe(readyFetches);
 });

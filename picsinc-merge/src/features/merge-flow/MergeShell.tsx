@@ -23,6 +23,7 @@ export function MergeSteps() {
 export function MergeIntro({ onStart }: { onStart: () => void }) {
   return <div className={styles.merge}><main className={styles.introPage}>
     <div className={styles.introContent}>
+      <a href="/" className={styles.introBack} aria-label="홈으로"><img src="/images/merge-ui/back.svg" alt="" width="20" height="20" /></a>
       <a href="/" className={styles.introLogo} aria-label="MOIRA 홈"><img src="/images/figma-current/moira-logo.svg" alt="MOIRA" width="95" height="23" /></a>
       <h1>친구들과 각자 보정하고<br />한 장으로 합쳐보세요</h1>
       <p className={styles.introDescription}>평소 쓰던 보정 앱은 그대로 사용하세요.<br />MOIRA가 각자의 보정 결과만 모아드려요.</p>
