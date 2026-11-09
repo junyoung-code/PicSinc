@@ -117,7 +117,8 @@ test('personal overview filters 16 detections to my four faces and saves every f
   await expect(page.getByRole('img', { name: '내 편집 영역', exact: true })).toBeVisible();
   await expect.poll(() => previewStage(page).evaluate(el => new DOMMatrix(getComputedStyle(el).transform).a)).toBeGreaterThan(1);
   await page.locator('#retouch-strength').fill('65'); await expect(saveButton(page)).toBeEnabled();
-  await page.getByRole('button', { name: '얼굴 목록으로', exact: true }).click(); await overview(page, 4);
+  await expect(page.getByRole('button', { name: '얼굴 목록으로', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '보정 도구 접기', exact: true }).click(); await overview(page, 4);
   await faceButton(page, 2).focus(); await page.keyboard.press('Enter');
   await expect(page.locator('#retouch-strength')).toHaveValue('0');
   await page.locator('#retouch-strength').fill('-40'); await expect(saveButton(page)).toBeEnabled();
@@ -138,7 +139,8 @@ test('personal overview filters 16 detections to my four faces and saves every f
   await page.getByRole('button', { name: '얼굴 보정', exact: true }).click(); await overview(page, 4);
   await faceButton(page, 1).click(); await expect(page.locator('#retouch-strength')).toHaveValue('65');
   await page.getByRole('button', { name: '터치 보정', exact: true }).click();
-  await page.getByRole('button', { name: '얼굴 목록으로', exact: true }).click(); await overview(page, 4);
+  await expect(page.getByRole('button', { name: '얼굴 목록으로', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '보정 도구 접기', exact: true }).click(); await overview(page, 4);
 
   let releaseSave!: () => void;
   const saveGate = new Promise<void>(resolve => { releaseSave = resolve; });

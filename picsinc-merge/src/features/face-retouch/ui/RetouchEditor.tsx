@@ -311,7 +311,7 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
         <button aria-pressed={mode==="face"} disabled={!active||!faces.length} onClick={()=>{if(room?.scope==="personal"&&(collapsed||!faces.some(face=>face.id===selected))){overview();return;}cancelInteraction.current();setMode("face");setCollapsed(false);}}>얼굴 보정</button>
         <button aria-pressed={mode!=="face"} disabled={!active} onClick={()=>{cancelInteraction.current();setMode("touch");setCollapsed(false);}}>터치 보정</button>
       </div>}
-      {room?.scope==="personal"&&faces.length>0&&(collapsed?<p className={styles.overviewHint}>보정할 얼굴을 선택해주세요.</p>:<button className={styles.faceList} disabled={!selectable} onClick={overview}>얼굴 목록으로</button>)}
+      {room?.scope==="personal"&&faces.length>0&&collapsed&&<p className={styles.overviewHint}>보정할 얼굴을 선택해주세요.</p>}
       {!collapsed&&<div id="retouch-tool-content">
         {mode==="face"?<>
           <nav className={styles.tabs} aria-label="보정 부위">{groups.map(g=><button key={g} aria-pressed={group===g} onClick={()=>{setGroup(g);setSelectedControl(controls.find(c=>c[2]===g)![0]);}}>{g}</button>)}</nav>
