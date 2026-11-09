@@ -105,7 +105,7 @@ for (const width of [402, 390, 320]) test(`merge flow and PNG saving at ${width}
 });
 
 // Exception fixtures validate recoverable UI states, without creating real jobs or changing photos.
-test('merge delay, failure and retry preserve submitted work', async ({ page }) => {
+test('merge delay, failure and retry preserve submitted work', async ({ page }, testInfo) => {
   const photo = await readFile('public/images/figma-current/character-photo.png');
   const base = '/api/sessions/merge-errors';
   let failJob = false, completed = false, compositions = 0;
@@ -131,14 +131,37 @@ test('merge delay, failure and retry preserve submitted work', async ({ page }) 
   await page.goto('/sessions/merge-errors?step=status');
   await page.getByRole('button', { name: '사진 합치기', exact: true }).click();
   await expect(page.getByRole('heading', { name: '각자의 보정을 한 장에 담고 있어요' })).toBeVisible();
+  const characters = page.locator('[data-loading-characters]');
+  await expect(characters).toBeVisible();
+  await expect(characters).toHaveAttribute('aria-hidden', 'true');
+  // Seek real CSS animations to the first jump apex; other characters still rest.
+  for (const width of [402, 390, 320]) {
+    await page.setViewportSize({ width, height: 874 });
+    const positions = await characters.evaluate(element => {
+      for (const animation of element.getAnimations({ subtree: true })) { animation.pause(); animation.currentTime = 590; }
+      return [...element.querySelectorAll('span > span:last-child')].map(character => {
+        const rect = character.getBoundingClientRect();
+        return { top: rect.top, left: rect.left, right: rect.right, height: rect.height };
+      });
+    });
+    expect(positions).toHaveLength(5);
+    expect(positions[0].top).toBeLessThan(positions[1].top - 10);
+    for (const position of positions) { expect(position.left).toBeGreaterThanOrEqual(0); expect(position.right).toBeLessThanOrEqual(width); expect(position.height).toBeGreaterThan(35); }
+    await page.screenshot({ path: testInfo.outputPath(`loading-${width}.png`), fullPage: true });
+  }
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  expect(await characters.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.clock.fastForward(31_000);
   await expect(page.getByRole('heading', { name: '평소보다 오래 걸리고 있어요' })).toBeVisible();
+  await expect(characters).toBeVisible();
   await expect(page.getByText('잠시만 기다려 주세요.', { exact: false })).toBeVisible();
   await expect(page.getByText(/(?:최대 3분|5분 정도)/)).toHaveCount(0);
   failJob = true;
   await page.clock.runFor(4000);
   await expect(page.getByText('사진을 합치지 못했어요. 다시 시도해 주세요.')).toBeVisible();
   await expect(page.getByText('제출 완료', { exact: true })).toBeVisible();
+  await expect(characters).toHaveCount(0);
   await page.getByRole('button', { name: '사진 합치기', exact: true }).click();
   await expect(page.getByRole('link', { name: '사진 저장하기' })).toBeVisible();
   expect(compositions).toBe(2);

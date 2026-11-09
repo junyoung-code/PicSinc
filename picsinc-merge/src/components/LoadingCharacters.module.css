@@ -1,0 +1,59 @@
+:where(.scene) { width: 100%; }
+
+.scene {
+  position: relative;
+  display: block;
+  aspect-ratio: 402 / 231;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.slot {
+  position: absolute;
+  top: 38.095238%; /* 88 / 231 */
+  width: 14.925373%; /* 60 / 402 */
+  height: 28.571429%; /* 66 / 231 */
+}
+
+.character {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-image: url('/images/figma-current/merge/composing-characters.png');
+  background-size: 670% 350%;
+  background-repeat: no-repeat;
+  transform-origin: 50% 100%;
+  animation: bounce 4.4s var(--delay) infinite;
+}
+
+.shadow {
+  position: absolute;
+  left: 19.166667%;
+  top: 104.545455%;
+  width: 61.666667%;
+  height: 7.575758%;
+  background: radial-gradient(ellipse, rgb(45 35 53 / 16%), rgb(45 35 53 / 0%) 70%);
+  animation: shadow 4.4s var(--delay) infinite;
+}
+
+/* The approved 0.77s jump, then a rest until the next 4.4s round. */
+@keyframes bounce {
+  0% { transform: translateY(0) scale(1) rotate(0); animation-timing-function: ease-in-out; }
+  2.727273% { transform: translateY(0) scale(1.08, .9) rotate(0); animation-timing-function: cubic-bezier(.33, 1, .68, 1); }
+  7.727273% { transform: translateY(-25.757576%) scale(.95, 1.07) rotate(var(--tilt)); animation-timing-function: cubic-bezier(.32, 0, .67, 0); }
+  12.045455% { transform: translateY(0) scale(1.1, .88) rotate(0); animation-timing-function: ease-out; }
+  14.318182% { transform: translateY(-4.545455%) scale(.98, 1.025) rotate(0); animation-timing-function: ease-in-out; }
+  17.5%, 100% { transform: translateY(0) scale(1) rotate(0); }
+}
+
+@keyframes shadow {
+  0%, 17.5%, 100% { transform: scaleX(1); opacity: 1; }
+  2.727273% { transform: scaleX(1.08); opacity: 1; animation-timing-function: ease-out; }
+  7.727273% { transform: scaleX(.65); opacity: .38; animation-timing-function: ease-in; }
+  12.045455% { transform: scaleX(1.1); opacity: 1; }
+  14.318182% { transform: scaleX(.92); opacity: .82; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .character, .shadow { animation: none; }
+}

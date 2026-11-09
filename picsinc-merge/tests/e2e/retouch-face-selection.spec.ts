@@ -140,7 +140,16 @@ test('personal overview filters 16 detections to my four faces and saves every f
   await page.getByRole('button', { name: '터치 보정', exact: true }).click();
   await page.getByRole('button', { name: '얼굴 목록으로', exact: true }).click(); await overview(page, 4);
 
+  let releaseSave!: () => void;
+  const saveGate = new Promise<void>(resolve => { releaseSave = resolve; });
+  await page.route(`**${base}/collaboration`, async route => {
+    if (route.request().method() === 'POST' && route.request().postDataJSON().action === 'personal-save') await saveGate;
+    return route.fallback();
+  });
   await saveButton(page).click();
+  await expect(page.getByRole('heading', { name: '내 보정을 저장하고 있어요' })).toBeVisible();
+  await expect(page.getByRole('region', { name: '보정 저장 중' }).locator('[data-loading-characters]')).toBeVisible();
+  releaseSave();
   await expect(page.getByRole('heading', { name: '내 보정이 끝났어요', exact: true })).toBeVisible();
   const record = server.saved()!;
   expect(record.faces).toHaveLength(16);
@@ -150,6 +159,7 @@ test('personal overview filters 16 detections to my four faces and saves every f
 
 test('a single eligible face still starts in overview and ignores a pinch over its box', async ({ page, browserName }) => {
   await backend(page, detected, 1); await open(page); await overview(page, 1);
+  await expect(page.getByText('보기 및 보정 설정', { exact: true })).toHaveCount(0);
   if (browserName === 'chromium') {
     const box = (await faceButton(page, 1).boundingBox())!, x = box.x + box.width / 2, y = box.y + box.height / 2;
     const cdp = await page.context().newCDPSession(page);
@@ -158,10 +168,6 @@ test('a single eligible face still starts in overview and ignores a pinch over i
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await expect(page.locator('#retouch-strength')).toHaveCount(0);
     await cdp.detach();
-    // Reset the zoom from the pinch before checking the keyboard target.
-    await page.getByText('보기 및 보정 설정', { exact: true }).click();
-    await page.getByRole('button', { name: '확대 도구', exact: true }).click();
-    await page.getByRole('button', { name: '맞춤', exact: true }).click();
   }
   await faceButton(page, 1).focus(); await page.keyboard.press('Space');
   await expect(page.locator('#retouch-strength')).toHaveValue('0');

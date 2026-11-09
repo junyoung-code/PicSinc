@@ -62,7 +62,6 @@ export default function FeatureHome() {
           </div>
         </Link>
       </nav>
-      <Link className={styles.soloLink} href="/retouch">혼자 사진 보정하기</Link>
     </div>
   </main>;
 }

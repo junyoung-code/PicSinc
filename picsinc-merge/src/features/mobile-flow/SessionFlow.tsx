@@ -6,6 +6,7 @@ import { Notice, PhotoPicker, StatusMessage } from "@/components/mobile-shell";
 import MobileShell, { MergeWelcome, MergeSteps } from "@/features/merge-flow/MergeShell";
 import MergeResultPreview from "@/features/merge-flow/MergeResultPreview";
 import mergeStyles from "@/features/merge-flow/merge.module.css";
+import LoadingCharacters from "@/components/LoadingCharacters";
 import MobileRegionEditor from "@/features/region-editor/MobileRegionEditor";
 import RegionEditor from "@/features/region-editor/RegionEditor";
 import type { DetectedRegions } from "@/features/region-editor/detected-regions";
@@ -339,7 +340,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     {canJoin ? <><MergeWelcome inviter={inviter} /><form onSubmit={event => { event.preventDefault(); void join(); }}><label className="name-field">내 이름<input required autoComplete="nickname" maxLength={40} value={nickname} onChange={event => setNickname(event.target.value)} placeholder="친구들이 알아볼 이름" /></label></form><MergeSteps /></> : <div className="loading-screen"><div className="spinner" /><p>보정방을 불러오고 있어요.</p></div>}
     <StatusMessage message={message} />{message && !canJoin && <button className="secondary-button" onClick={() => location.reload()}>다시 불러오기</button>}
   </MobileShell>;
-  if (merging) return <MobileShell title="사진 합치는 중" progress={90} helpTopic="status"><div className="loading-screen merging-screen" role="status"><img className={mergeStyles.composingCharacters} src="/images/figma-current/merge/composing-characters.png" alt="" width="402" height="231" /><h1>{mergeDelayed ? <>평소보다 오래<br />걸리고 있어요</> : <>각자의 보정을<br />한 장에 담고 있어요</>}</h1><p className="description">{mergeDelayed ? <>사진을 안전하게 합치고 있어요.<br />잠시만 기다려 주세요.</> : message || "선택한 얼굴만 원본 사진에 자연스럽게 합치는 중이에요."}</p></div></MobileShell>;
+  if (merging) return <MobileShell title="사진 합치는 중" progress={90} helpTopic="status"><div className="loading-screen merging-screen" role="status"><LoadingCharacters className={mergeStyles.composingCharacters} /><h1>{mergeDelayed ? <>평소보다 오래<br />걸리고 있어요</> : <>각자의 보정을<br />한 장에 담고 있어요</>}</h1><p className="description">{mergeDelayed ? <>사진을 안전하게 합치고 있어요.<br />잠시만 기다려 주세요.</> : message || "선택한 얼굴만 원본 사진에 자연스럽게 합치는 중이에요."}</p></div></MobileShell>;
 
   const roster = <ul className="participant-list">{photoDisplay.participants.map(person => <li key={person.id}><img className="avatar" src={`/images/figma-current/home/${person.id === data.session.ownerParticipantId ? "lilac" : "pink"}.png`} alt="" /><span className="participant-name">{person.nickname}{!owner && person.id === me?.id ? " (나)" : ""}</span>{(step !== "invite" || person.id === data.session.ownerParticipantId) && <span className={`badge ${person.submitted ? "complete" : person.id === data.session.ownerParticipantId && step === "invite" ? "owner" : ""}`}>{person.submitted ? "제출 완료" : person.id === data.session.ownerParticipantId && step === "invite" ? "대표자" : "보정 중"}</span>}</li>)}</ul>;
   const shareField = <div className="share-field"><input aria-label="친구에게 보낼 초대 링크" value={shareUrl} readOnly onFocus={event => event.currentTarget.select()} /><button className="small-button" onClick={() => void copy()}>복사</button></div>;

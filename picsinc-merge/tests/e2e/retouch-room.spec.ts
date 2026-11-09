@@ -64,9 +64,7 @@ test('whole-photo touch has no face controls, keeps prior pixels on restore, ret
  const save=page.getByRole('button',{name:'전체 사진 편집 완료',exact:true});await expect(save).toBeEnabled();
  await expect(page.getByRole('button',{name:'얼굴 보정',exact:true})).toHaveCount(0);
  await expect(page.getByRole('navigation',{name:'보정 부위'})).toHaveCount(0);
- await page.getByText('보기 및 보정 설정',{exact:true}).click();
- await expect(page.getByText('영역에 상관없이 원하는 부분을 보정해요').first()).toBeVisible();
- await page.getByText('보기 및 보정 설정',{exact:true}).click();
+ await expect(page.getByText('보기 및 보정 설정',{exact:true})).toHaveCount(0);
  await page.locator('#brush-size').fill('1');
  const original=await pixels(page);const box=(await page.locator('canvas[aria-label="보정 미리보기"]').boundingBox())!,x=box.x+box.width*.2,y=box.y+box.height*.3;
  await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+12,y,{steps:4});await page.mouse.up();await expect(save).toBeEnabled();
@@ -228,6 +226,7 @@ test('saving blocks back navigation until the upload is accepted',async({page})=
  await page.goto(`/retouch/rooms/${roomId}`);await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();
  const save=page.getByRole('button',{name:'전체 사진 편집 완료',exact:true});await expect(save).toBeEnabled();
  server.holdSave();await save.click();await expect.poll(()=>server.actions.includes('save')).toBeTruthy();
+ await expect(page.getByRole('region',{name:'보정 저장 중',exact:true}).locator('[data-loading-characters]')).toBeVisible();
  await page.goBack();await expect(page.getByRole('region',{name:'보정 저장 중',exact:true})).toBeVisible();
  expect(await page.evaluate(()=>{const e=new Event('beforeunload',{cancelable:true});dispatchEvent(e);return e.defaultPrevented;})).toBeTruthy();
  expect(server.actions).not.toContain('cancel');server.releaseSave();
@@ -326,6 +325,7 @@ test('composition worker failure survives reload and only the owner can retry', 
  const server=await backend(page,failed,png,40,40);
  await page.goto(`/retouch/rooms/${roomId}`);
  await expect(page.getByRole('heading',{name:'사진을 합치지 못했어요'})).toBeVisible();
+ await expect(page.locator('[data-loading-characters]')).toHaveCount(0);
  await page.reload();await expect(page.getByRole('alert').filter({hasText:'워커 처리가 중단됐어요.'})).toBeVisible();
  const guest=await context.newPage();await backend(guest,failed,png,40,40,undefined,'friend');
  await guest.goto(`/retouch/rooms/${roomId}`);await expect(guest.getByText('대표자가 다시 시도할 때까지 기다려 주세요.')).toBeVisible();
@@ -333,6 +333,7 @@ test('composition worker failure survives reload and only the owner can retry', 
  await page.getByRole('button',{name:'재시도',exact:true}).click();
  expect(server.actions).toContain('compose');
  await expect(page.getByRole('heading',{name:'우리 사진을 완성하고 있어요'})).toBeVisible();
+ await expect(page.locator('[data-loading-characters]')).toBeVisible();
  await expect(page.getByRole('main').getByRole('alert')).toHaveCount(0);await expect(page.getByRole('button',{name:'재시도',exact:true})).toHaveCount(0);
  await guest.close();
 });
@@ -341,7 +342,10 @@ test('latest global editor is shown and finalization failure preserves the same 
  const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  const server=await backend(page,{...initial('global'),history:[{participantId:'friend',version:1,assetId:'result',createdAt:new Date().toISOString()}]},png,40,40);
  let failures=1;
- await page.route(`**${base}/collaboration`,route=>{
+ let releaseFinalize!:()=>void;
+ const finalizeGate=new Promise<void>(resolve=>{releaseFinalize=resolve;});
+ await page.route(`**${base}/collaboration`,async route=>{
+  if(route.request().method()==='POST'&&route.request().postDataJSON().action==='finalize')await finalizeGate;
   if(route.request().method()==='POST'&&route.request().postDataJSON().action==='finalize'&&failures-- >0)return route.fulfill({status:503,json:{error:'확정을 처리하지 못했어요.'}});
   return route.fallback();
  });
@@ -350,7 +354,11 @@ test('latest global editor is shown and finalization failure preserves the same 
  await expect(page.getByRole('button',{name:'마무리 보정하기'})).toBeEnabled();
  await page.getByRole('button',{name:'최종 완료',exact:true}).click();
  await page.getByRole('button',{name:'사진 최종 완료',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'최종 보정본을 저장하고 있어요'})).toBeVisible();
+ await expect(page.locator('[data-loading-characters]')).toBeVisible();
+ releaseFinalize();
  await expect(page.getByRole('heading',{name:'사진 최종 완료를 처리하지 못했어요'})).toBeVisible();
+ await expect(page.locator('[data-loading-characters]')).toHaveCount(0);
  expect(server.state().phase).toBe('review');expect(server.state().latestAssetId).toBe('result');
  await page.getByRole('button',{name:'재시도',exact:true}).click();
  await expect(page.getByRole('button',{name:'사진 저장',exact:true})).toBeVisible();

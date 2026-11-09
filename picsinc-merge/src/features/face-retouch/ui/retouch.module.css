@@ -5,7 +5,7 @@
 .editor button,.open { font:inherit; cursor:pointer; color:var(--moira-ink); }
 .editor button { border:2px solid var(--moira-ink); border-radius:4px; background:var(--moira-surface); }
 .editor button:disabled { opacity:.4; cursor:default; }
-.editor button:focus-visible,.editor a:focus-visible,.open:focus-within,.options summary:focus-visible { outline:3px solid var(--moira-ink); outline-offset:3px; }
+.editor button:focus-visible,.editor a:focus-visible,.open:focus-within { outline:3px solid var(--moira-ink); outline-offset:3px; }
 .header { height:48px; display:flex; align-items:center; gap:8px; }
 .header strong { flex:1; font-size:16px; font-weight:900; line-height:24px; min-width:0; }
 .header .back { position:relative; display:grid; place-items:center; flex:none; width:20px; min-height:44px; padding:0; border:0; background:transparent; }
@@ -21,8 +21,6 @@
 .selectedFace { border:2px solid var(--moira-ink); box-shadow:0 0 0 1px #fff6; }
 .faceBox span { position:absolute; top:-22px; left:0; background:var(--moira-surface); color:var(--moira-ink); border:1px solid var(--moira-ink); border-radius:4px; padding:2px 5px; font-size:10px; white-space:nowrap; }
 .selectedFace span { background:var(--moira-mint); }
-.topTools { position:absolute; left:10px; top:10px; display:flex; align-items:center; gap:6px; background:var(--moira-mint); border:2px solid var(--moira-ink); border-radius:4px; padding:0 5px; font-size:11px; }
-.topTools button { background:none; border:0; min-width:24px; min-height:30px; padding:2px; font-size:11px; }
 .editor .compare { position:absolute; right:12px; bottom:12px; display:grid; place-items:center; width:36px; height:32px; padding:3px 5px; border-width:3px; touch-action:none; }
 .originalBadge { position:absolute; right:10px; top:10px; background:var(--moira-surface); border:2px solid var(--moira-ink); border-radius:4px; padding:4px 8px; font-size:11px; }
 .progress { position:absolute; inset:0; background:#fbf9ffd9; display:grid; place-items:center; font-size:14px; }
@@ -55,15 +53,7 @@
 .collapsed .viewport { aspect-ratio:370/472; border:0; border-radius:24px; background:var(--moira-accent); box-shadow:none; }
 .collapsed .panel { padding-bottom:24px; margin-top:16px; }
 .collapsed .modeRow { margin-bottom:0; }
-.options { margin-top:20px; padding:8px 0; font-size:12px; color:var(--moira-muted); }
-.options summary { width:max-content; max-width:100%; cursor:pointer; font-size:11px; }
-.options[open] { padding:12px; border:2px solid var(--moira-ink); border-radius:4px; }
-.options[open] summary { margin-bottom:12px; }
-.options button { min-height:36px; padding:4px 8px; font-size:11px; }
-.options button[aria-pressed=true] { background:var(--moira-accent); }
-.faceRow { display:flex; gap:6px; align-items:center; overflow-x:auto; white-space:nowrap; margin:8px 0; padding-bottom:2px; }
-.faceRow button { flex-shrink:0; }
-.help,.messages { font-size:11px; line-height:18px; color:var(--moira-muted); }
+.messages { font-size:11px; line-height:18px; color:var(--moira-muted); }
 .messages p { margin:6px 0; }
 .messages [role=alert],.warning { color:#9c3434; }
 .emptyError { border:2px solid var(--moira-ink); border-radius:4px; background:var(--moira-surface); padding:12px; font-size:12px; line-height:20px; color:#9c3434; }
@@ -89,8 +79,6 @@
 .magnifier canvas,.magnifier svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .magnifier svg{fill:none;stroke:white;stroke-width:1.3;filter:drop-shadow(0 1px 1px #0008)}
 .magnifier span{position:absolute;right:7px;bottom:5px;color:white;font-size:10px;text-shadow:0 1px 3px black}
-.touchActions{display:flex;justify-content:space-between;gap:14px}
-.touchActions button{min-height:36px;font-size:12px;color:#5b5b67}
 /* Figma 527:21565. Keep the mounted canvas and draft behind the failure screen. */
 .editorContentsHidden { visibility:hidden; }
 .saveFailure { position:fixed; z-index:60; inset:0; margin:auto; width:100%; max-width:402px; min-height:100dvh; overflow-y:auto; display:flex; flex-direction:column; padding:max(10px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom)); background:var(--moira-surface); }
@@ -118,7 +106,6 @@
 /* Figma 527:10234: first save and retry share this dedicated pending state. */
 .savingContent { margin:114px 8px 32px; text-align:center; }
 .savingIllustration { width:calc(100% + 48px); margin-left:-24px; aspect-ratio:402/231; }
-.savingIllustration img { display:block; width:100%; height:100%; object-fit:contain; }
 .savingContent h1 { margin:0 0 8px; font-size:24px; font-weight:900; line-height:32px; word-break:keep-all; }
 .savingContent p { margin:0; font-size:12px; font-weight:500; line-height:20px; }
 @media(max-height:650px) { .savingContent { margin-top:48px; } }

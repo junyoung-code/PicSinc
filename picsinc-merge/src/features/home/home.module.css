@@ -35,5 +35,4 @@
 .cardCopy p { margin:0; color:var(--moira-muted); font-size:14px; line-height:20px; }
 .arrow { flex:0 0 42px; height:42px; display:grid; place-items:center; border:2px solid var(--moira-ink); border-radius:7px; background:var(--moira-sky); }
 .mint { background:var(--moira-mint); }
-.soloLink { display:table; margin:22px auto 0; font-size:12px; line-height:20px; color:var(--moira-muted); text-underline-offset:3px; }
 @media (max-width:359px) { .page { padding-left:16px; padding-right:16px; }.header { padding-left:10px; padding-right:6px; gap:4px; }.header > span { font-size:10px; }.logo { width:80px; height:auto; }.heading h1 { font-size:24px; }.cardCopy { padding:0 12px; }.cardCopy p { font-size:12px; }.floatingPhoto { left:35%; }.lilac { left:8%; }.pink { left:72%; }.sourceLabel,.resultLabel { font-size:10px; } }
