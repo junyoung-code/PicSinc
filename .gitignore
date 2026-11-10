@@ -2,6 +2,8 @@
 private/
 AGENTS.md
 STATE.md
+# Share the current app's progress with teammates.
+!/picsinc-merge/STATE.md
 docs/workstreams/
 
 # Secrets and local configuration
