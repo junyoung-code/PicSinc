@@ -196,3 +196,27 @@ test('personal detection scans selected ROIs directly and preserves original coo
   expect(recovered.landmarks[1].y).toBeCloseTo(detected[3].landmarks[1].y, 6);
   expect(record.edit.settings[recovered.id].faceWidth).toBe(30);
 });
+
+for (const failure of [
+  {stage:'model-init',reason:'network',body:'createFromOptions:async()=>{throw new TypeError("Failed to fetch https://private.example/photo?token=secret");}'},
+  {stage:'roi-detect',reason:'memory',body:'createFromOptions:async()=>({detect:()=>{throw new WebAssembly.RuntimeError("memory access out of bounds");},close(){}})'},
+]) test(`detection logging: ${failure.stage} records metadata without changing failure or recovery`, async ({page}) => {
+  await backend(page,detected,4,true);
+  const logs: any[]=[];let fail=true;
+  await page.route('**/api/retouch/diagnostics',route=>{logs.push(route.request().postDataJSON());return route.continue();});
+  await page.route('**/retouch/vendor/vision_bundle.js',route=>fail?route.fulfill({contentType:'application/javascript',body:`self.MediaPipe={FilesetResolver:{forVisionTasks:async()=>({})},FaceLandmarker:{${failure.body}}};`}):route.fallback());
+  const delivery=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/retouch/diagnostics');
+  await page.goto(`/retouch/rooms/${roomId}`);
+  await page.getByRole('button',{name:'내 영역 보정 이어가기',exact:true}).click();
+  expect((await delivery).status()).toBe(204);
+  await expect(page.getByRole('alert').filter({hasText:'얼굴 기준점을 찾지 못했어요'})).toBeVisible();
+  await expect(saveButton(page)).toBeDisabled();
+  await expect(page.getByRole('button',{name:/^얼굴 \d+ 보정$/})).toHaveCount(0);
+  await expect(page.getByRole('img',{name:'업로드한 원본',exact:true})).toBeVisible();
+  await expect.poll(()=>logs.length).toBe(1);
+  expect(logs[0].diagnostic).toMatchObject({stage:failure.stage,reason:failure.reason,width,height,regionCount:4});
+  expect(JSON.stringify(logs)).not.toMatch(/private\.example|secret|landmarks|mask|token|message|stack/);
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('moira:face-detection-failures')??'[]'))).toEqual(logs);
+  fail=false;await open(page);await overview(page,4);
+  await expect(saveButton(page)).toBeEnabled();expect(logs).toHaveLength(1);
+});

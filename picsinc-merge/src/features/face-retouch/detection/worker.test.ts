@@ -7,17 +7,18 @@ import type { DetectionRegion } from './client';
 const source = readFileSync(new URL('../../../../public/retouch/detect.worker.js', import.meta.url), 'utf8');
 const face = (x = .5, y = .5) => Array.from({ length: 478 }, () => ({ x, y, z: .1 }));
 const roi = (x = 700, y = 1100, width = 300, height = 400): DetectionRegion => ({ x, y, width, height, mask: new Uint8Array(width * height).fill(1) });
-async function run(replies: Array<unknown[] | Error>, regions?: DetectionRegion[]) {
+async function run(replies: Array<unknown[] | Error>, regions?: DetectionRegion[], failure?: { stage: string; error: Error }) {
   const crops: number[][] = [], closed: string[] = [], inputs: string[] = [];
   let calls = 0, models = 0, output: any;
   const self: any = { postMessage: (value: unknown) => { output = value; }, MediaPipe: {
-    FilesetResolver: { forVisionTasks: async () => ({}) },
-    FaceLandmarker: { createFromOptions: async () => { models++; return {
+    FilesetResolver: { forVisionTasks: async () => { if (failure?.stage === 'wasm-setup') throw failure.error; return {}; } },
+    FaceLandmarker: { createFromOptions: async () => { if (failure?.stage === 'model-init') throw failure.error; models++; return {
       detect: (image: { id: string }) => { inputs.push(image.id); const result = replies[calls++]; if (result instanceof Error) throw result; return { faceLandmarks: result }; },
       close: () => closed.push('detector'),
     }; } },
   } };
-  runInNewContext(source, { self, importScripts: () => {}, createImageBitmap: async (_: unknown, ...box: number[]) => {
+  runInNewContext(source, { self, importScripts: () => { if (failure?.stage === 'runtime-import') throw failure.error; }, createImageBitmap: async (_: unknown, ...box: number[]) => {
+    if (failure?.stage === 'roi-crop') throw failure.error;
     crops.push(box); const id = `crop-${crops.length}`; return { id, close: () => closed.push(id) };
   } });
   await self.onmessage({ data: { bitmap: { id: 'source', width: 1375, height: 2049, close: () => closed.push('source') }, regions } });
@@ -80,4 +81,30 @@ test('20 unique faces stop further ROI scans and preserve the editor fail-closed
   const result = await run([Array.from({ length: 20 }, (_, i) => face(.1 + i * .03, .5))], [roi(), roi(0, 1500)]);
   assert.equal(result.calls, 1); assert.equal(result.output.landmarks.length, 20);
   assert.deepEqual(result.closed, ['crop-1', 'source', 'detector']);
+});
+
+test('failure diagnostics distinguish initialization, crop and inference without raw errors or face data', async () => {
+  for (const stage of ['runtime-import', 'wasm-setup', 'model-init', 'roi-crop']) {
+    const result = await run([], [roi()], { stage, error: new TypeError('Failed to fetch https://private.example/photo?token=secret') });
+    assert.equal(result.output.diagnostic.stage, stage);
+    assert.equal(result.output.diagnostic.reason, 'network');
+    assert.equal(result.output.diagnostic.errorName, 'TypeError');
+    assert.equal(result.output.diagnostic.width, 1375);
+    assert.equal(result.output.diagnostic.regionCount, 1);
+    assert.ok(result.output.diagnostic.elapsedMs >= 0);
+    assert.doesNotMatch(JSON.stringify(result.output.diagnostic), /secret|private|landmarks|mask|https/);
+    assert.equal(result.output.landmarks, undefined);
+  }
+  const result = await run([[face()], new WebAssembly.RuntimeError('memory access out of bounds')], [roi(), roi(0,1500)]);
+  assert.equal(result.output.diagnostic.stage, 'roi-detect');
+  assert.equal(result.output.diagnostic.reason, 'memory');
+  assert.equal(result.output.diagnostic.regionIndex, 1);
+  assert.equal(result.output.diagnostic.regionCount, 2);
+  assert.deepEqual(result.closed, ['crop-1', 'crop-2', 'source', 'detector']);
+});
+
+test('successful detection does not emit failure diagnostics', async () => {
+  const result = await run([[face()]], [roi()]);
+  assert.equal(result.output.diagnostic, undefined);
+  assert.equal(result.output.landmarks.length, 1);
 });
