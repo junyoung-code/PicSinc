@@ -1,8 +1,9 @@
 import { lipOuterLoop, lipInnerLoop, type LipShape } from "./lips";
+import {contourLengths,roundedContour,type SoftContour,type LowerFace} from './face-shape';
 import { bounds, browLoops, eyeLoops, frame, lipLoop, mean, oval, smooth } from "./geometry";
 import {controls, controlDefinitions, faceEffectAmount, type ControlId, type Face, type Point, type Settings} from "../state/model";
 export type Region = { center: Point; rx: number; ry: number; angle: number; box?: boolean };
-export type Operation = Region & { owner: string; control: ControlId; sx: number; sy: number; rotation: number; dx: number; dy: number; exclusions: Region[]; feather: number; legacyFalloff?:boolean; lip?:LipShape; contour?: {point:Point;delta:Point}[]; head?:{inner:number;outer:number}; verticalClip?:boolean; pair?:{center:Point;sign:number;collar:number} };
+export type Operation = Region & { owner: string; control: ControlId; sx: number; sy: number; rotation: number; dx: number; dy: number; exclusions: Region[]; feather: number; legacyFalloff?:boolean; lip?:LipShape; contour?: {point:Point;delta:Point}[]; softContour?:SoftContour; lowerFace?:LowerFace; head?:{inner:number;outer:number}; verticalClip?:boolean; pair?:{center:Point;sign:number;collar:number} };
 // Core regions include makeup. Only the surrounding collar fades the transform.
 function buildOperations(face: Face, settings: Settings, width: number, height: number): Operation[] {
  const f=frame(face,width,height),p=f.lm,w=f.width,h=f.height,out:Operation[]=[];
@@ -14,17 +15,41 @@ function buildOperations(face: Face, settings: Settings, width: number, height: 
  const brows=browLoops.map(loop=>region(loop,1.35,1.6));
  const noseProtection=region([168,193,417,6,197,196,419,5,1,4,44,274,98,327,2],1.25,1.10);
  const protectedFeatures=[...eyes,region(lipLoop,1.25,1.6),noseProtection];
- const outline=region(oval,1,1),eyeY=mean(eyeLoops.flat().map(i=>p[i])).y,chinY=p[152].y;
+ const outline=region(oval,1,1),chinY=p[152].y;
+ // Only face-shape controls use this wider outer-eye/makeup protection. Eye
+ // controls keep their original geometry and strengths.
+ const shapeEyes=eyeLoops.map((loop,side)=>{
+  const b=bounds(loop.map(i=>p[i])),sign=side===0?-1:1;
+  return{center:f.world({x:b.x+b.width/2+sign*b.width*.10,y:b.y+b.height/2}),rx:b.width*.80+w*.012,ry:Math.max(b.height*1.3,h*.032)+w*.012,angle:f.angle,box:true};
+ });
+ const shapeProtection=[...shapeEyes,region(lipLoop,1.25,1.6),noseProtection];
+ const contourPoints=oval.map(i=>p[i]),lengths=contourLengths(contourPoints),rounded=roundedContour(contourPoints,w*.38);
  for(const id of ["faceWidth","lowerFace","cheekbone","chinLength","jawAngle"] as const){
-  const contour=oval.map(i=>{const q=p[i],sign=Math.sign(q.x),lower=smooth((q.y-eyeY)/(chinY-eyeY)),chin=smooth((q.y-p[17].y)/(chinY-p[17].y));let dx=0,dy=0;
-   if(id==="faceWidth")dx=sign*w*.065*v(id)*(1-smooth((Math.abs(q.y-p[234].y)-h*.25)/(h*.3)));
-   if(id==="lowerFace"){dx=-q.x*.075*lower*v(id);dy=-(q.y-eyeY)*.09*lower*v(id);}
+  if(id==='lowerFace'){
+   const mouth=bounds(lipOuterLoop.map(i=>p[i])),nose=p[2].y,outlineBounds=bounds(contourPoints),offsetY=outlineBounds.y+outlineBounds.height/2;
+   const mouthCenter=mouth.y+mouth.height/2;
+   // Keep a small collar around the lips rigid, including grid interpolation.
+   const mouthTop=Math.max(nose+(mouth.y-nose)*.65,mouth.y-w*.012);
+   add(id,outline,{lowerFace:{nose:nose-offsetY,chin:chinY-offsetY,mouthTop:mouthTop-offsetY,mouthBottom:mouth.y+mouth.height+w*.012-offsetY,mouthCenter:mouthCenter-offsetY,amount:.16*v(id)}},[],w*.27);
+   continue;
+  }
+  const contour=oval.map(i=>{const q=p[i],sign=Math.sign(q.x),chin=smooth((q.y-p[17].y)/(chinY-p[17].y));let dx=0,dy=0;
+   if(id==="faceWidth")dx=q.x*.13*v(id)*(1-smooth((Math.abs(q.y-p[234].y)-h*.25)/(h*.3)));
    if(id==="cheekbone")dx=sign*w*.05*v(id)*(1-smooth(Math.abs(q.y-p[93].y)/(h*.22)));
    if(id==="chinLength")dy=h*.065*v(id)*chin;
-   if(id==="jawAngle"){const band=smooth((q.y-eyeY)/(h*.22))*(1-smooth((q.y-p[172].y)/(h*.18)));dx=sign*w*.038*v(id)*band;dy=h*.012*v(id)*band;}
+   if(id==="jawAngle"){
+    const cheek=p[sign<0?93:323].y,jaw=p[sign<0?172:397].y;
+    const band=smooth((q.y-cheek)/Math.max(h*.05,jaw-cheek))*(1-smooth((q.y-jaw)/Math.max(h*.05,chinY-jaw)));
+    const target=rounded[oval.indexOf(i)],x=q.x-target.x,y=q.y-target.y;
+    const limit=Math.min(1,w*.06/Math.max(1e-6,Math.hypot(x,y)));
+    dx=x*band*v(id)*limit;dy=y*band*v(id)*limit;
+   }
    const origin=f.world(q),target=f.world({x:q.x+dx,y:q.y+dy});return{point:origin,delta:{x:target.x-origin.x,y:target.y-origin.y}};
   });
-  add(id,outline,{contour},protectedFeatures,w*.27);
+  if(id==='faceWidth'||id==='jawAngle'){
+   const exclusions=id==='jawAngle'?[...shapeProtection,at(152,w*.10,h*.04)]:shapeProtection;
+   add(id,outline,{softContour:{samples:contour.map((sample,i)=>({...sample,length:lengths[i]})),radius:w*.30}},exclusions,w*.30);
+  }else add(id,outline,{contour},protectedFeatures,w*.27);
  }
  eyeLoops.forEach((loop,side)=>{
   const eyeAdd=(id:ControlId,area:Region,change:Partial<Operation>,extra:Region[]=[],feather?:number)=>add(id,area,{...change,pair:{center:mean(eyes.map(e=>e.center)),sign:side===0?-1:1,collar:w*.02}},extra,feather);
@@ -83,5 +108,7 @@ export function operations(face:Face,settings:Settings,width:number,height:numbe
  const key=`${width}:${height}`;let template=cache.get(key);
  if(!template){template=buildOperations(face,Object.fromEntries(controls.map(([id])=>[id,100])) as Settings,width,height);cache.set(key,template);}
  return template.filter(o=>settings[o.control]).map(o=>{const factor=faceEffectAmount(settings[o.control])/100;return{...o,sx:1+(o.sx-1)*factor,sy:1+(o.sy-1)*factor,dx:o.dx*factor,dy:o.dy*factor,rotation:o.rotation*factor,
-  contour:o.contour?.map(v=>({point:v.point,delta:{x:v.delta.x*factor,y:v.delta.y*factor}}))};});
+  contour:o.contour?.map(v=>({point:v.point,delta:{x:v.delta.x*factor,y:v.delta.y*factor}})),
+  softContour:o.softContour?{...o.softContour,samples:o.softContour.samples.map(v=>({...v,delta:{x:v.delta.x*factor,y:v.delta.y*factor}}))}:undefined,
+  lowerFace:o.lowerFace?{...o.lowerFace,amount:o.lowerFace.amount*factor}:undefined};});
 }

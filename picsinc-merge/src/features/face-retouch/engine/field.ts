@@ -1,4 +1,5 @@
 import { lipWeight } from "../effects/lips";
+import {contourShift,lowerFaceSource} from '../effects/face-shape';
 import { TOUCH_SUPPORT } from "../touch/coordinates";
 import { unsafeCells, type FieldWindow } from "./limits";
 import { bounds, frame, oval, smooth } from "../effects/geometry";
@@ -118,7 +119,15 @@ export function mapPoint(point:Point,plan:Prepared,strengths:Strengths={},weight
   if(!weight)continue;
   const scale=strengths[cache.opKeys[i]]??1;
   let q:Point;
-  if(o.contour){
+  if(o.softContour){
+   const delta=contourShift(p,o.softContour);q={x:p.x-delta.x*scale,y:p.y-delta.y*scale};
+  }
+  else if(o.lowerFace){
+   const y=local(p,o).y,shift=lowerFaceSource(y,o.lowerFace,scale)-y,{c,s}=trig(o);
+   q={x:p.x-shift*s,y:p.y+shift*c};
+   weight*=1-smooth(Math.min(outside(p,o),outside(q,o))/o.feather);
+  }
+  else if(o.contour){
    const reference=contourReferences[o.owner]??(contourReferences[o.owner]={...p});
    const projection=projections[o.owner]??(projections[o.owner]=reference.x===point.x&&reference.y===point.y&&contourSamples?.[o.owner]?contourSamples[o.owner]:contourProjection(reference,o.contour));
    const result=contourInverse(reference,o,scale,projection);q={x:p.x+result.q.x-reference.x,y:p.y+result.q.y-reference.y};weight*=result.weight;
