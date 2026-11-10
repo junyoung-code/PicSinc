@@ -46,6 +46,8 @@
 
 ## 승인된 로컬 보정기
 
+눈 높이·앞트임·충혈·밑트임은 `effects/eyes.ts`의 눈 윤곽·보호 가중치를 기존 `operations.ts`·`field.ts`·`sclera.ts`·`renderer.ts`에 연결한다. `eyes.test.ts`와 `tests/e2e/retouch-eyes.spec.ts`에서 메이크업 이동·눈동자 보호·밝기 증가·PNG를 검사하며 제품 규칙과 결과는 MASTER_SPEC·STATE를 따른다.
+
 얼굴형 보완은 `effects/face-shape.ts`의 윤곽 연결·하안부 역좌표 계산과 `operations.ts`의 해당 세 항목에 한정한다. `engine/field.ts`는 이 계산을 기존 원본 샘플링·소유 영역 보호·안전 제한에 연결한다. 기능 옆 `face-shape.test.ts`와 `tests/e2e/retouch-face-shape.spec.ts`에서 윤곽 연속성·눈 보호·입 형태와 비율·이웃 얼굴 보호·PNG 저장을 확인한다. 제품 기준·진행 결과는 MASTER_SPEC·STATE를 따른다.
 
 메인은 `/retouch`, `src/features/face-retouch/`, 관련 자산 준비·검사·실행 설정을 담당한다. 효과와 조작 계약은 [MASTER_SPEC의 로컬 얼굴 보정](../../MASTER_SPEC.md#로컬-얼굴-보정--승인된-추가-범위)을 따른다. 기존 ②의 영역 편집과 구분하며 운영 DB·기존 방 흐름을 유지한다. 승인된 기존 사이트 `/retouch` 배포와 실기기 확인 범위는 MASTER_SPEC을 따르며 검사 기록과 품질 한계는 STATE에서 관리한다.

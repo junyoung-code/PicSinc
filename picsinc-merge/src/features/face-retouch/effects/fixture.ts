@@ -1,4 +1,5 @@
 import { lipInnerLoop } from "./lips";
+import {eyeContours} from './eyes';
 import type { Face,Point } from "../state/model";
 import { browLoops,eyeLoops,lipLoop,oval } from "./geometry";
 // Synthetic geometry only; no user landmarks or private photographs in Git.
@@ -9,6 +10,15 @@ export function fixture(id="face-1",cx=.5,scale=1,angle=0):Face {
   p[93]={x:.32,y:.46};p[323]={x:.68,y:.46};p[172]={x:.34,y:.61};p[397]={x:.66,y:.61};p[136]={x:.37,y:.65};p[365]={x:.63,y:.65};
   eyeLoops.forEach((loop,s)=>loop.forEach((i,n)=>{const a=Math.PI+n/loop.length*2*Math.PI;p[i]={x:(s===0?.415:.585)+Math.cos(a)*.055,y:.39+Math.sin(a)*.022};}));
   p[33]={x:.36,y:.39};p[133]={x:.47,y:.39};p[362]={x:.53,y:.39};p[263]={x:.64,y:.39};
+  // Fill additional eyelid landmarks without changing any existing test anchor.
+  eyeContours.forEach((loop,side)=>loop.forEach((id,index)=>{
+   if(eyeLoops[side].includes(id))return;
+   let before=1,after=1;
+   while(!eyeLoops[side].includes(loop[(index-before+loop.length)%loop.length]))before++;
+   while(!eyeLoops[side].includes(loop[(index+after)%loop.length]))after++;
+   const a=p[loop[(index-before+loop.length)%loop.length]],b=p[loop[(index+after)%loop.length]],t=before/(before+after);
+   p[id]={x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t};
+  }));
   browLoops.forEach((loop,s)=>loop.forEach((i,n)=>{p[i]={x:(s===0?.35:.54)+(n%5)*.027,y:.32+(n<5?-.012:.010)};}));
   lipLoop.forEach((i,n)=>{const a=Math.PI+n/lipLoop.length*2*Math.PI;p[i]={x:.5+Math.cos(a)*.080,y:.575+Math.sin(a)*.027};});
   p[0]={x:.5,y:.548};p[13]={x:.5,y:.57};p[14]={x:.5,y:.58};p[17]={x:.5,y:.602};

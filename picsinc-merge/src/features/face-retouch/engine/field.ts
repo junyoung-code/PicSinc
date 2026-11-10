@@ -1,5 +1,6 @@
 import { lipWeight } from "../effects/lips";
 import {contourShift,lowerFaceSource} from '../effects/face-shape';
+import {eyeAreaWeight,eyeProtection} from '../effects/eyes';
 import { TOUCH_SUPPORT } from "../touch/coordinates";
 import { unsafeCells, type FieldWindow } from "./limits";
 import { bounds, frame, oval, smooth } from "../effects/geometry";
@@ -133,7 +134,12 @@ export function mapPoint(point:Point,plan:Prepared,strengths:Strengths={},weight
    const result=contourInverse(reference,o,scale,projection);q={x:p.x+result.q.x-reference.x,y:p.y+result.q.y-reference.y};weight*=result.weight;
   }
   else if(o.lip){q=inverse(p,o,scale);weight*=lipWeight(point,o.lip,gridGeometry(plan).guard);}
+  else if(o.eye){
+   q=inverse(p,o,scale);
+   weight*=Math.max(eyeAreaWeight(p,o.eye,gridGeometry(plan).guard),eyeAreaWeight(q,o.eye,gridGeometry(plan).guard));
+  }
   else{q=inverse(p,o,scale);weight*=o.legacyFalloff?1-smooth((regionDistance(p,o)-.5)/.5):1-smooth(Math.min(outside(p,o),outside(q,o))/o.feather);}
+  if(o.eye){const guard=gridGeometry(plan).guard*1.25+Math.SQRT2;weight*=Math.min(eyeProtection(p,o.eye,guard),eyeProtection(q,o.eye,guard));}
   if(!weight)continue;
   for(const r of o.exclusions){const collar=Math.max(2,Math.min(r.rx,r.ry)*.65);weight*=smooth(Math.min(outside(point,r),outside(q,r))/collar);}
   weight*=protection(q,o.owner,plan);

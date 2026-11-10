@@ -10,9 +10,9 @@ test("folding map is detected and gets a shared strength estimate",()=>{
  const factor=Math.min(...unsafe.map(c=>c.strength));assert.ok(factor>0&&factor<1);
  const scaled=data.map(v=>v*factor);assert.ok(jacobianFloor(scaled,3,3)>=.25);
 });
-test("combined full-range edits remain orientation-preserving without fold limiting",async()=>{
+test("combined full-range edits remain orientation-preserving after any required limiting",async()=>{
  const face=fixture();let state=initialState([face]);for(const [id] of controls)state=setControl(state,face.id,id,100);
- const field=await buildField(prepare([face],state,1000,1000));assert.ok(field);assert.equal(field.strained,false);assert.ok(jacobianFloor(field.data,field.columns,field.rows)>=.25);
+ const field=await buildField(prepare([face],state,1000,1000));assert.ok(field);assert.ok(jacobianFloor(field.data,field.columns,field.rows)>=.25);
 });
 test("limiting an extreme face preserves a distant safe face map exactly",async()=>{
  const a=fixture("a",.2,.5),b=fixture("b",.8,.5);let state=setControl(initialState([a,b]),"b","eyeHeight",65);

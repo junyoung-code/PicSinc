@@ -25,7 +25,9 @@ void main(){
   vec4 color=texture(originalImage,source);
   if(!compare&&allowed>=.5){
     vec4 m=texture(sclera,source);
-    float safe=smoothstep(.30,.65,min(color.r,min(color.g,color.b)))*m.a;
+    // The inset eyelid/iris mask supplies the geometric protection. Admit
+    // moderately shaded sclera while still rejecting very dark liner/lashes.
+    float safe=smoothstep(.18,.50,min(color.r,min(color.g,color.b)))*m.a;
     float plus=m.r*safe*(1.-warp.b);
     float excess=max(0.,color.r-(color.g+color.b)*.5);
     // Lift green/blue to neutralize red without darkening any channel.
