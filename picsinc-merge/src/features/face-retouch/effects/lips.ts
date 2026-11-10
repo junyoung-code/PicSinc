@@ -20,3 +20,17 @@ export function lipWeight(p:Point,shape:LipShape,gridGuard:number):number {
  // This also prevents the renderer from moving adjacent skin or the mouth cavity.
  return smooth((distance-gridGuard)/shape.feather);
 }
+
+// Coordinates relative to the mouth center, aligned with the face.
+export type LipPosition = { nose:number; rx:number; ry:number; feather:number };
+export function lipPositionShift(p:Point,shape:LipPosition,amount:number,guard:number):number {
+ // Keep both the nose and the translated mouth rigid through grid interpolation.
+ // If the philtrum is short, reduce the whole shift instead of masking the upper lip.
+ const gap=Math.max(0,-shape.ry-shape.nose-2*guard),limit=gap*.5;
+ const dy=Math.max(-limit,Math.min(limit,amount));if(!dy)return 0;
+ const top=-shape.ry+dy-guard,bottom=shape.ry+dy+guard,nose=shape.nose+guard;
+ const upper=smooth((p.y-nose)/(top-nose));
+ const lower=1-smooth((p.y-bottom)/shape.feather);
+ const sides=1-smooth((Math.abs(p.x)-shape.rx-guard)/shape.feather);
+ return -dy*upper*lower*sides;
+}

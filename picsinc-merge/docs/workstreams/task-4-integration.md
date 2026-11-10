@@ -46,6 +46,8 @@
 
 ## 승인된 로컬 보정기
 
+입술 상하 위치는 기존 `effects/lips.ts`에 입 전체의 균일 이동·코밑 고정·주변 연결 계산을 추가하고 `operations.ts`·`engine/field.ts`에만 연결한다. `lip-position.test.ts`와 `tests/e2e/retouch-lip-position.spec.ts`에서 입 모양·코 픽셀·보간·중립 복귀·PNG를 검사하며 제품 동작과 결과는 MASTER_SPEC·STATE를 따른다.
+
 눈 높이·앞트임·충혈·밑트임은 `effects/eyes.ts`의 눈 윤곽·보호 가중치를 기존 `operations.ts`·`field.ts`·`sclera.ts`·`renderer.ts`에 연결한다. `eyes.test.ts`와 `tests/e2e/retouch-eyes.spec.ts`에서 메이크업 이동·눈동자 보호·밝기 증가·PNG를 검사하며 제품 규칙과 결과는 MASTER_SPEC·STATE를 따른다.
 
 얼굴형 보완은 `effects/face-shape.ts`의 윤곽 연결·하안부 역좌표 계산과 `operations.ts`의 해당 세 항목에 한정한다. `engine/field.ts`는 이 계산을 기존 원본 샘플링·소유 영역 보호·안전 제한에 연결한다. 기능 옆 `face-shape.test.ts`와 `tests/e2e/retouch-face-shape.spec.ts`에서 윤곽 연속성·눈 보호·입 형태와 비율·이웃 얼굴 보호·PNG 저장을 확인한다. 제품 기준·진행 결과는 MASTER_SPEC·STATE를 따른다.

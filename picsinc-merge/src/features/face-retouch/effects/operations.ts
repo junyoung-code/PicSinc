@@ -1,10 +1,10 @@
-import { lipOuterLoop, lipInnerLoop, type LipShape } from "./lips";
+import { lipOuterLoop, lipInnerLoop, type LipShape, type LipPosition } from "./lips";
 import {contourLengths,roundedContour,type SoftContour,type LowerFace} from './face-shape';
 import {eyeContours,irisCircle,type EyeArea} from './eyes';
 import { bounds, browLoops, eyeLoops, frame, lipLoop, mean, oval, smooth } from "./geometry";
 import {controls, controlDefinitions, faceEffectAmount, type ControlId, type Face, type Point, type Settings} from "../state/model";
 export type Region = { center: Point; rx: number; ry: number; angle: number; box?: boolean };
-export type Operation = Region & { owner: string; control: ControlId; sx: number; sy: number; rotation: number; dx: number; dy: number; exclusions: Region[]; feather: number; legacyFalloff?:boolean; lip?:LipShape; eye?:EyeArea; contour?: {point:Point;delta:Point}[]; softContour?:SoftContour; lowerFace?:LowerFace; head?:{inner:number;outer:number}; verticalClip?:boolean; pair?:{center:Point;sign:number;collar:number} };
+export type Operation = Region & { owner: string; control: ControlId; sx: number; sy: number; rotation: number; dx: number; dy: number; exclusions: Region[]; feather: number; lip?:LipShape; lipPosition?:LipPosition; eye?:EyeArea; contour?: {point:Point;delta:Point}[]; softContour?:SoftContour; lowerFace?:LowerFace; head?:{inner:number;outer:number}; verticalClip?:boolean; pair?:{center:Point;sign:number;collar:number} };
 // Core regions include makeup. Only the surrounding collar fades the transform.
 function buildOperations(face: Face, settings: Settings, width: number, height: number): Operation[] {
  const f=frame(face,width,height),p=f.lm,w=f.width,h=f.height,out:Operation[]=[];
@@ -83,9 +83,11 @@ function buildOperations(face: Face, settings: Settings, width: number, height: 
  const mouth=region(lipLoop,1.45,1.65);
  add("lipSize",mouth,{sx:1+.22*v("lipSize"),sy:1+.22*v("lipSize")});
  add("lipWidth",mouth,{sx:1+.25*v("lipWidth")});
- // Nose protection flattened the upper lip in the photo comparison. Retain
- // the previous position envelope, as required by the conditional acceptance.
- add("lipPosition",{...region(lipLoop,2.4,2.8),box:false},{dy:-h*.04*v("lipPosition"),legacyFalloff:true});
+ const position=region(lipOuterLoop,1,1),mouthCenter=f.local(position.center),feather=w*.12;
+ // The lowest nose/nostril landmark defines the fixed edge of the philtrum.
+ const noseBottom=Math.max(...[2,1,4,44,274,64,97,98,99,240,294,326,327,328,460].map(i=>p[i].y));
+ // Retain the broad sampling bounds; the dedicated falloff also covers grid padding.
+ add("lipPosition",region(lipOuterLoop,2.4,2.8),{dy:-h*.04*v("lipPosition"),lipPosition:{nose:noseBottom-mouthCenter.y,rx:position.rx,ry:position.ry,feather}},[],feather);
  add("lipFullness",region(lipOuterLoop,1,1),{sy:1+.32*v("lipFullness"),lip:{outer:lipOuterLoop.map(i=>f.points[i]),inner:lipInnerLoop.map(i=>f.points[i]),feather:Math.max(1,h*.002)}},[],0);
  const nose=region([168,98,327,2],1.4,1.15);
  add("noseSize",nose,{sx:1+.20*v("noseSize"),sy:1+.20*v("noseSize")},eyes);
