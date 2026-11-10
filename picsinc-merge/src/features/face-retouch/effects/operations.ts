@@ -1,10 +1,11 @@
 import { lipOuterLoop, lipInnerLoop, type LipShape, type LipPosition } from "./lips";
 import {contourLengths,roundedContour,type SoftContour,type LowerFace} from './face-shape';
 import {eyeContours,irisCircle,type EyeArea} from './eyes';
+import {nostrilContours,type NoseBand,type NoseProtection} from './nose';
 import { bounds, browLoops, eyeLoops, frame, lipLoop, mean, oval, smooth } from "./geometry";
 import {controls, controlDefinitions, faceEffectAmount, type ControlId, type Face, type Point, type Settings} from "../state/model";
 export type Region = { center: Point; rx: number; ry: number; angle: number; box?: boolean };
-export type Operation = Region & { owner: string; control: ControlId; sx: number; sy: number; rotation: number; dx: number; dy: number; exclusions: Region[]; feather: number; lip?:LipShape; lipPosition?:LipPosition; eye?:EyeArea; contour?: {point:Point;delta:Point}[]; softContour?:SoftContour; lowerFace?:LowerFace; head?:{inner:number;outer:number}; verticalClip?:boolean; pair?:{center:Point;sign:number;collar:number} };
+export type Operation = Region & { owner: string; control: ControlId; sx: number; sy: number; rotation: number; dx: number; dy: number; exclusions: Region[]; feather: number; lip?:LipShape; lipPosition?:LipPosition; eye?:EyeArea; nose?:NoseProtection; noseBand?:NoseBand; contour?: {point:Point;delta:Point}[]; softContour?:SoftContour; lowerFace?:LowerFace; head?:{inner:number;outer:number}; pair?:{center:Point;sign:number;collar:number} };
 // Core regions include makeup. Only the surrounding collar fades the transform.
 function buildOperations(face: Face, settings: Settings, width: number, height: number): Operation[] {
  const f=frame(face,width,height),p=f.lm,w=f.width,h=f.height,out:Operation[]=[];
@@ -90,17 +91,27 @@ function buildOperations(face: Face, settings: Settings, width: number, height: 
  add("lipPosition",region(lipOuterLoop,2.4,2.8),{dy:-h*.04*v("lipPosition"),lipPosition:{nose:noseBottom-mouthCenter.y,rx:position.rx,ry:position.ry,feather}},[],feather);
  add("lipFullness",region(lipOuterLoop,1,1),{sy:1+.32*v("lipFullness"),lip:{outer:lipOuterLoop.map(i=>f.points[i]),inner:lipInnerLoop.map(i=>f.points[i]),feather:Math.max(1,h*.002)}},[],0);
  const nose=region([168,98,327,2],1.4,1.15);
- add("noseSize",nose,{sx:1+.20*v("noseSize"),sy:1+.20*v("noseSize")},eyes);
+ const lipTop=Math.min(...lipOuterLoop.map(i=>p[i].y));
+ const noseGuard=(r:Region,protectNostrils=false):NoseProtection=>{
+  const offset=f.local(r.center);
+  const fixed=[...eyeContours,...(protectNostrils?nostrilContours:[])];
+  return{lipTop:lipTop-offset.y,feather:w*(protectNostrils ? .025 : .04),fixed:fixed.map(loop=>loop.map(i=>({x:p[i].x-offset.x,y:p[i].y-offset.y})))};
+ };
+ // Alar motion precedes whole-nose transforms, so its nostril protection also
+ // follows size/length/tip edits without moving the holes a second time.
+ [[49,48,64,98],[279,278,294,327]].forEach((ids,side)=>{
+  const r=region(ids,1.35,1.5);
+  add('noseAlar',r,{dx:(side===0?-1:1)*w*.035*v('noseAlar'),nose:noseGuard(r,true)},[],w*.06);
+ });
+ add("noseSize",nose,{sx:1+.20*v("noseSize"),nose:noseGuard(nose)},eyes);
  add("noseLength",nose,{sy:1+.20*v("noseLength")},eyes);
- // Scale each alar wing about its own center instead of moving both wings apart.
- for(const ids of [[64,97,98,99,240],[294,326,327,328,460]])
-  add("noseAlar",region(ids,1.35,1.5),{sx:1+.23*v("noseAlar"),sy:1+.23*v("noseAlar")},[],w*.035);
- // Split at one anatomical boundary; feather stays inside each vertical band.
- const axis=(p[168].x+p[6].x+p[1].x)/3,split=(p[6].y+p[197].y)/2;
- const band=(top:number,bottom:number,rx:number):Region=>({center:f.world({x:axis,y:(top+bottom)/2}),rx,ry:Math.abs(bottom-top)/2,angle:f.angle,box:true});
- add("noseBridge",band(p[168].y,split,w*.085),{sx:1+.30*v("noseBridge"),verticalClip:true},[],w*.07);
- add("noseDorsum",band(split,p[4].y,w*.079),{sx:1+.30*v("noseDorsum"),verticalClip:true},[],w*.07);
- add("noseTip",region([1,4,44,274,2],1.45,1.3),{sx:1+.23*v("noseTip"),sy:1+.23*v("noseTip")});
+ const band=region([168,193,417,196,419,5,4,1,44,274],2,1.25),offset=f.local(band.center);
+ const rows=[[168,193,417],[6,196,419],[197,196,419],[195,3,248],[5,51,281],[4,45,275],[1,44,274]].map(([center,left,right])=>({x:p[center].x-offset.x,y:p[center].y-offset.y,rx:Math.max(w*.018,Math.abs(p[left].x-p[center].x),Math.abs(p[right].x-p[center].x))})).sort((a,b)=>a.y-b.y);
+ const bottom=p[4].y+(p[1].y-p[4].y)*.85-offset.y;
+ for(const [id,part] of [['noseBridge','bridge'],['noseDorsum','dorsum']] as const)
+  add(id,band,{sx:1+.30*v(id),nose:noseGuard(band),noseBand:{rows,part,split:(p[6].y+p[197].y)/2-offset.y,blend:w*.04,bottom,topFade:w*.035,bottomFade:Math.max(1,bottom-(p[4].y-offset.y)),feather:w*.07}},[],w*.10);
+ const tip=region([1,4,44,274,2],1.45,1.3);
+ add("noseTip",tip,{sx:1+.23*v("noseTip"),nose:noseGuard(tip)});
  browLoops.forEach((loop,side)=>{
   const browAdd=(id:ControlId,area:Region,change:Partial<Operation>)=>add(id,area,{...change,pair:{center:mean(brows.map(b=>b.center)),sign:side===0?-1:1,collar:w*.02}});
   const r=region(loop,1.35,1.6),sign=side===0?-1:1,b=bounds(loop.map(i=>p[i]));

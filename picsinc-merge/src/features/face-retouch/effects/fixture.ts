@@ -27,6 +27,8 @@ export function fixture(id="face-1",cx=.5,scale=1,angle=0):Face {
   const nose:Record<number,Point>={168:{x:.5,y:.37},193:{x:.478,y:.387},417:{x:.522,y:.387},6:{x:.5,y:.43},197:{x:.5,y:.46},196:{x:.483,y:.45},419:{x:.517,y:.45},5:{x:.5,y:.482},98:{x:.463,y:.51},327:{x:.537,y:.51},2:{x:.5,y:.527},1:{x:.5,y:.502},4:{x:.5,y:.495},44:{x:.484,y:.502},274:{x:.516,y:.502}};
   Object.assign(nose,{64:{x:.451,y:.505},294:{x:.549,y:.505},97:{x:.470,y:.512},98:{x:.463,y:.510},99:{x:.465,y:.516},240:{x:.473,y:.518},326:{x:.530,y:.512},327:{x:.537,y:.510},328:{x:.535,y:.516},460:{x:.527,y:.518}});
   Object.entries(nose).forEach(([i,q])=>p[+i]=q);
+  // Additional bridge/alar anchors, leaving existing feature fixtures unchanged.
+  Object.entries({195:{x:.5,y:.471},3:{x:.482,y:.471},248:{x:.518,y:.471},51:{x:.480,y:.482},281:{x:.520,y:.482},45:{x:.480,y:.495},275:{x:.520,y:.495},49:{x:.447,y:.478},279:{x:.553,y:.478},48:{x:.448,y:.490},278:{x:.552,y:.490},59:{x:.468,y:.501},289:{x:.532,y:.501}}).forEach(([i,q])=>p[+i]=q);
   for(const [start,x] of [[468,.415],[473,.585]]){p[start]={x,y:.39};[1,2,3,4].forEach((k,n)=>{const a=n*Math.PI/2;p[start+k]={x:x+Math.cos(a)*.014,y:.39+Math.sin(a)*.014};});}
   const c=Math.cos(angle),s=Math.sin(angle);
   return {id,landmarks:p.map(q=>{const x=(q.x-.5)*scale,y=(q.y-.45)*scale;return{x:cx+x*c-y*s,y:.45+x*s+y*c,z:0};})};

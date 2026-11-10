@@ -42,22 +42,6 @@ test('eye size scales both eyes and iris by the same ratio across the full core'
   }
  }
 });
-test('nose size and tip scale both axes equally; alar wings scale about their centers',()=>{
- for(const value of [-100,-50,50,100])for(const id of ['noseSize','noseTip','noseAlar'] as const){
-  const ops=prepare([face],setControl(initialState([face]),face.id,id,value),w,h).operations;
-  assert.equal(ops.length,id==='noseAlar'?2:1);
-  for(const op of ops){assert.equal(op.sx,op.sy);assert.notEqual(op.sx,1);assert.ok(op.dx===0);assert.ok(op.dy===0);}
- }
-});
-test('bridge and dorsum never affect the same original point',()=>{
- const bridge=prepare([face],setControl(initialState([face]),face.id,'noseBridge',80),w,h);
- const dorsum=prepare([face],setControl(initialState([face]),face.id,'noseDorsum',80),w,h);
- let changed=0;
- for(let x=430;x<570;x+=3)for(let y=330;y<540;y+=3){const p={x,y},a=mapPoint(p,bridge),b=mapPoint(p,dorsum);
- const ac=Math.hypot(a.x-x,a.y-y)>1e-8,bc=Math.hypot(b.x-x,b.y-y)>1e-8;
- assert.ok(!(ac&&bc));if(ac||bc)changed++;
- }assert.ok(changed>100);
-});
 test('eyebrow head moves its inner end and fixes its outer end',()=>{
  for(const value of [-100,-50,50,100]){
   const plan=prepare([face],setControl(initialState([face]),face.id,'browHeadSpacing',value),w,h),f=frame(face,w,h);

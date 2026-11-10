@@ -1,6 +1,7 @@
 import { lipWeight, lipPositionShift } from "../effects/lips";
 import {contourShift,lowerFaceSource} from '../effects/face-shape';
 import {eyeAreaWeight,eyeProtection} from '../effects/eyes';
+import {noseBandShift,noseProtection} from '../effects/nose';
 import { TOUCH_SUPPORT } from "../touch/coordinates";
 import { unsafeCells, type FieldWindow } from "./limits";
 import { bounds, frame, oval, smooth } from "../effects/geometry";
@@ -101,7 +102,7 @@ export function colorSuppression(point:Point,plan:Prepared,weights=pointWeights(
 }
 export type Strengths=Record<string,number>;
 export function mapPoint(point:Point,plan:Prepared,strengths:Strengths={},weights=pointWeights(point,plan),pointProtection?:Record<string,number>,contourSamples?:Record<string,Projection>):Point {
- let p={...point};const contourReferences:Record<string,Point>={},projections:Record<string,Projection>={};const cache=compiled(plan),protectedWeights:Record<string,number>=pointProtection??{};
+ let p={...point};const contourReferences:Record<string,Point>={},noseReferences:Record<string,Point>={},projections:Record<string,Projection>={};const cache=compiled(plan),protectedWeights:Record<string,number>=pointProtection??{};
  const protect=(owner:string)=>owner==="__touch"?1:protectedWeights[owner]??(protectedWeights[owner]=protection(point,owner,plan));
  for(let i=plan.state.strokes.length-1;i>=0;i--){
   const stroke=plan.state.strokes[i],area=plan.areas[stroke.owner],outer=stroke.radius*TOUCH_SUPPORT;if(!area)continue;
@@ -115,7 +116,6 @@ export function mapPoint(point:Point,plan:Prepared,strengths:Strengths={},weight
  for(let i=plan.operations.length-1;i>=0;i--){
   const o=plan.operations[i],radius=cache.radii[i];if(Math.abs(p.x-o.center.x)>radius||Math.abs(p.y-o.center.y)>radius)continue;
   let weight=protect(o.owner)*minimum(cache.opRestores[i],weights);
-  if(o.verticalClip)weight*=smooth((o.ry-Math.abs(local(point,o).y))/Math.max(1,o.ry*.3));
   if(o.pair){const {c,s}=trig(o);weight*=smooth(((point.x-o.pair.center.x)*c+(point.y-o.pair.center.y)*s)*o.pair.sign/o.pair.collar);}
   if(!weight)continue;
   const scale=strengths[cache.opKeys[i]]??1;
@@ -138,12 +138,18 @@ export function mapPoint(point:Point,plan:Prepared,strengths:Strengths={},weight
    const shift=lipPositionShift(local(p,o),o.lipPosition,o.dy*scale,gridGeometry(plan).guard+Math.SQRT2),{c,s}=trig(o);
    q={x:p.x-shift*s,y:p.y+shift*c};
   }
+  else if(o.noseBand){
+   const reference=noseReferences[o.owner]??(noseReferences[o.owner]={...p});
+   const shift=noseBandShift(local(reference,o),o.noseBand,1+(o.sx-1)*scale),{c,s}=trig(o);
+   q={x:p.x+shift*c,y:p.y+shift*s};
+  }
   else if(o.eye){
    q=inverse(p,o,scale);
    weight*=Math.max(eyeAreaWeight(p,o.eye,gridGeometry(plan).guard),eyeAreaWeight(q,o.eye,gridGeometry(plan).guard));
   }
   else{q=inverse(p,o,scale);weight*=1-smooth(Math.min(outside(p,o),outside(q,o))/o.feather);}
   if(o.eye){const guard=gridGeometry(plan).guard*1.25+Math.SQRT2;weight*=Math.min(eyeProtection(p,o.eye,guard),eyeProtection(q,o.eye,guard));}
+  if(o.nose){const guard=gridGeometry(plan).guard*1.25+Math.SQRT2;weight*=Math.min(noseProtection(local(p,o),o.nose,guard),noseProtection(local(q,o),o.nose,guard));}
   if(!weight)continue;
   for(const r of o.exclusions){const collar=Math.max(2,Math.min(r.rx,r.ry)*.65);weight*=smooth(Math.min(outside(point,r),outside(q,r))/collar);}
   weight*=protection(q,o.owner,plan);
