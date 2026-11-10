@@ -178,7 +178,7 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
     }
     try{
       const copy=await createImageBitmap(bitmap);if(upload.current!==current){copy.close();return;}
-      const job=detectFaces(copy,region?.retryRegions);detection.current=job;
+      const job=detectFaces(copy,region?.detectionRegions);detection.current=job;
       const detected=await job.result;if(upload.current!==current)return;
       const accepted=detected.filter(f=>{const a=faceArea(f,bitmap.width,bitmap.height);return a.rx>=72&&a.ry>=96&&(!region||region.owns(f));});
       if(detected.length>=20){setError("얼굴 검출 한도 20개에 도달했어요. 누락된 얼굴은 보호할 수 없으니 더 적은 인원이 담긴 사진을 선택해주세요. 원본은 유지했어요.");return;}

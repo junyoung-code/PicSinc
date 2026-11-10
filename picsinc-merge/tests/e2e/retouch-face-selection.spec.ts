@@ -16,7 +16,7 @@ const detected = Array.from({ length: 16 }, (_, i) => {
   return { ...face, landmarks: face.landmarks.map(p => ({ ...p, y: p.y - .45 + .125 + Math.floor(i / 4) * .25 })) };
 });
 
-async function backend(page: Page, faces: Face[], ownedColumns = 4, retryMissing = false) {
+async function backend(page: Page, faces: Face[], ownedColumns = 4, roiDetection = false) {
   const data = Buffer.alloc(width * height * 3);
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const i = (y * width + x) * 3;
@@ -26,7 +26,7 @@ async function backend(page: Page, faces: Face[], ownedColumns = 4, retryMissing
   const maskData = Buffer.alloc(width * height);
   for (let y = 0; y < 400; y++) maskData.fill(255, y * width, y * width + ownedColumns * 400);
   const mask = await sharp(maskData, { raw: { width, height, channels: 1 } }).png().toBuffer();
-  const regions = retryMissing ? await Promise.all(Array.from({ length: 5 }, async (_, i) => {
+  const regions = roiDetection ? await Promise.all(Array.from({ length: 5 }, async (_, i) => {
     const x = i % 4 * 400, y = Math.floor(i / 4) * 400;
     const pixels = Buffer.alloc(width * height);
     for (let row = y; row < y + 400; row++) pixels.fill(255, row * width + x, row * width + x + 400);
@@ -39,14 +39,17 @@ async function backend(page: Page, faces: Face[], ownedColumns = 4, retryMissing
   };
   const actions: string[] = [];
   let saved: RoomEditRecord | undefined;
-  if (!retryMissing) await page.route('**/retouch/detect.worker.js', route => route.fulfill({
+  if (!roiDetection) await page.route('**/retouch/detect.worker.js', route => route.fulfill({
     contentType: 'application/javascript',
     body: `self.onmessage=({data:{bitmap}})=>{bitmap.close();self.postMessage({landmarks:${JSON.stringify(faces.map(f => f.landmarks))}});};`,
   }));
-  if (retryMissing) await page.route('**/retouch/vendor/vision_bundle.js', route => route.fulfill({
+  if (roiDetection) await page.route('**/retouch/vendor/vision_bundle.js', route => route.fulfill({
     contentType: 'application/javascript',
-    // Run the real detection worker; replace only MediaPipe's model output.
-    body: `self.MediaPipe={FilesetResolver:{forVisionTasks:async()=>({})},FaceLandmarker:{createFromOptions:async()=>({detect:image=>({faceLandmarks:image.width===1600?${JSON.stringify(detected.slice(0, 3).map(f => f.landmarks))}:${JSON.stringify([detected[3].landmarks.map(p => ({ ...p, x: (p.x * width - 1140) / 460, y: p.y * height / 460, z: (p.z ?? 0) * width / 460 }))])}}),close(){}})}};`,
+    // Real Worker + transfer + coordinate mapping. A whole-image scan must fail.
+    body: `let call=0;const replies=${JSON.stringify(detected.slice(0, 4).map((f, i) => {
+      const x = Math.max(0, i * 400 - 60), cropWidth = Math.min(width, (i + 1) * 400 + 60) - x;
+      return { width: cropWidth, landmarks: f.landmarks.map(p => ({ ...p, x: (p.x * width - x) / cropWidth, y: p.y * height / 460, z: (p.z ?? 0) * width / cropWidth })) };
+    }))};self.MediaPipe={FilesetResolver:{forVisionTasks:async()=>({})},FaceLandmarker:{createFromOptions:async()=>({detect:image=>{const reply=replies[call++];if(!reply||image.width!==reply.width||image.height!==460)throw Error('Unexpected detection input');return {faceLandmarks:[reply.landmarks]};},close(){}})}};`,
   }));
   await page.route('**/api/**', async route => {
     const request = route.request(), path = new URL(request.url()).pathname;
@@ -57,7 +60,7 @@ async function backend(page: Page, faces: Face[], ownedColumns = 4, retryMissing
         { id: 'owner', sessionId: 'session', nickname: '민선', submitted: state.completedIds.includes('owner') },
         { id: 'friend', sessionId: 'session', nickname: '예솔', submitted: true },
       ], assets: [{ id: 'original', kind: 'original', width, height, contentType: 'image/png' }],
-      originalSelections: retryMissing ? [{participantId:'owner',maskAssetId:'mask',selectedRegionIds:regions.slice(0,4).map(r=>r.id)}] : [], selections: [], result: null,
+      originalSelections: roiDetection ? [{participantId:'owner',maskAssetId:'mask',selectedRegionIds:regions.slice(0,4).map(r=>r.id)}] : [], selections: [], result: null,
     });
     if (path === `${base}/collaboration`) {
       if (request.method() === 'POST') {
@@ -176,9 +179,9 @@ test('a single eligible face still starts in overview and ignores a pinch over i
   await page.getByRole('button', { name: '보정 도구 접기', exact: true }).click(); await overview(page, 1);
 });
 
-// Includes region selection, authorized-mask decoding, worker transfer, ROI retry,
+// Includes region selection, authorized-mask decoding, worker transfer, ROI scans,
 // original-coordinate conversion, UI filtering, and saving through the real client.
-test('a missing selected ROI face is added after partial whole-image detection', async ({ page }) => {
+test('personal detection scans selected ROIs directly and preserves original coordinates on save', async ({ page }) => {
   const server = await backend(page, detected, 4, true);
   await open(page); await overview(page, 4);
   await faceButton(page, 4).click();

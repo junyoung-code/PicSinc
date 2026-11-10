@@ -13,7 +13,7 @@ async function backend(page:Page,initialRoom:CollaborationView,png:Buffer,width:
  const actions:string[]=[];
  let releaseSave:(()=>void)|undefined; let saveGate:Promise<void>|undefined;
  let claims:Array<{regionId:string;participantId:string;nickname:string}>=[];
- const snapshot=()=>({session:{id:'session',inviteToken:roomId,ownerParticipantId:'owner',originalAssetId:'original',version:5,createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+86400000).toISOString()},currentParticipantId:participantId,participants:[{id:'owner',sessionId:'session',nickname:'민선',submitted:state.completedIds.includes('owner')},{id:'friend',sessionId:'session',nickname:'예솔',submitted:true}],assets:[{id:'original',kind:'original',width,height,contentType:'image/png'}],originalSelections:[],selections:[],result:null});
+ const snapshot=()=>({session:{id:'session',inviteToken:roomId,ownerParticipantId:'owner',originalAssetId:'original',version:5,createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+86400000).toISOString()},currentParticipantId:participantId,participants:[{id:'owner',sessionId:'session',nickname:'민선',submitted:state.completedIds.includes('owner')},{id:'friend',sessionId:'session',nickname:'예솔',submitted:true}],assets:[{id:'original',kind:'original',width,height,contentType:'image/png'}],originalSelections:initialRoom.personalToken&&mask?[{participantId,maskAssetId:'mask',selectedRegionIds:['region-1']}]:[],selections:[],result:null});
  await page.route('**/api/**',async route=>{
   const request=route.request(),path=new URL(request.url()).pathname;
   const json=(data:unknown,status=200)=>route.fulfill({status,json:data});
@@ -393,7 +393,8 @@ test('recognition retries never expose selection actions before ready', async ({
  await page.getByRole('button',{name:'다시 찾기',exact:true}).click();expect(retries).toBe(1);
  await expect(page.getByRole('button',{name:'다시 찾기',exact:true})).toHaveCount(0);
  status='ready';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
- await expect(page.getByRole('button',{name:'영역 편집하기',exact:true})).toBeDisabled();
+ // Focus during an in-flight retry can defer the next read by two 3s poll ticks.
+ await expect(page.getByRole('button',{name:'영역 편집하기',exact:true})).toBeDisabled({timeout:10000});
  const readyBox=(await canvas.boundingBox())!;
  expect(readyBox.width).toBeCloseTo(loadingBox.width,0);
  expect(readyBox.height).toBeCloseTo(loadingBox.height,0);

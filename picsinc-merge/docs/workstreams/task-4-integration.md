@@ -1,5 +1,9 @@
 # ④ 전체 연결과 검증
 
+## 선택 ROI 얼굴 검출 — 2026-11-10
+
+메인이 `public/retouch/detect.worker.js`, `face-retouch/detection/`, `image-io/room-mask.ts`와 보정기 호출을 최소 수정한다. 제품 규칙은 [협업 보정방](../../MASTER_SPEC.md#협업-보정방--별도-경로에-보존)을 따른다. Worker 회귀와 얼굴 선택·공동방 브라우저 검사로 좌표 환산·중복 제거·주변 얼굴 보호·내 얼굴 박스·독립 보정 경로를 확인한다. 실제 검사 결과와 남은 일은 STATE에 기록한다.
+
 ## 내 얼굴 선택·확대 보정 분담 — 2026-11-08
 
 - 구현 세션 1개(Sol High): `src/features/face-retouch/ui/`, `tests/e2e/retouch-face-selection.spec.ts`. 메인: `CollaborativeRoom.tsx`의 뒤로 가기 연결, 기존 회귀 검사·공통 문서·최종 검증과 Git. 같은 main checkout에서 담당 경로를 분리한다.

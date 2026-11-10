@@ -15,7 +15,7 @@ export async function loadRoomMask(url: string, width: number, height: number, r
     const i = (y * width + x) * 4; edges.data.set([255, 100, 145, 255], i);
   }
   drawing.putImageData(edges, 0, 0);
-  const retryRegions: DetectionRegion[] = [];
+  const detectionRegions: DetectionRegion[] = [];
   for (const region of regions) {
     const source = new Image(); source.src = `data:image/png;base64,${region.maskPngBase64}`; await source.decode();
     if (source.naturalWidth !== width || source.naturalHeight !== height) throw new Error("검출 영역과 사진의 크기가 다릅니다.");
@@ -28,8 +28,8 @@ export async function loadRoomMask(url: string, width: number, height: number, r
     ctx.drawImage(source, x, y, w, h, 0, 0, w, h);
     const rgba = ctx.getImageData(0, 0, w, h).data, mask = new Uint8Array(w * h);
     for (let i = 0; i < mask.length; i++) mask[i] = Number(rgba[i * 4] >= 128 && rgba[i * 4 + 3] > 0 && contains(x + i % w, y + Math.floor(i / w)));
-    if (mask.some(Boolean)) retryRegions.push({ x, y, width: w, height: h, mask });
+    if (mask.some(Boolean)) detectionRegions.push({ x, y, width: w, height: h, mask });
     crop.width = crop.height = 0; source.src = "";
   }
-  return { canvas, retryRegions, outline: outline.toDataURL(), owns: (face: Face) => contains(face.landmarks[1].x * width, face.landmarks[1].y * height) };
+  return { canvas, detectionRegions, outline: outline.toDataURL(), owns: (face: Face) => contains(face.landmarks[1].x * width, face.landmarks[1].y * height) };
 }
