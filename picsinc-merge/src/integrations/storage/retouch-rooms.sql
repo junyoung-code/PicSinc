@@ -14,7 +14,7 @@ begin
   if exists(select 1 from photo_upload_intents u
     where u.session_id=new.session_id and u.asset_id=new.id and u.kind='original'
       and u.retouch_room and u.status='verifying') then
-   if new.width::bigint*new.height>16000000 or greatest(new.width,new.height)>8192 then
+   if new.width::bigint*new.height>30000000 or greatest(new.width,new.height)>8192 then
     raise exception 'Retouch image too large';
    end if;
    insert into session_collaboration(session_id) values(new.session_id);

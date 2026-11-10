@@ -53,7 +53,7 @@ test('retouch dimension limits cannot be bypassed through ordinary completion, w
   const db = await currentSchemaDatabase();
   try {
     const retouch = await intent(db, true);
-    await assert.rejects(() => retouch.finish(4001, 4000), /Retouch image too large/);
+    await assert.rejects(() => retouch.finish(5001, 6000), /Retouch image too large/);
     await assert.rejects(() => retouch.finish(8193, 1), /Retouch image too large/);
     assert.equal(await value(db, 'select count(*)::int from photo_sessions'), 0);
     assert.equal(await value(db, 'select count(*)::int from session_collaboration'), 0);
@@ -65,7 +65,7 @@ test('retouch dimension limits cannot be bypassed through ordinary completion, w
     assert.equal(await value(db, 'select count(*)::int from participants where session_id=$1', [merge.room]), 1);
     assert.equal(await value(db, 'select count(*)::int from participant_credentials where session_id=$1', [merge.room]), 1);
     assert.equal(await value(db, 'select count(*)::int from processing_jobs'), 1);
-    await retouch.finish();
+    await retouch.finish(5000, 6000);
     assert.equal(await value(db, 'select count(*)::int from processing_jobs'), 1);
     assert.equal((await retouch.action(retouch.owner, 'read')).phase, 'lobby');
     await assert.rejects(() => db.query(`update photo_upload_intents set kind='edited' where id=$1`, [retouch.upload]), /retouch_original_only/);
