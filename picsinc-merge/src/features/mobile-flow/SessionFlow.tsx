@@ -21,6 +21,8 @@ import type { OriginalDetectionState } from "@/features/photo-session/original-d
 import { sendFestivalEvent } from "@/core/festival-visit";
 
 const labels: Record<Step, string> = { invite: "친구 초대하기", select: "내 얼굴 선택", guide: "내 사진 보정하기", upload: "보정본 올리기", review: "선택 영역 확인", status: "제출 현황", result: "최종 사진", overlap: "겹친 영역 확인" };
+// Friends pick their face after uploading the edited photo, so their face step is part of "03 보정본 제출":
+// showing 40 there made the bar go back (65 → 40 → 65) and looked like a skipped step (민재님 11/12).
 const progress: Record<Step, number> = { invite: 16, select: 40, guide: 40, upload: 65, review: 65, status: 65, result: 100, overlap: 90 };
 
 function remainingTime(expiresAt: string, now: number) {
@@ -378,7 +380,7 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     footer = <><a className="secondary-button" href="/sessions/new">다른 사진으로 새로 하기</a>{data.result && <a className="primary-button" href={assetUrl(data.result.resultAssetId)} download onClick={() => sendFestivalEvent("save_clicked", inviteToken, { assetId: data.result!.resultAssetId, clientEventId: crypto.randomUUID() })}>사진 저장하기</a>}</>;
   }
   const previous: Partial<Record<Step, Step>> = { select: owner ? "invite" : "upload", upload: owner ? "select" : "guide", review: "upload", status: owner ? "upload" : "select", overlap: "result" };
-  return <MobileShell helpTopic={step === "invite" ? "invite" : step === "select" || step === "review" ? "select" : step === "upload" ? "upload" : step === "guide" ? "guide" : step === "status" || step === "result" ? "status" : undefined} title={step === "status" && !owner && me?.submitted ? "제출 완료" : labels[step]} progress={progress[step]} onBack={step === "invite" ? () => location.assign("/sessions/new") : previous[step] ? () => navigate(previous[step]!) : undefined} footer={footer}>
+  return <MobileShell helpTopic={step === "invite" ? "invite" : step === "select" || step === "review" ? "select" : step === "upload" ? "upload" : step === "guide" ? "guide" : step === "status" || step === "result" ? "status" : undefined} title={step === "status" && !owner && me?.submitted ? "제출 완료" : labels[step]} progress={!owner && step === "select" ? progress.upload : progress[step]} onBack={step === "invite" ? () => location.assign("/sessions/new") : previous[step] ? () => navigate(previous[step]!) : undefined} footer={footer}>
     {content}<StatusMessage message={message} />
     {confirmDelete && <DeleteRoomDialog base={base} onCancel={() => setConfirmDelete(false)} onDeleted={() => { current.current.dirty = false; editorBack.current = null; location.replace("/sessions/new"); }} />}
     {toast && <div className="copy-toast" role="status">{toast}</div>}
