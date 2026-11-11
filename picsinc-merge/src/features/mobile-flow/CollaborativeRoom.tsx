@@ -33,6 +33,8 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   const [error, setError] = useState(""), [detectionError, setDetectionError] = useState(""), [busy, setBusy] = useState(false), [expired, setExpired] = useState(false);
   const [shareUrl, setShareUrl] = useState(""), [now, setNow] = useState(Date.now());
   const [confirm, setConfirm] = useState<'start' | 'skip' | 'finalize' | 'delete' | 'leave' | null>(null);
+  // Unsaved editor changes: ask in the app's own dialog, not the browser's confirm box (④ N-25).
+  const [discardAsk, setDiscardAsk] = useState(false);
   const [deleted, setDeleted] = useState(false), [lightbox, setLightbox] = useState(false);
   const [finalizing, setFinalizing] = useState(false), [finalizeFailed, setFinalizeFailed] = useState(false);
   // Friends jumped straight to the finished photo while the owner saw "최종 보정본을 저장하고 있어요".
@@ -220,7 +222,14 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     if (!current) return;
     const stay = () => { if (fromBack) history.pushState({roomEdit:true}, "", location.href); };
     if (saving.current) { stay(); return; }
-    if (dirty.current && !window.confirm("변경사항을 저장하지 않고 나갈까요?")) { stay(); return; }
+    if (dirty.current) { stay(); setDiscardAsk(true); return; }
+    await discardEditor();
+  }
+  async function discardEditor() {
+    const current = latest.current.editor;
+    setDiscardAsk(false);
+    if (!current) return;
+    const stay = () => { if (!history.state?.roomEdit) history.pushState({roomEdit:true}, "", location.href); };
     try { await command({action:current.scope === "personal" ? "personal-cancel" : "cancel",token:current.token}); }
     catch (e) { if (!(e instanceof RequestError && [409,410].includes(e.status))) { report(e); stay(); return; } }
     closeEditor(); await refresh().catch(report);
@@ -291,7 +300,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   </MobileShell>;
   if (editor) {
     const valid = editor.scope === "personal" ? room.phase === "personal" && room.personalToken === editor.token && !done : room.phase === "global" && room.editToken === editor.token && room.editorId === me && Date.parse(room.leaseUntil ?? "") > now;
-    return <RetouchEditor key={editor.token} participants={<>{editor.scope === "personal" && roster}<StatusMessage message={error}/>{!valid && <p role="alert">편집권이 만료되었거나 단계가 바뀌었어요. 뒤로 가서 최신 상태를 확인해주세요.</p>}</>} room={{imageUrl:assetUrl(editor.imageId),maskUrl:editor.maskId?assetUrl(editor.maskId):undefined,scope:editor.scope,regions:editor.regions,nickname:snapshot.participants.find(p=>p.id===me)?.nickname??"나",disabled:!valid,onSave:save,onCancel:()=>void cancelEditor(),onBackHandlerChange:registerEditorBack,onDirtyChange:value=>{dirty.current=value;}}}/>;
+    return <><RetouchEditor key={editor.token} participants={<>{editor.scope === "personal" && roster}<StatusMessage message={error}/>{!valid && <p role="alert">편집권이 만료되었거나 단계가 바뀌었어요. 뒤로 가서 최신 상태를 확인해주세요.</p>}</>} room={{imageUrl:assetUrl(editor.imageId),maskUrl:editor.maskId?assetUrl(editor.maskId):undefined,scope:editor.scope,regions:editor.regions,nickname:snapshot.participants.find(p=>p.id===me)?.nickname??"나",disabled:!valid,onSave:save,onCancel:()=>void cancelEditor(),onBackHandlerChange:registerEditorBack,onDirtyChange:value=>{dirty.current=value;}}}/>{discardAsk && <RoomDialog title="변경사항을 저장하지 않고 나갈까요?" confirmLabel="나가기" cancelLabel="계속 보정하기" onCancel={() => setDiscardAsk(false)} onConfirm={() => void discardEditor()}><p>저장하지 않은 보정은 사라져요.</p></RoomDialog>}</>;
   }
   const editorName = snapshot.participants.find(p => p.id === room.editorId)?.nickname;
   const locked = !!room.editorId && Date.parse(room.leaseUntil ?? "") > now;

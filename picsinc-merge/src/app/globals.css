@@ -147,7 +147,7 @@ h2, h3, p { overflow-wrap: break-word; }
 .delete-room-dialog::backdrop { background: rgb(15 15 20 / 46%); }
 .delete-room-icon { width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 12px; display: grid; place-items: center; color: #e02e38; background: #ffeded; font-size: 24px; font-weight: 700; }
 .delete-room-dialog h2 { font-size: 20px; line-height: 28px; margin: 0 0 10px; }
-.delete-room-dialog p { font-size: 13px; line-height: 21px; color: var(--muted); margin: 0 0 8px; word-break: keep-all; }
+.delete-room-dialog p { font-size: 13px; line-height: 21px; color: var(--muted); margin: 0 0 8px; word-break: keep-all; text-wrap: balance; }
 .delete-room-warning { display: block; max-width: 200px; margin: 0 auto; padding: 4px 6px; border-radius: 10px; background: #fff2f2; color: #c7242e; font-size: 12px; line-height: 18px; }
 .delete-room-buttons { display: flex; gap: 10px; margin-top: 21px; }
 .delete-room-buttons button { min-height: 48px; border-radius: 12px; font-size: 14px; font-weight: 700; padding: 8px; }

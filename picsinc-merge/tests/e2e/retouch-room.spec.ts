@@ -325,6 +325,8 @@ test('lobby shows short join and copy notices, and leaving asks first', async ({
  await page.goto(`/retouch/rooms/${roomId}`);
  await expect(page.getByRole('heading',{name:'함께할 친구를 초대해요'})).toBeVisible();
  await expect(page.getByText('님이 들어왔어요')).toHaveCount(0);
+ await page.getByRole('button',{name:'도움말',exact:true}).click(); // help only informs: one button (N-26)
+ const help=page.getByRole('dialog');await expect(help.getByRole('button')).toHaveCount(1);await help.getByRole('button',{name:'확인',exact:true}).click();await expect(help).toHaveCount(0);
  server.update({rosterIds:['owner','friend','third']});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await expect(page.getByRole('status').filter({hasText:'지연님이 들어왔어요'})).toBeVisible();
  await expect(page.getByText('지연님이 들어왔어요')).toHaveCount(0,{timeout:6000});
@@ -426,11 +428,13 @@ test('unsaved global back can stay or discard, and lease loss blocks saving',asy
  const save=page.getByRole('button',{name:'전체 사진 편집 완료',exact:true});await expect(save).toBeEnabled();
  const box=(await page.locator('canvas[aria-label="보정 미리보기"]').boundingBox())!;
  await page.mouse.move(box.x+box.width*.3,box.y+box.height*.3);await page.mouse.down();await page.mouse.move(box.x+box.width*.4,box.y+box.height*.3,{steps:4});await page.mouse.up();
- page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('button',{name:'뒤로 가기',exact:true}).click();await expect(save).toBeEnabled();
+ const discard=page.getByRole('dialog',{name:'변경사항을 저장하지 않고 나갈까요?'});
+ await page.getByRole('button',{name:'뒤로 가기',exact:true}).click();await expect(discard).toBeVisible();await discard.getByRole('button',{name:'계속 보정하기',exact:true}).click();await expect(save).toBeEnabled();
+ await page.goBack();await expect(discard).toBeVisible();await discard.getByRole('button',{name:'계속 보정하기',exact:true}).click();await expect(save).toBeEnabled(); // phone back: app dialog, not the browser's (N-25)
  expect(server.actions).not.toContain('cancel');
  server.update({editorId:'friend',editToken:null,leaseUntil:new Date(Date.now()+90000).toISOString()});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await expect(page.getByRole('alert').filter({hasText:'편집권이 만료'})).toBeVisible();await expect(save).toBeDisabled();
- page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'뒤로 가기',exact:true}).click();
+ await page.getByRole('button',{name:'뒤로 가기',exact:true}).click();await discard.getByRole('button',{name:'나가기',exact:true}).click();
  await expect(page.getByRole('button',{name:'보정 대기 중',exact:true})).toBeVisible();
  expect(server.actions).not.toContain('save');
 });

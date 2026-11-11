@@ -19,6 +19,6 @@ export default function RetouchShell({ title, onBack, backDisabled = false, chil
     {showProgress ? <FlowProgress progress={progress}/> : <div className={styles.progressSpace}/>}
     <div className={`${styles.content} ${centered ? styles.centered : ''}`}>{children}</div>
     {footer && <footer className={styles.footer}>{footer}</footer>}
-    {help && <RoomDialog title={title === 'MOIRA' ? '함께 보정하는 방법' : title} onCancel={() => setHelp(false)} onConfirm={() => setHelp(false)}><p>사진을 올리고 친구들에게 링크를 보내주세요. 사진 속 내 얼굴을 선택하면 각자 원하는 모습으로 보정할 수 있어요.</p><p>모두 보정을 마치면 한 장의 완성 사진으로 저장해요.</p></RoomDialog>}
+    {help && <RoomDialog title={title === 'MOIRA' ? '함께 보정하는 방법' : title} cancelLabel={null} onCancel={() => setHelp(false)} onConfirm={() => setHelp(false)}><p>사진을 올리고 친구들에게 링크를 보내주세요. 사진 속 내 얼굴을 선택하면 각자 원하는 모습으로 보정할 수 있어요.</p><p>모두 보정을 마치면 한 장의 완성 사진으로 저장해요.</p></RoomDialog>}
   </main>;
 }
