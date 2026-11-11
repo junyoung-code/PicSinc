@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { allowedStep, resumeStep, type FlowSnapshot } from "./flow-state";
+import { allowedStep, mergeProgressLabel, resumeStep, type FlowSnapshot } from "./flow-state";
 import { runHeavyTask } from "@/core/heavy-task";
 const snapshot = (): FlowSnapshot => ({ session: { id: "room", originalAssetId: "original", ownerParticipantId: "A", version: 1, createdAt: "", expiresAt: "", inviteToken: "invite" }, currentParticipantId: "B", participants: [{ id: "A", sessionId: "room", nickname: "A", submitted: false }, { id: "B", sessionId: "room", nickname: "B", submitted: false }], assets: [], originalSelections: [], selections: [] });
 test("participant links allow upload first but cannot skip an edit or grant owner screens", () => {
@@ -32,4 +32,8 @@ test("heavy task rejects concurrent requests and releases capacity after failure
   await assert.rejects(runHeavyTask(async () => "second"), (e: any) => e.status === 429); release(); await first;
   await assert.rejects(runHeavyTask(async () => { throw new Error("failed"); }));
   assert.equal(await runHeavyTask(async () => "recovered"), "recovered");
+});
+test("a host who has not picked faces yet shows as getting ready, not editing (N-24)", () => {
+  const data = snapshot(); assert.equal(mergeProgressLabel(data, "A"), "준비 중"); assert.equal(mergeProgressLabel(data, "B"), "보정 중");
+  data.originalSelections.push({ participantId: "A", maskAssetId: "mask", selectedRegionIds: [] }); assert.equal(mergeProgressLabel(data, "A"), "보정 중");
 });

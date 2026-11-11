@@ -440,7 +440,6 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
     {showActions && (hasSelection || saveActionTargetId) && submit()}
     {showActions && hasSelection && saveActionTargetId && actionTarget && createPortal(submit(true), actionTarget)}
     {exitDialog && <div className={styles.modalBackdrop}><div ref={modalRef} className={styles.exitModal} role="alertdialog" aria-modal="true" aria-labelledby="editor-exit-title" aria-describedby="editor-exit-description">
-      <span className={styles.exitIcon} aria-hidden="true" />
       <h2 id="editor-exit-title">변경사항을 저장하지 않고 나갈까요?</h2>
       <p id="editor-exit-description">지금 나가면 편집한 영역이 저장되지 않아요.</p>
       <div className={styles.exitButtons}><button type="button" onClick={() => { discardConfirmed.current = true; setExitDialog(false); requestDetailExit(); }}>나가기</button><button type="button" data-continue onClick={() => setExitDialog(false)}>계속 편집</button></div>

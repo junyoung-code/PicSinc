@@ -139,12 +139,12 @@ test('merge delay, failure and retry preserve submitted work', async ({ page }, 
   await expect(characters).toBeVisible();
   await expect(characters).toHaveAttribute('aria-hidden', 'true');
   const description = page.locator('.merging-screen .description');
-  await expect(description).toHaveText('처리 순서를 기다리고 있어요. 잠시 후 다시 확인해도 됩니다.');
+  await expect(description).toHaveText('처리 순서를 기다리고 있어요. 잠시 후 다시 확인해도 돼요.');
   // Seek real CSS animations to the first jump apex; other characters still rest.
   for (const width of [402, 390, 320]) {
     await page.setViewportSize({ width, height: 874 });
     // The queued notice breaks between its two sentences, never inside one.
-    expect(await description.evaluate(element => (element as HTMLElement).innerText)).toBe('처리 순서를 기다리고 있어요.\n잠시 후 다시 확인해도 됩니다.');
+    expect(await description.evaluate(element => (element as HTMLElement).innerText)).toBe('처리 순서를 기다리고 있어요.\n잠시 후 다시 확인해도 돼요.');
     expect(await description.evaluate(element => Math.round(element.getBoundingClientRect().height / parseFloat(getComputedStyle(element).lineHeight)))).toBe(2);
     const positions = await characters.evaluate(element => {
       for (const animation of element.getAnimations({ subtree: true })) { animation.pause(); animation.currentTime = 590; }
@@ -158,6 +158,9 @@ test('merge delay, failure and retry preserve submitted work', async ({ page }, 
     for (const position of positions) { expect(position.left).toBeGreaterThanOrEqual(0); expect(position.right).toBeLessThanOrEqual(width); expect(position.height).toBeGreaterThan(35); }
     await page.screenshot({ path: testInfo.outputPath(`loading-${width}.png`), fullPage: true });
   }
+  // a6: once the job is running (not queued), the Figma 586:12755 sentence replaces the queue notice.
+  await page.clock.runFor(3500);
+  await expect(description).toHaveText('선택한 얼굴만 원본 사진에 자연스럽게 합치는 중이에요.');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   expect(await characters.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
   await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -193,6 +196,42 @@ test('merge delay, failure and retry preserve submitted work', async ({ page }, 
   }
   await page.clock.runFor(3000);
   await expect(notice).toHaveCount(0);
+  // N-22: the result screen's ? explains saving, not when merging starts.
+  await page.getByRole('button', { name: '도움말', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('heading', { name: '완성 사진은 이렇게 저장해요' })).toBeVisible();
+  await expect(page.getByText('사진 합치기는 언제 시작하나요?')).toHaveCount(0);
+});
+
+test('participant status: host not started is "준비 중", everyone submitted waits for the merge, each person has a color', async ({ page }, testInfo) => {
+  const photo = await readFile('public/images/figma-current/character-photo.png');
+  let hostSubmitted = false;
+  const snapshot = () => ({
+    session: { id: 'room', inviteToken: 'merge-status', originalAssetId: 'original', ownerParticipantId: 'owner', version: 1, expiresAt: new Date(Date.now() + 86400000).toISOString() },
+    currentParticipantId: 'friend',
+    participants: [{ id: 'owner', nickname: '민선', submitted: hostSubmitted }, { id: 'friend', nickname: '예솔', submitted: true }, { id: 'third', nickname: '지연', submitted: true }],
+    assets: [{ id: 'original', kind: 'original', width: 104, height: 155 }], originalSelections: [], selections: [], result: null,
+  });
+  await page.route('**/api/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/sessions/merge-status') return route.fulfill({ json: snapshot() });
+    if (path.includes('/assets/')) return route.fulfill({ contentType: 'image/png', body: photo });
+    return route.fulfill({ json: {} });
+  });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/sessions/merge-status?step=status');
+  await expect(page.getByRole('heading', { name: '내 사진을 올렸어요 친구들을 기다리고 있어요' })).toBeVisible();
+  const host = page.locator('.participant-list li').filter({ hasText: '민선' });
+  await expect(host.locator('.badge')).toHaveText('준비 중');
+  const avatars = await page.locator('.participant-list .avatar').evaluateAll(imgs => imgs.map(img => (img as HTMLImageElement).src.split('/').pop()));
+  expect(new Set(avatars)).toEqual(new Set(['lilac.png', 'pink.png', 'mint.png']));
+  expect(await host.locator('.avatar').evaluate(img => (img as HTMLImageElement).src.split('/').pop())).toBe('lilac.png');
+  await page.screenshot({ path: testInfo.outputPath('status-host-not-started-375.png'), fullPage: true });
+  hostSubmitted = true;
+  await page.getByRole('button', { name: '현황 새로고침', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '모두 사진을 올렸어요 곧 사진이 완성돼요' })).toBeVisible();
+  await expect(page.getByText('대표자가 사진을 합치면 바로 결과로 넘어가요.', { exact: false })).toBeVisible();
+  await expect(page.getByText('친구들을 기다리고 있어요')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('status-all-submitted-375.png'), fullPage: true });
 });
 
 for (const owner of [true, false]) test(`merge result preview recovery and owner-only actions (${owner ? 'owner' : 'participant'})`, async ({ page }) => {
