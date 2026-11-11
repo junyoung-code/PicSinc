@@ -37,6 +37,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   const revision = useRef(0), claimRevision = useRef(0), initialClaims = useRef<Claim[] | null>(null);
   const dirty = useRef(false), detailBack = useRef<(() => boolean) | null>(null), saving = useRef(false);
   const editorBack = useRef<(() => boolean) | null>(null);
+  const claimPollError = useRef('');
   const registerEditorBack = useCallback((handler: (() => boolean) | null) => { editorBack.current = handler; }, []);
   const retryDetection = useRef<() => void>(() => {});
   const pendingSave = useRef<{ edit: RoomEditRecord['edit']; assetId: string } | null>(null);
@@ -74,12 +75,20 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     const stop = visiblePolling(3000, async () => { try { await refresh(); } catch (e) { if (e instanceof RequestError && e.status === 410) report(e); else setRoomReadError((e as Error).message); throw e; } });
     return () => { clearInterval(clock); stop(); };
   }, [base]);
+  // An action error ("다른 참여자의 편집이 끝난 후…") is about the moment it happened.
+  // Once the room moves on (new step or a different editor), it no longer applies.
+  useEffect(() => { setError(''); }, [room.phase, room.editorId]);
   useEffect(() => {
     if (room.phase !== "personal" || expired) return;
     let active = true;
     const stop = visiblePolling(3000, async () => {
       const started = claimRevision.current;
-      try { const result = await request<{claims: Claim[]}>(`${base}/region-claims`); if (active && started === claimRevision.current) { initialClaims.current ??= result.claims; setClaims(result.claims); } } catch (e) { if (active) report(e); }
+      try {
+        const result = await request<{claims: Claim[]}>(`${base}/region-claims`);
+        if (active && started === claimRevision.current) { initialClaims.current ??= result.claims; setClaims(result.claims); }
+        // A later successful poll clears the error that an earlier failed poll left on screen.
+        if (active && claimPollError.current) { const stale = claimPollError.current; claimPollError.current = ''; setError(current => current === stale ? '' : current); }
+      } catch (e) { if (active) { claimPollError.current = (e as Error).message; report(e); } }
     });
     return () => { active = false; stop(); };
   }, [base, room.phase, expired]);
