@@ -17,7 +17,7 @@
 .brush input::-moz-range-thumb { width:16px; height:16px; border:2px solid #25232b; border-radius:0; box-shadow:2px 2px #25232b; background:#e8deff; }
 .editor .save,.editor .refine { display:block; width:100%; min-height:56px; font-weight:700; box-shadow:4px 4px #25232b; }
 .editor .save { background:#e8deff; margin-top:12px; }
-.editor .refine { margin-top:18px; background:#e8deff; }
+.editor .refine { margin-top:18px; background:white; }
 .editor .save:disabled,.editor .refine:disabled { opacity:1; color:#706b79; background:#f4f2fb; }
 .error { font-size:13px; color:#b53246; }
 .expanded { position:fixed; inset:0; z-index:50; background:white; color:#25232b; padding:max(10px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom)); display:flex; flex-direction:column; width:100%; height:100dvh; box-sizing:border-box; }
@@ -33,8 +33,9 @@
 .expanded .canvasFrame { flex:1; min-height:100px; background:white; }
 .expanded .canvas { height:100%; max-height:none; touch-action:none; }
 .expanded .scrollControls { flex-shrink:0; max-height:30dvh; overflow:auto; background:white; border:3px solid #25232b; border-radius:4px; box-shadow:5px 5px #25232b; padding:16px 12px; margin-top:24px; }
-.historyTools { display:flex; justify-content:center; gap:8px; margin-top:10px; }
-.historyTools button { flex:1; padding:4px 6px; min-height:33px; font-size:11px; }
+/* Figma 527:7141: history actions are dark pills, distinct from the tool buttons above. */
+.historyTools { display:flex; justify-content:center; gap:8px; margin-top:12px; }
+.editor .historyTools button { flex:0 1 auto; min-width:0; min-height:34px; padding:5px 14px; border:0; border-radius:999px; background:#25232b; color:white; font-size:12px; font-weight:700; line-height:24px; white-space:nowrap; }
 .claimToast { width:max-content; color:#25232b; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); max-width:calc(100% - 24px); display:flex; gap:10px; align-items:center; padding:12px; border:2px solid #25232b; border-radius:4px; box-shadow:3px 3px #25232b; background:white; pointer-events:none; }
 .claimToast strong { display:block; font-size:11px; line-height:1.4; overflow-wrap:anywhere; }
 .claimToast small { display:block; color:#706b79; font-size:10px; line-height:1.5; margin-top:2px; }
@@ -62,8 +63,12 @@
 .exitButtons button:last-child { background:#e8deff; }
 .merge { color:#25232b; }
 @media(min-width:600px) { .expanded { left:50%; transform:translateX(-50%); width:402px; box-shadow:0 0 0 100vmax #25232b99; } }
-@media(max-width:360px) { .editHint { padding:10px; margin-left:0; margin-right:0; } .editHint strong { font-size:14px; } .tools button { font-size:11px; } .historyTools button { font-size:10px; padding:4px 2px; } }
+@media(max-width:360px) { .editHint { padding:10px; margin-left:0; margin-right:0; } .editHint strong { font-size:14px; } .tools button { font-size:11px; } .editor .historyTools button { font-size:11px; padding:4px 10px; } }
+/* Short screens (e.g. 320x568): give the photo the space the hint and margins used. */
+@media(max-height:700px) { .editHint { min-height:0; margin:8px 0 12px; padding:8px 12px; } .editHint p { display:none; } .expanded .scrollControls { margin-top:12px; padding:10px; } .historyTools { margin-top:8px; } }
 
 .roomSelection:not(.expanded) { display:flex; flex-direction:column; min-height:calc(100dvh - 228px); }
 .roomSelection:not(.expanded) .canvasFrame { flex-shrink:0; }
 .roomSelection:not(.expanded) .scrollControls { margin-top:auto; }
+.roomSelection:not(.expanded) .save { margin-top:16px; }
+.roomSelection:not(.expanded) .save:disabled,.roomSelection:not(.expanded) .refine:disabled { background:#eae6ef; border-color:#706b79; }

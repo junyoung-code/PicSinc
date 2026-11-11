@@ -12,6 +12,14 @@ export function regionOwnerLabel(regionId: string, claims: RegionClaim[], select
   return selectedIds.includes(regionId) ? { own: true, text: `${nickname || "내 영역"}${nickname ? " (나)" : ""}` } : null;
 }
 
+// "로" after a vowel or ㄹ, "으로" after other final consonants, "(으)로" when the last letter is not Hangul.
+export function withRo(name: string) {
+  const code = name.trim().codePointAt(name.trim().length - 1) ?? 0;
+  if (code < 0xac00 || code > 0xd7a3) return "(으)로";
+  const finalConsonant = (code - 0xac00) % 28;
+  return finalConsonant === 0 || finalConsonant === 8 ? "로" : "으로";
+}
+
 // Labels use CSS pixels so they stay readable while the image is zoomed.
 export function regionLabelPosition(box: DetectedRegions["regions"][number]["box"], view: ViewTransform, viewport: { width: number; height: number }, labelWidth: number) {
   const left = box.x * view.scale + view.x, top = box.y * view.scale + view.y;
