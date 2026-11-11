@@ -72,18 +72,18 @@
 .errorCard p { margin:4px 0 16px; font-size:12px; line-height:20px; }
 .introPage { max-width:402px; width:100%; min-height:100dvh; margin:0 auto; background:white; display:flex; flex-direction:column; }
 .introContent { position:relative; padding:32px 24px 12px; flex:1; }
-.introBack { position:absolute; top:32px; left:16px; width:44px; height:44px; display:grid; place-items:center; }
+.introBack { position:absolute; top:31px; left:4px; width:44px; height:44px; display:grid; place-items:center; }
 .introLogo { display:flex; align-items:center; justify-content:center; width:114.5px; height:42.135px; padding:10px; margin:0 auto 28px; }
 .introLogo img { width:94.5px; height:22.135px; }
 .merge .introContent h1 { font-size:28px; line-height:36px; font-weight:900; margin:0 0 6px; }
 .introDescription { margin:0; font-size:14px; line-height:22px; }
 .introSteps { display:grid; gap:16px; margin:28px 0 0; padding:0; list-style:none; }
-.introSteps li { min-height:88px; display:flex; gap:12px; align-items:center; padding:14px; border:3px solid #25232b; border-radius:4px; background:#e8deff; }
-.introSteps li:nth-child(2) { background:#ffafe0; }.introSteps li:nth-child(3) { background:#bcebcb; }
-.introSteps li > span { flex:0 0 36px; height:36px; display:grid; place-items:center; border-radius:50%; background:#fcfaff; font-size:14px; line-height:20px; font-weight:700; }
+.introSteps li { min-height:88px; display:flex; gap:12px; align-items:center; padding:14px; border:3px solid #25232b; border-radius:4px; background:white; }
+/* Figma 586:13315 (11/11): white step cards, lilac number badges. */
+.introSteps li > span { flex:0 0 36px; height:36px; display:grid; place-items:center; border-radius:50%; background:#e8deff; font-size:14px; line-height:22px; font-weight:700; }
 .introSteps li > div { min-width:0; }
-.introSteps strong { display:block; font-size:15px; line-height:21px; font-weight:700; }
-.introSteps p { margin:3px 0 0; font-size:12px; line-height:18px; color:#706b79; }
+.introSteps strong { display:block; font-size:15px; line-height:22px; font-weight:700; }
+.introSteps p { margin:3px 0 0; font-size:12px; line-height:20px; color:#706b79; }
 .introFooter { padding:8px 24px max(26px,env(safe-area-inset-bottom)); display:grid; gap:16px; }
 .introFooter p { margin:0; text-align:center; font-size:12px; line-height:20px; font-weight:700; }
 @media (max-width:359px) { .introContent { padding-left:18px; padding-right:18px; }.introFooter { padding-left:18px; padding-right:18px; }.merge .introContent h1 { font-size:24px; line-height:32px; }.introSteps li { padding:10px; gap:8px; }.introSteps strong { font-size:13px; }.introSteps p { font-size:11px; }.composingCharacters { width:calc(100% + 36px); margin-left:-18px; } }
