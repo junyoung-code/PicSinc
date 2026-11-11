@@ -7,7 +7,7 @@ import { paintBrush, type Point } from "./mask-geometry";
 import { editableContours, visibleContours, smoothedDisplayContour, findContourHandle, finishContourGesture, spacedHandleIndices, viewportToImage, zoomAround, type PendingContour, type ViewTransform } from "./contour-geometry";
 import styles from "./mobile-editor.module.css";
 import { FlowProgress } from "@/components/FlowProgress";
-import { regionLabelPosition, regionOwnerLabel, type RegionClaim } from "./region-labels";
+import { regionLabelPosition, regionOwnerLabel, withRo, type RegionClaim } from "./region-labels";
 
 export interface MobileRegionEditorProps {
   appearance?: "merge";
@@ -417,7 +417,7 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
   </div>;
   return <section ref={rootRef} className={`${styles.editor} ${saveActionTargetId ? styles.roomSelection : ""} ${appearance === "merge" ? styles.merge : ""} ${expanded ? styles.expanded : ""}`} role={expanded ? "dialog" : undefined} aria-modal={expanded || undefined} aria-label="내 영역 선택">
     {expanded && <><div className={styles.dialogHeader}><button type="button" aria-label="영역 편집 닫기" onClick={() => requestDetailExit()}><img src="/images/figma-current/editor/back.svg" alt=""/></button><strong>내 영역 편집</strong><button type="button" onClick={() => requestDetailExit(true)}>완료</button></div><FlowProgress step={2}/></>}
-    {!expanded && !hideIdentity && participantNickname && <div className={styles.identity}><strong>{participantNickname}으로 참여 중</strong></div>}
+    {!expanded && !hideIdentity && participantNickname && <div className={styles.identity}><strong>{participantNickname}{withRo(participantNickname)} 참여 중</strong></div>}
     {expanded && <div className={styles.editHint}><strong>보정할 영역을 직접 조정해요.</strong><p>보정할 부분만 선택 영역에 포함해요.</p></div>}
     <div className={styles.canvasFrame}><canvas ref={canvasRef} className={styles.canvas} style={expanded ? undefined : { aspectRatio: `${width} / ${height}` }} aria-label="사진 속 사람 영역을 눌러 선택하거나 해제할 수 있습니다." onPointerDown={down} onPointerMove={move} onPointerUp={event => end(event)} onPointerCancel={event => end(event, true)} onLostPointerCapture={event => { if (pointers.current.has(event.pointerId)) end(event, true); }} />
       {claimConflict && <div className={styles.claimToast} role="status"><span className={styles.claimIcon} aria-hidden="true" /><span><strong>{claimConflict.nickname}님이 선택한 영역이에요</strong><small>다른 얼굴을 선택해주세요.</small></span></div>}

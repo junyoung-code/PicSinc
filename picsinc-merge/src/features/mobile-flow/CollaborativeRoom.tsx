@@ -260,7 +260,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     <StatusMessage message={error || roomReadError}/>
     {confirm === 'delete' && <DeleteRoomDialog base={base} onCancel={() => setConfirm(null)} onDeleted={() => location.assign('/retouch/rooms/new')}/>}
     {confirm === 'skip' && <RoomDialog title="터치 보정을 건너뛸까요?" confirmLabel="건너뛰고 결과 확인" cancelLabel="돌아가기" busy={busy} onCancel={() => setConfirm(null)} onConfirm={() => { setConfirm(null); void act({action:'end-global'}); }}><p>추가 터치 없이 사진을 완성해요.<br/>최종 완료 후에는 보정을 바꿀 수 없어요.</p></RoomDialog>}
-    {confirm === 'finalize' && <RoomDialog title="사진을 최종 완료할까요?" confirmLabel="사진 최종 완료" cancelLabel="계속 확인하기" busy={busy} onCancel={() => setConfirm(null)} onConfirm={() => { setConfirm(null); void act({action:'finalize'}); }}><p>모두의 보정이 한 장에 반영돼요.<br/>최종 완료 후에는 보정을 바꿀 수 없어요.</p></RoomDialog>}
+    {confirm === 'finalize' && <RoomDialog title="사진을 최종 완료할까요?" confirmLabel="사진 최종 완료" cancelLabel="한 번 더 확인하기" busy={busy} onCancel={() => setConfirm(null)} onConfirm={() => { setConfirm(null); void act({action:'finalize'}); }}><p>모두의 보정이 한 장에 반영돼요.<br/>최종 완료 후에는 보정을 바꿀 수 없어요.</p></RoomDialog>}
     {lightbox && room.latestAssetId && <ResultLightbox src={assetUrl(room.latestAssetId)} onClose={() => setLightbox(false)}/>}
   </MobileShell>;
 }
