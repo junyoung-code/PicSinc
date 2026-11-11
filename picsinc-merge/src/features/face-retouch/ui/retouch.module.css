@@ -58,7 +58,7 @@
 .messages [role=alert],.warning { color:#9c3434; }
 .panelWarnings { margin:12px 0 0; color:#9c3434; font-size:11px; line-height:18px; text-align:center; word-break:keep-all; text-wrap:balance; }
 .panelWarnings p { margin:0; }
-.panelNotice + .panelWarnings { margin-top:18px; }
+.panelNotice + .panelWarnings { margin-top:2px; }
 .panelNotice { margin-bottom:0; }
 .emptyError { border:2px solid var(--moira-ink); border-radius:4px; background:var(--moira-surface); padding:12px; font-size:12px; line-height:20px; color:#9c3434; }
 .entry { margin:24px 8px 20px; }
