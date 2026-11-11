@@ -6,7 +6,8 @@ export default function ParticipantStatus({ participants, completedIds, currentI
   // Figma 527:7354: the editor cards list me first as "나", then friends.
   const people = compact ? [...roster.filter(p => p.id === currentId), ...roster.filter(p => p.id !== currentId)] : roster;
   const lobby = !rosterIds.length;
-  return <section aria-label="친구 보정 현황" className={`${styles.roster} ${compact ? styles.compactRoster : lobby ? styles.lobbyRoster : ''}`}>
+  // Every friend stays visible (B-038): three share one row, four or more wrap two per row.
+  return <section aria-label="친구 보정 현황" data-count={compact ? Math.min(people.length, 4) : undefined} className={`${styles.roster} ${compact ? styles.compactRoster : lobby ? styles.lobbyRoster : ''}`}>
     {lobby && !compact && <p aria-live="polite">현재 참여자 · {people.length}명</p>}
     <ul className={styles.people}>{people.map((p, index) => <li key={p.id} className={styles.person}>
       <img src={characters[index % characters.length]} width={compact ? 24 : 32} height={compact ? 24 : 32} alt="" />

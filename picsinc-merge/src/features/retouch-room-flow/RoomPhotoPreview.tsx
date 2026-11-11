@@ -2,13 +2,14 @@
 import { useEffect, useRef, useState } from 'react';
 import styles from './room.module.css';
 
-type Props = { src: string; alt: string; className?: string; onEnlarge?: () => void };
+// width/height reserve the photo's space before it loads, so the frame is not an empty box.
+type Props = { src: string; alt: string; className?: string; onEnlarge?: () => void; width?: number; height?: number };
 
 export default function RoomPhotoPreview(props: Props) {
   return <Photo key={props.src} {...props}/>;
 }
 
-function Photo({ src, alt, className, onEnlarge }: Props) {
+function Photo({ src, alt, className, onEnlarge, width, height }: Props) {
   const [failed, setFailed] = useState(false), [loaded, setLoaded] = useState(false), [retry, setRetry] = useState(0);
   const image = useRef<HTMLImageElement>(null);
   const imageSrc = retry ? `${src}${src.includes('?') ? '&' : '?'}reload=${retry}` : src;
@@ -19,6 +20,6 @@ function Photo({ src, alt, className, onEnlarge }: Props) {
     <strong>사진을 불러오지 못했어요</strong><p>저장된 사진은 그대로예요. 연결을 확인하고 다시 불러와 주세요.</p>
     <button type="button" onClick={() => { setFailed(false); setLoaded(false); setRetry(Date.now()); }}>사진 다시 불러오기</button>
   </div>;
-  const photo = <img ref={image} key={imageSrc} className={className} src={imageSrc} alt={alt} onLoad={() => setLoaded(true)} onError={() => setFailed(true)}/>;
+  const photo = <img ref={image} key={imageSrc} className={`${className ?? ''}${loaded ? '' : ` ${styles.photoLoading}`}`} src={imageSrc} alt={alt} width={width} height={height} aria-busy={!loaded} onLoad={() => setLoaded(true)} onError={() => setFailed(true)}/>;
   return onEnlarge ? <button className={styles.imageButton} aria-label="완성 사진 크게 보기" disabled={!loaded} onClick={onEnlarge}>{photo}</button> : photo;
 }

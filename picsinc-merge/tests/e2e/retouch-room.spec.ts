@@ -13,7 +13,7 @@ async function backend(page:Page,initialRoom:CollaborationView,png:Buffer,width:
  const actions:string[]=[];
  let releaseSave:(()=>void)|undefined; let saveGate:Promise<void>|undefined;
  let claims:Array<{regionId:string;participantId:string;nickname:string}>=[];
- const snapshot=()=>({session:{id:'session',inviteToken:roomId,ownerParticipantId:'owner',originalAssetId:'original',version:5,createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+86400000).toISOString()},currentParticipantId:participantId,participants:[{id:'owner',sessionId:'session',nickname:'민선',submitted:state.completedIds.includes('owner')},{id:'friend',sessionId:'session',nickname:'예솔',submitted:true}],assets:[{id:'original',kind:'original',width,height,contentType:'image/png'}],originalSelections:initialRoom.personalToken&&mask?[{participantId,maskAssetId:'mask',selectedRegionIds:['region-1']}]:[],selections:[],result:null});
+ const snapshot=()=>({session:{id:'session',inviteToken:roomId,ownerParticipantId:'owner',originalAssetId:'original',version:5,createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+86400000).toISOString()},currentParticipantId:participantId,participants:[{id:'owner',sessionId:'session',nickname:'민선',submitted:state.completedIds.includes('owner')},{id:'friend',sessionId:'session',nickname:'예솔',submitted:true},...(state.rosterIds.includes('third')?[{id:'third',sessionId:'session',nickname:'지연',submitted:state.completedIds.includes('third')}]:[])],assets:[{id:'original',kind:'original',width,height,contentType:'image/png'}],originalSelections:initialRoom.personalToken&&mask?[{participantId,maskAssetId:'mask',selectedRegionIds:['region-1']}]:[],selections:[],result:null});
  await page.route('**/api/**',async route=>{
   const request=route.request(),path=new URL(request.url()).pathname;
   const json=(data:unknown,status=200)=>route.fulfill({status,json:data});
@@ -85,6 +85,10 @@ test('whole-photo touch has no face controls, keeps prior pixels on restore, ret
  await page.waitForTimeout(700);await page.screenshot({path:'private/retouch-e2e/room-save-notice.png'});
  await expect(notice).toHaveCount(0,{timeout:5000});
  await page.screenshot({path:'private/retouch-e2e/room-final.png',fullPage:true});
+ // B-037: phone back on the save screen returns to the finished photo, and saving again reopens it.
+ const roomUrl=page.url();await page.goBack();await expect(page.getByRole('img',{name:'확정된 최종 사진'})).toBeVisible();expect(page.url()).toBe(roomUrl);
+ await page.getByRole('button',{name:'사진 저장하기',exact:true}).click();await expect(page.getByRole('img',{name:'저장할 완성 사진'})).toBeVisible();
+ await page.goBack();await expect(page.getByRole('img',{name:'확정된 최종 사진'})).toBeVisible();
 });
 
 test('whole-photo touch tells the user when the classic budget is full and starts fresh after saving',async({page})=>{
@@ -205,6 +209,23 @@ test('personal editor roster shows me first and updates friends live',async({pag
  await expect(people.nth(1)).toHaveText(/^예솔\s*보정 완료$/);
  await expect(people.locator('img')).toHaveCount(2);
  await page.screenshot({path:'private/retouch-e2e/room-personal-roster.png'});
+});
+
+test('three-person roster keeps every friend and status visible on narrow phones (B-038)',async({page})=>{
+ const width=400,height=400,png=await sharp({create:{width,height,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ const mask=await sharp({create:{width,height,channels:3,background:'#ffffff'}}).png().toBuffer();
+ const state={...initial('personal'),rosterIds:['owner','friend','third'],completedIds:['third'],personalToken:'personal-token',personalMaskAssetId:'mask'};
+ await backend(page,state,png,width,height,mask);
+ await page.goto(`/retouch/rooms/${roomId}`);await page.getByRole('button',{name:'내 영역 보정 이어가기'}).click();
+ await expect(page.getByRole('button',{name:'내 얼굴 보정 완료',exact:true})).toBeEnabled({timeout:100000});
+ const people=page.getByRole('region',{name:'친구 보정 현황'}).getByRole('listitem');
+ await expect(people).toHaveCount(3);await expect(people.nth(2)).toHaveText(/^지연\s*보정 완료$/);
+ for(const viewport of [{width:390,height:844},{width:320,height:568}]){
+  await page.setViewportSize(viewport);
+  const cards=await people.evaluateAll(items=>items.map(item=>{const box=item.getBoundingClientRect(),status=item.querySelector('span')!;return {left:box.left,right:box.right,top:box.top,clipped:status.scrollWidth>status.clientWidth||status.getBoundingClientRect().right>box.right};}));
+  for(const card of cards){expect(card.left).toBeGreaterThanOrEqual(0);expect(card.right).toBeLessThanOrEqual(viewport.width);expect(card.clipped).toBeFalsy();expect(card.top).toBe(cards[0].top);}
+  await page.screenshot({path:`private/retouch-e2e/room-roster-3-${viewport.width}.png`});
+ }
 });
 
 test('editor back and cancel return to one room history entry',async({page})=>{

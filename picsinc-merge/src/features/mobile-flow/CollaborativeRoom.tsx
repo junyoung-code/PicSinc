@@ -35,7 +35,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   const [deleted, setDeleted] = useState(false), [lightbox, setLightbox] = useState(false);
   const [finalizing, setFinalizing] = useState(false), [finalizeFailed, setFinalizeFailed] = useState(false);
   const [roomReadError, setRoomReadError] = useState('');
-  const [saveView, setSaveView] = useState(false);
+  const [saveView, setSaveView] = useState(false), saveViewOpen = useRef(false);
   // Figma 859:25318: a short "saved" notice rises above the buttons, then leaves.
   const [savedNotice, setSavedNotice] = useState(0);
   useEffect(() => {
@@ -148,6 +148,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
       if (detailBack.current) { if (detailBack.current()) detailBack.current = null; else history.pushState({roomDetail:true}, "", location.href); return; }
       if (latest.current.editor && editorBack.current?.()) { history.pushState({roomEdit:true}, "", location.href); return; }
       if (latest.current.editor) { void cancelEditor(true); return; }
+      if (saveViewOpen.current) { saveViewOpen.current = false; setSaveView(false); return; }
       // Phone back (Android back, iPhone swipe) in the whole-photo/review steps: same leave
       // confirmation as the ← button, instead of silently leaving the room (B-034).
       // Landing on the guard itself (an editor just closed) is not a leave attempt.
@@ -232,6 +233,8 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     try {
       const response = await fetch(assetUrl(room.latestAssetId)); if (!response.ok) throw new Error("사진 저장에 실패했어요. 다시 눌러주세요.");
       const url = URL.createObjectURL(await response.blob()), a = document.createElement("a"); a.href=url;a.download="moira-final.png";a.click();setTimeout(()=>URL.revokeObjectURL(url),60_000);
+      // The save screen gets its own history entry so phone back returns to the result (B-037).
+      if (!saveViewOpen.current) { history.pushState({roomSave:true}, "", location.href); saveViewOpen.current = true; }
       setSaveView(true); setSavedNotice(n => n + 1);
     } catch (e) { report(e); } finally { setBusy(false); }
   }
@@ -256,7 +259,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   // Figma 560:11923. Closing leaves the finished room for home.
   if (room.phase === 'final' && saveView && room.latestAssetId) return <MobileShell title="사진 저장" hideBack showHelp={false} showProgress progress={100} action={<button onClick={() => location.assign('/')}>닫기</button>} footer={finalFooter}>
     <div className={styles.heading}><h1 className={styles.resultTitle}>사진을 길게 눌러<br/>기기에 저장해 주세요.</h1><p className="description">브라우저에 따라 ‘이미지 저장’ 또는<br/>‘사진에 추가’를 선택해 주세요.</p></div>
-    <RoomPhotoPreview className={`${styles.result} ${styles.savePhoto}`} src={assetUrl(room.latestAssetId)} alt="저장할 완성 사진"/>
+    <RoomPhotoPreview className={`${styles.result} ${styles.savePhoto}`} src={assetUrl(room.latestAssetId)} alt="저장할 완성 사진" width={original.width} height={original.height}/>
     <StatusMessage message={error}/>
   </MobileShell>;
   if (editor) {
@@ -293,7 +296,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     {room.phase === 'personal' && done && allDone && !owner && <div className={styles.waiting}>대표자가 전체 사진을 확인하고 있어요</div>}
     {room.phase === 'global' && (locked || lastEdit) && <div className={styles.globalStatus} role="status"><strong>{locked ? `${editorName ?? '친구'}님 편집 중 · 잠시 기다려 주세요` : `${lastEditorName}님 편집 완료`}</strong><p>{locked ? '지금은 개인 보정·건너뛰기·최종 완료를 할 수 없어요.' : '최신 저장 결과에서 이어서 터치 보정할 수 있어요.'}</p></div>}
     {room.latestAssetId && ['global','review'].includes(room.phase) && <div className={room.phase === 'global' && (locked || lastEdit) ? styles.globalPhoto : styles.photoStage}><RoomPhotoPreview className={styles.previewPhoto} src={assetUrl(room.latestAssetId)} alt="저장된 보정 결과"/></div>}
-    {room.phase === 'final' && room.latestAssetId && <RoomPhotoPreview className={styles.result} src={assetUrl(room.latestAssetId)} alt="확정된 최종 사진" onEnlarge={() => setLightbox(true)}/>}
+    {room.phase === 'final' && room.latestAssetId && <RoomPhotoPreview className={styles.result} src={assetUrl(room.latestAssetId)} alt="확정된 최종 사진" width={original.width} height={original.height} onEnlarge={() => setLightbox(true)}/>}
     <StatusMessage message={error || roomReadError}/>
     {confirm === 'delete' && <DeleteRoomDialog base={base} onCancel={() => setConfirm(null)} onDeleted={() => location.assign('/retouch/rooms/new')}/>}
     {/* The back arrow here used to be a plain link home: the owner could leave by accident and friends were stuck. */}
