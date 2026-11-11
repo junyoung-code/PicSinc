@@ -112,8 +112,18 @@ test('back arrow in whole-photo step asks before leaving the room',async({page})
  await expect(dialog).toBeVisible();await expect(dialog).toContainText('대표자가 나가면');
  await dialog.getByRole('button',{name:'계속 보정하기',exact:true}).click();
  await expect(dialog).toHaveCount(0);await expect(page).toHaveURL(new RegExp(`/sessions/${roomId}/collaboration$`));
- await page.getByRole('button',{name:'이전 화면',exact:true}).click();
- await page.getByRole('dialog',{name:'보정방에서 나갈까요?'}).getByRole('button',{name:'나가기',exact:true}).click();
+ // Phone back gesture (browser history) asks the same question instead of leaving.
+ await page.goBack();
+ await expect(dialog).toBeVisible();await expect(page).toHaveURL(new RegExp(`/sessions/${roomId}/collaboration$`));
+ await dialog.getByRole('button',{name:'계속 보정하기',exact:true}).click();await expect(dialog).toHaveCount(0);
+ // Opening and closing the whole-photo editor must not trigger the leave question.
+ await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();
+ await expect(page.getByRole('button',{name:'전체 사진 편집 완료',exact:true})).toBeEnabled();
+ await page.getByRole('button',{name:'뒤로 가기',exact:true}).click();
+ await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true})).toBeVisible();
+ await page.waitForTimeout(500);await expect(dialog).toHaveCount(0);
+ await page.goBack();await expect(dialog).toBeVisible();
+ await dialog.getByRole('button',{name:'나가기',exact:true}).click();
  await expect(page).toHaveURL(/\/$/);
 });
 
@@ -166,7 +176,8 @@ test('editor back and cancel return to one room history entry',async({page})=>{
  await page.goBack();await expect(open).toBeVisible();
  await open.click();await expect(page.getByRole('button',{name:'전체 사진 편집 완료',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'뒤로 가기',exact:true}).click();await expect(open).toBeVisible();
- await page.goBack();await expect(page).toHaveURL(/\/retouch$/);
+ // Editors leave no extra entries; the next back is a leave attempt, which asks first (B-034).
+ await page.goBack();await expect(page.getByRole('dialog',{name:'보정방에서 나갈까요?'})).toBeVisible();await expect(page).toHaveURL(new RegExp(`/sessions/${roomId}/collaboration$`));
 });
 
 

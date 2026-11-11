@@ -23,6 +23,8 @@ import RoomPhotoPreview from '@/features/retouch-room-flow/RoomPhotoPreview';
 
 type Editor = { scope: "personal" | "global"; token: string; version: number; imageId: string; maskId?: string; regions?: DetectedRegions["regions"] };
 type Claim = { regionId: string; participantId: string; nickname: string };
+const leaveGuarded = (phase: string) => phase === 'global' || phase === 'review';
+
 export default function CollaborativeRoom({ inviteToken, initialSnapshot, initialRoom }: { inviteToken: string; initialSnapshot: FlowSnapshot; initialRoom: CollaborationView }) {
   const [snapshot, setSnapshot] = useState(initialSnapshot), [room, setRoom] = useState(initialRoom);
   const [editor, setEditor] = useState<Editor | null>(null), [claims, setClaims] = useState<Claim[] | null>(null);
@@ -124,12 +126,23 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     beat(); const timer = setInterval(beat, 20_000);
     return () => clearInterval(timer);
   }, [editor?.token, expired]);
+  // Keep one extra history entry while leaving would strand the room, so a phone back
+  // gesture lands here first. Editors push their own entry on top of it.
+  useEffect(() => {
+    if (leaveGuarded(room.phase) && !editor && !history.state?.roomGuard && !history.state?.roomEdit) history.pushState({roomGuard:true}, "", location.href);
+  }, [room.phase, editor]);
   useEffect(() => {
     const leave = (e: BeforeUnloadEvent) => { if (dirty.current || saving.current) { e.preventDefault(); e.returnValue = ""; } };
-    const back = () => {
+    const back = (event: PopStateEvent) => {
       if (detailBack.current) { if (detailBack.current()) detailBack.current = null; else history.pushState({roomDetail:true}, "", location.href); return; }
       if (latest.current.editor && editorBack.current?.()) { history.pushState({roomEdit:true}, "", location.href); return; }
-      if (latest.current.editor) void cancelEditor(true);
+      if (latest.current.editor) { void cancelEditor(true); return; }
+      // Phone back (Android back, iPhone swipe) in the whole-photo/review steps: same leave
+      // confirmation as the ← button, instead of silently leaving the room (B-034).
+      // Landing on the guard itself (an editor just closed) is not a leave attempt.
+      // A guard left over from an earlier step: step past it.
+      if (event.state?.roomGuard) { if (!leaveGuarded(latest.current.room.phase)) history.back(); return; }
+      if (leaveGuarded(latest.current.room.phase)) { history.pushState({roomGuard:true}, "", location.href); setConfirm('leave'); }
     };
     window.addEventListener("beforeunload", leave); window.addEventListener("popstate", back);
     return () => { window.removeEventListener("beforeunload", leave); window.removeEventListener("popstate", back); };
