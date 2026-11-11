@@ -311,6 +311,9 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
         <button aria-pressed={mode!=="face"} disabled={!active} onClick={()=>{cancelInteraction.current();setMode("touch");setCollapsed(false);}}>터치 보정</button>
       </div>}
       {room?.scope==="personal"&&faces.length>0&&collapsed&&<p className={styles.overviewHint}>보정할 얼굴을 선택해주세요.</p>}
+      {/* Limits: inside the tool box (민재님 11/11), at its top so small phones (375×667) still see them while editing. */}
+      {!collapsed&&mode!=="face"&&room&&notice&&!(room.scope==="personal"&&!faces.length)&&<p className={`${styles.overviewHint} ${styles.panelNotice}`} role="status">{notice}</p>}
+      {(limited||strained)&&<div className={styles.panelWarnings} aria-live="polite">{limited&&<p>다른 얼굴과 가까운 변형은 보호 영역에서 제한돼요.</p>}{strained&&<p>윤곽이 접히지 않도록 변형 강도를 제한했어요.</p>}</div>}
       {!collapsed&&<div id="retouch-tool-content">
         {mode==="face"?<>
           <nav className={styles.tabs} aria-label="보정 부위">{groups.map(g=><button key={g} aria-pressed={group===g} onClick={()=>{setGroup(g);setSelectedControl(controls.find(c=>c[2]===g)![0]);}}>{g}</button>)}</nav>
@@ -320,11 +323,8 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
         </>:<div className={styles.touchPanel}>
           <label htmlFor="brush-size">브러시 크기 · <output>{brush}</output></label><input id="brush-size" className={styles.slider} type="range" min="1" max="20" step="0.1" value={brush} disabled={!active} onChange={e=>setBrush(Number(e.target.value))}/>
           <div className={styles.features} aria-label="터치 보정 도구">{([["touch","클래식"],["restore","복원"]] as const).map(([id,label])=><button key={id} aria-label={label} aria-pressed={mode===id} disabled={!active} onClick={()=>{cancelInteraction.current();setMode(id);}}><span className={styles.featureIcon}><img src={`/images/figma-current/editor/${id}.svg`} alt=""/></span><span>{label}</span></button>)}</div>
-          {room&&notice&&!(room.scope==="personal"&&!faces.length)&&<p className={styles.overviewHint} role="status">{notice}</p>}
         </div>}
       </div>}
-      {/* Engine limits: shown inside the tool box so they are seen while editing (민재님 11/11). */}
-      {(limited||strained)&&<div className={styles.panelWarnings} aria-live="polite">{limited&&<p>다른 얼굴과 가까운 변형은 보호 영역에서 제한돼요.</p>}{strained&&<p>윤곽이 접히지 않도록 변형 강도를 제한했어요.</p>}</div>}
     </section>}
     <div className={styles.messages} aria-live="polite">{!room&&notice&&<p>{notice}</p>}{photo&&(error||engineError||calculationError)&&<p role="alert">{error||engineError||calculationError}</p>}</div>
     </div>

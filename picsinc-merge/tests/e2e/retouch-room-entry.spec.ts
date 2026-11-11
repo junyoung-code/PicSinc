@@ -56,6 +56,32 @@ test('retouch keeps the independent editor and creates a room without a consent 
   expect(await page.evaluate(key => sessionStorage.getItem(key), `picsinc-recovery:${token}`)).toContain(`${roomPath}/recover#token=fixture-recovery`);
 });
 
+test('phone back on the photo step returns to the name step and keeps the name', async ({ page }) => {
+  await page.goto('/retouch/rooms/new');
+  await page.getByLabel('내 이름').fill('민선');
+  await page.getByRole('button', { name: '원본 사진 올리기 →', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /원본을 올려주세요/ })).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/retouch\/rooms\/new$/);
+  await expect(page.getByLabel('내 이름')).toHaveValue('민선');
+  await page.goForward();
+  await expect(page.getByRole('heading', { name: /원본을 올려주세요/ })).toBeVisible();
+  await page.getByRole('button', { name: '이전 화면', exact: true }).click();
+  await expect(page.getByLabel('내 이름')).toHaveValue('민선');
+  await page.goBack();
+  await expect(page).not.toHaveURL(/\/retouch\/rooms\/new$/);
+});
+
+test('a name typed before the page finishes starting still turns on the next button', async ({ page }) => {
+  let release = () => {};
+  const scripts = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/_next/static/**/*.js', async route => { await scripts; await route.continue(); });
+  await page.goto('/retouch/rooms/new', { waitUntil: 'commit' });
+  await page.getByLabel('내 이름').fill('민선');
+  release();
+  await expect(page.getByRole('button', { name: '원본 사진 올리기 →', exact: true })).toBeEnabled();
+});
+
 test('retouch creation rejects unsupported dimensions before uploading and validates replacement photos', async ({ page }) => {
   const uploads: string[] = [];
   page.on('request', request => { if (request.url().includes('/api/retouch/uploads')) uploads.push(request.url()); });

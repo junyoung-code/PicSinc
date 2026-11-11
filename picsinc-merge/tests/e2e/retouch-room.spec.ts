@@ -92,6 +92,7 @@ test('whole-photo touch has no face controls, keeps prior pixels on restore, ret
 });
 
 test('whole-photo touch tells the user when the classic budget is full and starts fresh after saving',async({page})=>{
+ await page.setViewportSize({width:375,height:667}); // small phones must see the notice without scrolling (B-035)
  const width=400,height=400,data=Buffer.alloc(width*height*3);
  for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*3;data[i]=(x*7)%256;data[i+1]=(y*5)%256;data[i+2]=100;}
  const png=await sharp(data,{raw:{width,height,channels:3}}).png().toBuffer();await backend(page,initial('global'),png,width,height);
@@ -101,7 +102,7 @@ test('whole-photo touch tells the user when the classic budget is full and start
  const scrub=async()=>{const b=(await canvas.boundingBox())!,x=b.x+b.width*.2,y=b.y+b.height*.3;await page.mouse.move(x,y);await page.mouse.down();for(let k=0;k<16;k++)await page.mouse.move(x+(k%2?b.width*.5:0),y+k*3,{steps:25});await page.mouse.up();};
  const notice=page.getByRole('status').filter({hasText:'다듬을 수 있는 만큼 다 썼어요'});
  for(let i=0;i<6&&!(await notice.count());i++)await scrub();
- await expect(notice).toBeVisible();await expect(notice).toContainText('다시 열면 이어서 다듬을 수 있어요');
+ await expect(notice).toBeVisible();await expect(notice).toContainText('다시 열면 이어서 다듬을 수 있어요');await expect(notice).toBeInViewport();
  await save.click();
  await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();await expect(save).toBeEnabled();
  const before=await pixels(page),b=(await canvas.boundingBox())!,x=b.x+b.width*.5,y=b.y+b.height*.5;
@@ -287,12 +288,21 @@ test('lobby starts recognition and personal completion waits for everyone', asyn
  await expect(page.getByRole('button',{name:'완료',exact:true})).toHaveCount(0);
 });
 
+test('my own unexpired lease after closing the editor does not ask me to wait', async ({page}) => {
+ const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ await backend(page,{...initial('global'),editorId:'owner',leaseUntil:new Date(Date.now()+90000).toISOString()},png,40,40);
+ await page.goto(`/retouch/rooms/${roomId}`);
+ await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true})).toBeEnabled();
+ await expect(page.getByText('잠시 기다려 주세요')).toHaveCount(0);
+});
+
 test('other editor blocks global entry and review blocks every new edit', async ({page}) => {
  const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  const server=await backend(page,{...initial('global'),editorId:'friend',leaseUntil:new Date(Date.now()+90000).toISOString()},png,40,40);
  await page.goto(`/retouch/rooms/${roomId}`);
  await expect(page.getByRole('heading',{name:'예솔님이 전체 사진을 보정하고 있어요'})).toBeVisible();
  await expect(page.getByRole('button',{name:'보정 대기 중',exact:true})).toBeDisabled();
+ await expect(page.getByText('편집이 끝나면 터치 보정하거나 건너뛸 수 있어요.',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'터치 보정 건너뛰기'})).toHaveCount(0);
  server.update({editorId:null,leaseUntil:null,latestAssetId:'friend-saved'});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true})).toBeEnabled();
