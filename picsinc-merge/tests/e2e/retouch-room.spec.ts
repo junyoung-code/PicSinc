@@ -110,15 +110,23 @@ test('personal editor uses the server mask for preview and records saved control
 });
 
 
-test('selected regions survive reload and a failed save keeps the unsaved warning',async({page})=>{
+for (const actionLabel of ['완료', '이대로 진행하기']) test(`selected regions survive reload and a failed save keeps the unsaved warning (${actionLabel})`,async({page})=>{
  const width=400,height=400,png=await sharp({create:{width,height,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  const mask=await sharp({create:{width,height,channels:3,background:'#ffffff'}}).png().toBuffer();
  const server=await backend(page,initial('personal'),png,width,height,mask);server.claim();
- await page.goto(`/sessions/${roomId}/collaboration`);const next=page.getByRole('button',{name:'완료',exact:true});await expect(next).toBeEnabled();
+ await page.goto(`/sessions/${roomId}/collaboration`);const next=page.getByRole('button',{name:actionLabel,exact:true});await expect(next).toBeEnabled();
  await page.reload();await expect(next).toBeEnabled();
  // A real selection toggle makes the draft dirty, then the selection request fails.
- const canvas=page.locator('canvas').first();await canvas.click({position:{x:100,y:100}});await expect(next).toHaveCount(0);
- await canvas.click({position:{x:100,y:100}});await expect(next).toBeEnabled();server.failNextSelection();await next.click();
+ const canvas=page.locator('canvas').first();await canvas.click({position:{x:100,y:100}});
+ await expect(page.getByRole('button',{name:'완료',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'이대로 진행하기',exact:true})).toBeDisabled();
+ await canvas.click({position:{x:100,y:100}});await expect(next).toBeEnabled();
+ if(actionLabel==='이대로 진행하기'){
+  const refine=(await page.getByRole('button',{name:'영역 편집하기',exact:true}).boundingBox())!, proceed=(await next.boundingBox())!;
+  expect(proceed.y-refine.y-refine.height).toBe(16);expect(proceed.width).toBe(refine.width);expect(proceed.height).toBe(56);
+  await page.screenshot({path:'private/retouch-e2e/room-selection-proceed.png',fullPage:true});
+ }
+ server.failNextSelection();await next.click();
  await expect(page.getByText('영역 저장 실패').first()).toBeVisible();
  expect(await page.evaluate(()=>{const e=new Event('beforeunload',{cancelable:true});dispatchEvent(e);return e.defaultPrevented;})).toBeTruthy();
  await next.click();await expect(page.getByRole('button',{name:'내 얼굴 보정 완료',exact:true})).toBeEnabled({timeout:100000});
@@ -388,6 +396,7 @@ test('recognition retries never expose selection actions before ready', async ({
  expect(overlayBox.height).toBeCloseTo(loadingBox.height,0);
  await expect(page.getByRole('button',{name:'완료',exact:true})).toHaveCount(0);
  await expect(page.getByRole('button',{name:'영역 편집하기',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'이대로 진행하기',exact:true})).toHaveCount(0);
  await expect(page.getByRole('button',{name:'다시 찾기',exact:true})).toHaveCount(0);
  status='failed';await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await page.getByRole('button',{name:'다시 찾기',exact:true}).click();expect(retries).toBe(1);

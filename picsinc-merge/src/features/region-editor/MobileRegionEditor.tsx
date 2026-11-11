@@ -411,7 +411,7 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
     finally { savingRef.current = false; setSaving(false); }
   }
   const showActions = !expanded && !processing && !resourceError && (!needsRecovery || allowManual && hasSelection);
-  const submit = <button type="button" className={saveActionTargetId ? styles.headerSave : styles.save} disabled={locked || !imageRef.current || !hasSelection} onClick={() => void save()}>{saving ? "저장 중…" : saveActionTargetId ? saveActionLabel || "완료" : saveLabel}</button>;
+  const submit = (header = false) => <button type="button" className={header ? styles.headerSave : styles.save} disabled={locked || !imageRef.current || !hasSelection} onClick={() => void save()}>{saving ? "저장 중…" : header ? saveActionLabel || "완료" : saveLabel}</button>;
   const controls = <div className={styles.tools} aria-label="영역 편집 도구">
     {([['points', '점 이동하기'], ['brush', '브러시'], ['erase', '지우기']] as [Tool, string][]).map(([value, label]) => <button key={value} type="button" aria-pressed={tool === value} disabled={locked} onClick={() => setTool(value)}>{label}</button>)}
   </div>;
@@ -437,7 +437,8 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
       {error && <p role="alert" className={styles.error}>{error}</p>}
       {incomingMask && <div className={styles.draftNotice}><p>다른 기기에서 저장한 영역이 바뀌었어요. 지금 수정한 영역은 유지됩니다.</p><button type="button" disabled={locked} onClick={discardLocalDraft}>내 수정 버리고 저장된 영역 불러오기</button></div>}
     </div>
-    {showActions && hasSelection && (saveActionTargetId ? actionTarget && createPortal(submit, actionTarget) : submit)}
+    {showActions && (hasSelection || saveActionTargetId) && submit()}
+    {showActions && hasSelection && saveActionTargetId && actionTarget && createPortal(submit(true), actionTarget)}
     {exitDialog && <div className={styles.modalBackdrop}><div ref={modalRef} className={styles.exitModal} role="alertdialog" aria-modal="true" aria-labelledby="editor-exit-title" aria-describedby="editor-exit-description">
       <span className={styles.exitIcon} aria-hidden="true" />
       <h2 id="editor-exit-title">변경사항을 저장하지 않고 나갈까요?</h2>

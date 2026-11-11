@@ -67,3 +67,5 @@
 .roomSelection:not(.expanded) { display:flex; flex-direction:column; min-height:calc(100dvh - 228px); }
 .roomSelection:not(.expanded) .canvasFrame { flex-shrink:0; }
 .roomSelection:not(.expanded) .scrollControls { margin-top:auto; }
+.roomSelection:not(.expanded) .save { margin-top:16px; }
+.roomSelection:not(.expanded) .save:disabled,.roomSelection:not(.expanded) .refine:disabled { background:#eae6ef; border-color:#706b79; }
