@@ -103,7 +103,7 @@ h2, h3, p { overflow-wrap: break-word; }
 .recovery-panel { font-size: 12px; color: var(--muted); margin-top: 28px; border-top: 1px solid var(--line); padding-top: 16px; }
 .recovery-panel summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
 .recovery-panel input { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
-.help-sheet { position: fixed; inset: auto 0 0; width: min(100%, 402px); max-width: 100%; height: 390px; max-height: 90dvh; margin: 0 auto; padding: 34px 24px max(24px, env(safe-area-inset-bottom)); border: 0; border-radius: 20px 20px 0 0; background: white; color: #17152b; overflow-y: auto; }
+.help-sheet { position: fixed; inset: auto 0 0; width: min(100%, 402px); max-width: 100%; height: 390px; max-height: 90dvh; margin: 0 auto; padding: 28px 24px max(24px, env(safe-area-inset-bottom)); border: 0; border-radius: 20px 20px 0 0; background: white; color: #17152b; overflow-y: auto; }
 .help-sheet[open] { display: flex; flex-direction: column; animation: help-sheet-in .26s cubic-bezier(.2,.8,.2,1); transition: transform .2s ease; }
 .help-sheet.is-dragging { transition: none; }
 .help-sheet.is-closing { animation: help-sheet-out .18s ease-in forwards; pointer-events: none; }
@@ -113,11 +113,13 @@ h2, h3, p { overflow-wrap: break-word; }
 .sheet-handle { position: absolute; top: 0; left: calc(50% - 40px); width: 80px; height: 32px; padding: 0; border: 0; background: transparent; display: grid; place-items: start center; touch-action: none; cursor: grab; }
 .sheet-handle:active { cursor: grabbing; }
 .sheet-handle span { width: 48px; height: 4px; margin-top: 12px; border-radius: 999px; background: var(--line); }
-.help-sheet h2 { font-size: 19px; line-height: 28px; margin: 0 0 24px; flex-shrink: 0; word-break: keep-all; }
+/* Figma 586:13008 help sheet: Black 18/26 title, Regular 14/24 ink body, Bold 14 button. */
+/* `dialog.` outranks the merge screen's grey 14px `.merge h2` caption style. */
+dialog.help-sheet h2 { color: inherit; font-size: 18px; line-height: 26px; font-weight: 900; margin: 0 0 26px; flex-shrink: 0; word-break: keep-all; }
 .help-sheet h2:focus { outline: none; }
-.help-copy { color: var(--muted); font-size: 14px; line-height: 23px; margin-bottom: 24px; }
-.help-copy p { margin: 0; line-height: 23px; word-break: keep-all; overflow-wrap: anywhere; }
-.help-sheet .primary-button { margin-top: auto; flex-shrink: 0; font-size: 15px; }
+.help-copy { color: inherit; font-size: 14px; font-weight: 400; line-height: 24px; margin-bottom: 24px; }
+.help-copy p { margin: 0; line-height: 24px; word-break: keep-all; overflow-wrap: anywhere; }
+.help-sheet .primary-button { margin-top: auto; flex-shrink: 0; font-size: 14px; font-weight: 700; }
 .copy-toast { position: fixed; z-index: 50; left: 50%; transform: translateX(-50%); bottom: max(24px, env(safe-area-inset-bottom)); width: max-content; max-width: calc(100vw - 48px); padding: 12px 20px; border-radius: 12px; color: white; background: #29282f; font-size: 14px; box-shadow: 0 4px 18px #0002; }
 .cancel-photo { position: absolute; top: 6px; right: 6px; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); }
 .cancel-photo:hover { color: var(--primary); }

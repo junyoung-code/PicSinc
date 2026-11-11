@@ -6,7 +6,6 @@
 .editor button[aria-pressed="true"] { background:#e8deff; font-weight:700; }
 .editor button:focus-visible { outline:3px solid #25232b; outline-offset:3px; }
 .hint { color:#706b79; font-size:12px; line-height:1.6; margin:12px 0; }
-.identity { font-size:12px; line-height:20px; margin:8px 0; overflow-wrap:anywhere; color:#706b79; }
 .canvasFrame { position:relative; background:white; overflow:hidden; min-height:100px; }
 .canvas { display:block; width:100%; height:auto; min-height:100px; max-height:none; touch-action:pan-y pinch-zoom; }
 .tools { display:flex; gap:8px; margin:0; font-size:13px; }
