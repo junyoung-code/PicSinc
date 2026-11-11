@@ -13,6 +13,7 @@
 .content { display:flex; flex-direction:column; align-items:stretch; gap:24px; padding:8px 24px 24px; flex:1; min-width:0; }
 .content h1 { font-size:24px; line-height:32px; font-weight:900; letter-spacing:0; margin:0; white-space:pre-line; word-break:keep-all; }
 .content .heroTitle { font-size:32px; line-height:40px; }
+.content .resultTitle { font-size:28px; line-height:36px; }
 .content p { margin:0; font-size:16px; line-height:24px; }
 .heading { display:flex; flex-direction:column; gap:8px; }
 .content :global(.description) { color:var(--moira-muted); margin:0; white-space:pre-line; }
@@ -62,12 +63,8 @@
 .result { display:block; width:258px; max-width:100%; height:auto; object-fit:contain; margin:0 auto; padding:10px; border:3px solid var(--moira-ink); border-radius:0; background:white; box-shadow:7px 7px 0 var(--moira-ink); }
 .previewPhoto { display:block; width:292px; max-width:100%; max-height:440px; object-fit:contain; margin:auto; }
 .photoStage { background:linear-gradient(white,var(--moira-accent) 45%,white); margin:0 -24px; padding:0 24px; }
-.done { display:flex; align-items:center; gap:10px; background:var(--moira-mint); border:3px solid var(--moira-ink); padding:7px 12px; font-size:12px!important; line-height:20px!important; box-shadow:3px 3px 0 var(--moira-ink); width:100%; }
-.done img { flex:none; width:20px; height:20px; }
-.resultBadge { margin-bottom:-16px; }
 .centered { align-items:center; text-align:center; }
 .centered > .heading { width:100%; }
-.textLink { display:flex; min-height:48px; align-items:center; justify-content:center; color:var(--moira-ink); text-decoration:none; font-size:14px; line-height:24px; font-weight:700; border:0; background:white; }
 .actions { display:flex; gap:8px; width:100%; }
 .share { display:grid; gap:8px; }
 .shareRow { display:flex; gap:8px; align-items:center; justify-content:space-between; border:1px solid var(--moira-subtle); border-radius:14px; padding:0 14px; min-height:48px; }
@@ -110,7 +107,7 @@
 .failureCharacter { width:96px; height:96px; object-fit:contain; }
 .processingCharacters { width:calc(100% + 48px); max-width:402px; height:auto; object-fit:contain; margin-bottom:-48px; }
 .content .processingNote { font-size:12px; line-height:20px; color:var(--moira-muted); }
-.savePhoto { width:290px; max-width:100%; height:auto; max-height:55dvh; object-fit:contain; align-self:flex-start; }
+.savePhoto { width:auto; max-width:min(258px,100%); max-height:55dvh; align-self:center; }
 .globalStatus { width:100%; max-width:338px; padding:12px 16px; border:2px solid var(--moira-ink); border-radius:4px; box-shadow:4px 4px 0 var(--moira-ink); background:white; }
 .globalStatus strong { font-size:14px; line-height:24px; }
 .globalStatus p { margin-top:4px; font-size:12px; line-height:20px; }

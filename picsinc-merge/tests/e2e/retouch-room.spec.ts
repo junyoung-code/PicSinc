@@ -78,9 +78,9 @@ test('whole-photo touch has no face controls, keeps prior pixels on restore, ret
  expect(server.state().editorId).toBe('owner');await page.getByRole('button',{name:'재시도',exact:true}).click();
  await expect(page.getByRole('button',{name:'터치 보정 건너뛰기'})).toBeEnabled();expect(server.saved().state.scope).toBe('global');
  await page.getByRole('button',{name:'터치 보정 건너뛰기'}).click();await page.getByRole('button',{name:'건너뛰고 결과 확인',exact:true}).click();await page.getByRole('button',{name:'최종 완료',exact:true}).click();await page.getByRole('button',{name:'사진 최종 완료',exact:true}).click();
- await expect(page.getByRole('button',{name:'사진 저장',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'사진 저장하기',exact:true})).toBeVisible();
  await page.reload();await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기'})).toHaveCount(0);
- const download=page.waitForEvent('download');await page.getByRole('button',{name:'사진 저장',exact:true}).click();expect((await download).suggestedFilename()).toBe('moira-final.png');
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'사진 저장하기',exact:true}).click();expect((await download).suggestedFilename()).toBe('moira-final.png');
  await page.screenshot({path:'private/retouch-e2e/room-final.png',fullPage:true});
 });
 
@@ -210,9 +210,9 @@ test('participant waits for owner finalization and retries the same final PNG', 
  await expect(page.getByRole('heading',{name:'대표자의 최종 완료를 기다려요'})).toBeVisible();
  await expect(page.getByRole('button',{name:'최종 완료',exact:true})).toHaveCount(0);
  server.update({phase:'final'});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
- const save=page.getByRole('button',{name:'사진 저장',exact:true});await expect(save).toBeVisible();
+ const save=page.getByRole('button',{name:'사진 저장하기',exact:true});await expect(save).toBeVisible();
  server.failNextDownload();await save.click();await expect(page.getByRole('status').filter({hasText:'사진 저장에 실패'})).toBeVisible();
- const getPNG=async(p:Page)=>{const download=p.waitForEvent('download');await p.getByRole('button',{name:'사진 저장',exact:true}).click();const file=await download;expect(file.suggestedFilename()).toBe('moira-final.png');return readFile((await file.path())!);};
+ const getPNG=async(p:Page)=>{const download=p.waitForEvent('download');await p.getByRole('button',{name:'사진 저장하기',exact:true}).click();const file=await download;expect(file.suggestedFilename()).toBe('moira-final.png');return readFile((await file.path())!);};
  expect((await getPNG(page)).equals(png)).toBeTruthy();
  const owner=await context.newPage();await backend(owner,initial('final'),png,40,40);await owner.goto(`/retouch/rooms/${roomId}`);
  expect((await getPNG(owner)).equals(png)).toBeTruthy();await owner.close();
@@ -361,12 +361,12 @@ test('latest global editor is shown and finalization failure preserves the same 
  await expect(page.locator('[data-loading-characters]')).toHaveCount(0);
  expect(server.state().phase).toBe('review');expect(server.state().latestAssetId).toBe('result');
  await page.getByRole('button',{name:'재시도',exact:true}).click();
- await expect(page.getByRole('button',{name:'사진 저장',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'사진 저장하기',exact:true})).toBeVisible();
  expect(server.state().latestAssetId).toBe('result');
- const download=page.waitForEvent('download');await page.getByRole('button',{name:'사진 저장',exact:true}).click();await download;
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'사진 저장하기',exact:true}).click();await download;
  await expect(page.getByRole('img',{name:'저장할 완성 사진'})).toHaveAttribute('src',`${base}/assets/result`);
  await page.getByRole('button',{name:'닫기',exact:true}).click();
- await expect(page.getByRole('button',{name:'사진 저장',exact:true})).toBeVisible();
+ await page.waitForURL(url=>new URL(url).pathname==='/');
 });
 
 test('recognition retries never expose selection actions before ready', async ({page}) => {
