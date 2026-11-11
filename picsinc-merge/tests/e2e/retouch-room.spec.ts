@@ -84,6 +84,25 @@ test('whole-photo touch has no face controls, keeps prior pixels on restore, ret
  await page.screenshot({path:'private/retouch-e2e/room-final.png',fullPage:true});
 });
 
+test('whole-photo touch tells the user when the classic budget is full and starts fresh after saving',async({page})=>{
+ const width=400,height=400,data=Buffer.alloc(width*height*3);
+ for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*3;data[i]=(x*7)%256;data[i+1]=(y*5)%256;data[i+2]=100;}
+ const png=await sharp(data,{raw:{width,height,channels:3}}).png().toBuffer();await backend(page,initial('global'),png,width,height);
+ await page.goto(`/sessions/${roomId}/collaboration`);
+ await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();
+ const save=page.getByRole('button',{name:'전체 사진 편집 완료',exact:true}),canvas=page.locator('canvas[aria-label="보정 미리보기"]');await expect(save).toBeEnabled();
+ const scrub=async()=>{const b=(await canvas.boundingBox())!,x=b.x+b.width*.2,y=b.y+b.height*.3;await page.mouse.move(x,y);await page.mouse.down();for(let k=0;k<16;k++)await page.mouse.move(x+(k%2?b.width*.5:0),y+k*3,{steps:25});await page.mouse.up();};
+ const notice=page.getByRole('status').filter({hasText:'600구간'});
+ for(let i=0;i<6&&!(await notice.count());i++)await scrub();
+ await expect(notice).toBeVisible();await expect(notice).toContainText('편집 완료 후 다시 열면');
+ await save.click();
+ await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();await expect(save).toBeEnabled();
+ const before=await pixels(page),b=(await canvas.boundingBox())!,x=b.x+b.width*.5,y=b.y+b.height*.5;
+ await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+20,y,{steps:4});await page.mouse.up();
+ await expect.poll(async()=>(await pixels(page)).equals(before)).toBeFalsy();
+ await expect(notice).toHaveCount(0);
+});
+
 test('personal editor uses the server mask for preview and records saved controls',async({page})=>{
  test.skip(!existsSync(fixture),'Local private fixture required');
  const runtimeErrors:string[]=[];page.on('pageerror',error=>runtimeErrors.push(error.message));

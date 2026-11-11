@@ -229,7 +229,8 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
     const allowed=!area||regionDistance(next,area)<=1.35;
     if(!allowed)setNotice("터치 보정은 선택한 얼굴 주변에서만 적용돼요.");
     const result=touch.current.move(editRef.current,next,allowed);
-    if(result.full)setNotice("터치·복원은 각각 600구간까지 지원해요. 마지막 터치를 취소하거나 초기화해주세요.");
+    // Rooms have no undo/reset buttons, so point to the step that starts a fresh budget.
+    if(result.full)setNotice(room?.scope==="global"?"터치·복원은 한 번에 각각 600구간까지 돼요. 편집 완료 후 다시 열면 이어서 다듬을 수 있어요.":room?"터치·복원은 각각 600구간까지 돼요. 남은 부분은 전체 사진 터치 보정에서 다듬어주세요.":"터치·복원은 각각 600구간까지 지원해요. 마지막 터치를 취소하거나 초기화해주세요.");
     update(result.state);
   }
   function endPointer(e:ReactPointerEvent<HTMLDivElement>,cancel=false){
@@ -319,6 +320,7 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
         </>:<div className={styles.touchPanel}>
           <label htmlFor="brush-size">브러시 크기 · <output>{brush}</output></label><input id="brush-size" className={styles.slider} type="range" min="1" max="20" step="0.1" value={brush} disabled={!active} onChange={e=>setBrush(Number(e.target.value))}/>
           <div className={styles.features} aria-label="터치 보정 도구">{([["touch","클래식"],["restore","복원"]] as const).map(([id,label])=><button key={id} aria-label={label} aria-pressed={mode===id} disabled={!active} onClick={()=>{cancelInteraction.current();setMode(id);}}><span className={styles.featureIcon}><img src={`/images/figma-current/editor/${id}.svg`} alt=""/></span><span>{label}</span></button>)}</div>
+          {room&&notice&&!(room.scope==="personal"&&!faces.length)&&<p className={styles.overviewHint} role="status">{notice}</p>}
         </div>}
       </div>}
     </section>}
