@@ -50,7 +50,7 @@ test('retouch keeps the independent editor and creates a room without a consent 
   await create.click();
   await expect(page).toHaveURL(new RegExp(`${roomPath}$`));
   await expect(page.getByRole('heading', { name: '함께할 친구를 초대해요' })).toBeVisible();
-  await expect(page.getByLabel('초대 링크')).toHaveValue(new RegExp(`${roomPath}$`));
+  await expect(page.getByLabel('초대 링크', { exact: true })).toHaveValue(new RegExp(`${roomPath}$`));
   expect({ prepared, put, completed }).toEqual({ prepared: 1, put: 1, completed: 2 });
   expect(paths.some(path => path.startsWith('/api/uploads'))).toBe(false);
   expect(await page.evaluate(key => sessionStorage.getItem(key), `picsinc-recovery:${token}`)).toContain(`${roomPath}/recover#token=fixture-recovery`);
