@@ -85,6 +85,7 @@ test('whole-photo touch has no face controls, keeps prior pixels on restore, ret
 });
 
 test('whole-photo touch tells the user when the classic budget is full and starts fresh after saving',async({page})=>{
+ await page.setViewportSize({width:375,height:667}); // small phones must see the notice without scrolling (B-035)
  const width=400,height=400,data=Buffer.alloc(width*height*3);
  for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*3;data[i]=(x*7)%256;data[i+1]=(y*5)%256;data[i+2]=100;}
  const png=await sharp(data,{raw:{width,height,channels:3}}).png().toBuffer();await backend(page,initial('global'),png,width,height);
@@ -94,7 +95,7 @@ test('whole-photo touch tells the user when the classic budget is full and start
  const scrub=async()=>{const b=(await canvas.boundingBox())!,x=b.x+b.width*.2,y=b.y+b.height*.3;await page.mouse.move(x,y);await page.mouse.down();for(let k=0;k<16;k++)await page.mouse.move(x+(k%2?b.width*.5:0),y+k*3,{steps:25});await page.mouse.up();};
  const notice=page.getByRole('status').filter({hasText:'다듬을 수 있는 만큼 다 썼어요'});
  for(let i=0;i<6&&!(await notice.count());i++)await scrub();
- await expect(notice).toBeVisible();await expect(notice).toContainText('다시 열면 이어서 다듬을 수 있어요');
+ await expect(notice).toBeVisible();await expect(notice).toContainText('다시 열면 이어서 다듬을 수 있어요');await expect(notice).toBeInViewport();
  await save.click();
  await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();await expect(save).toBeEnabled();
  const before=await pixels(page),b=(await canvas.boundingBox())!,x=b.x+b.width*.5,y=b.y+b.height*.5;
