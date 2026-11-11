@@ -13,7 +13,7 @@ async function backend(page:Page,initialRoom:CollaborationView,png:Buffer,width:
  const actions:string[]=[];
  let releaseSave:(()=>void)|undefined; let saveGate:Promise<void>|undefined;
  let claims:Array<{regionId:string;participantId:string;nickname:string}>=[];
- const snapshot=()=>({session:{id:'session',inviteToken:roomId,ownerParticipantId:'owner',originalAssetId:'original',version:5,createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+86400000).toISOString()},currentParticipantId:participantId,participants:[{id:'owner',sessionId:'session',nickname:'민선',submitted:state.completedIds.includes('owner')},{id:'friend',sessionId:'session',nickname:'예솔',submitted:true},...(state.rosterIds.includes('third')?[{id:'third',sessionId:'session',nickname:'지연',submitted:state.completedIds.includes('third')}]:[])],assets:[{id:'original',kind:'original',width,height,contentType:'image/png'}],originalSelections:initialRoom.personalToken&&mask?[{participantId,maskAssetId:'mask',selectedRegionIds:['region-1']}]:[],selections:[],result:null});
+ const snapshot=()=>({session:{id:'session',inviteToken:roomId,ownerParticipantId:'owner',originalAssetId:'original',version:5,createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+86400000).toISOString()},currentParticipantId:participantId,participants:[{id:'owner',sessionId:'session',nickname:'민선',submitted:state.completedIds.includes('owner')},{id:'friend',sessionId:'session',nickname:'예솔',submitted:true},...(state.rosterIds.includes('third')?[{id:'third',sessionId:'session',nickname:'지연',submitted:state.completedIds.includes('third')}]:[])].sort((x,y)=>(state as {byId?:boolean}).byId?x.id.localeCompare(y.id):0),assets:[{id:'original',kind:'original',width,height,contentType:'image/png'}],originalSelections:initialRoom.personalToken&&mask?[{participantId,maskAssetId:'mask',selectedRegionIds:['region-1']}]:[],selections:[],result:null});
  await page.route('**/api/**',async route=>{
   const request=route.request(),path=new URL(request.url()).pathname;
   const json=(data:unknown,status=200)=>route.fulfill({status,json:data});
@@ -345,6 +345,23 @@ test('other editor blocks global entry and review blocks every new edit', async 
  await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true})).toHaveCount(0);
  await page.reload();await expect(page.getByRole('button',{name:'최종 완료',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'완료',exact:true})).toHaveCount(0);
+});
+
+test('lobby and start confirm list the host first even when the server sorts by id', async ({page,context}) => {
+ const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ // By id the host ('owner') lands between 'friend' and 'third', which is what put the host in the middle.
+ const state={...initial('lobby'),rosterIds:[],completedIds:[],byId:true} as ReturnType<typeof initial>;
+ const friend=await context.newPage();await backend(friend,{...state,rosterIds:['owner','friend','third']},png,40,40,undefined,'friend');
+ await friend.goto(`/retouch/rooms/${roomId}`);
+ const friendList=friend.getByRole('region',{name:'친구 보정 현황'}).getByRole('listitem');
+ await expect(friendList).toHaveCount(3);await expect(friendList.first()).toContainText('민선');await expect(friendList.nth(1)).toContainText('예솔 (나)');
+ await friend.close();
+ await backend(page,{...state,rosterIds:['owner','friend','third']},png,40,40);
+ await page.goto(`/retouch/rooms/${roomId}`);
+ const list=page.getByRole('region',{name:'친구 보정 현황'}).getByRole('listitem');
+ await expect(list).toHaveCount(3);await expect(list.first()).toContainText('민선 (나)');
+ await page.getByRole('button',{name:'시작하기',exact:true}).click();
+ await expect(list.first()).toContainText('민선');await expect(list.nth(1)).toContainText('예솔');
 });
 
 test('lobby shows short join and copy notices, and leaving asks first', async ({page,context}) => {

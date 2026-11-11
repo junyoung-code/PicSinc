@@ -2,7 +2,9 @@ import type { Participant } from '@/core/contracts';
 import styles from '@/features/retouch-room-flow/room.module.css';
 import { characterFor, roomCharacters } from './characters';
 export default function ParticipantStatus({ participants, completedIds, currentId, rosterIds, ownerId, compact = false }: { participants: Participant[]; completedIds: string[]; currentId: string; rosterIds: string[]; ownerId?: string; compact?: boolean }) {
-  const roster = rosterIds.length ? participants.filter(p => rosterIds.includes(p.id)) : participants;
+  const inRoom = rosterIds.length ? participants.filter(p => rosterIds.includes(p.id)) : participants;
+  // The server lists people by id, so put the host first as in Figma 527:3097 (lobby, start confirm).
+  const roster = [...inRoom.filter(p => p.id === ownerId), ...inRoom.filter(p => p.id !== ownerId)];
   // Figma 527:7354: the editor cards list me first as "나", then friends.
   const people = compact ? [...roster.filter(p => p.id === currentId), ...roster.filter(p => p.id !== currentId)] : roster;
   const lobby = !rosterIds.length;
