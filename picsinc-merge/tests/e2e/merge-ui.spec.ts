@@ -77,8 +77,10 @@ for (const width of [402, 390, 320]) test(`merge flow and PNG saving at ${width}
   await page.getByRole('button', { name: '사진 합치기' }).click();
   await expect(page.getByRole('link', { name: '사진 저장하기' })).toBeVisible();
   await capture('result');
-  await expect(page.getByRole('link', { name: '다른 사진으로 새로 하기' })).toHaveAttribute('href', '/sessions/new');
-  await expect(page.getByText('민선 · 예솔의 보정이 모두 반영됐어요.')).toBeVisible();
+  // Figma 586:12772: no badge or green summary, "처음부터 다시 만들기" + "사진 저장하기".
+  await expect(page.getByRole('link', { name: '처음부터 다시 만들기' })).toHaveAttribute('href', '/sessions/new');
+  await expect(page.getByText('우리의 보정, 완료!')).toHaveCount(0);
+  await expect(page.getByText('의 보정이 모두 반영됐어요', { exact: false })).toHaveCount(0);
   await expect(page.getByRole('link', { name: '사진 저장하기' })).toHaveAttribute('href', `${base}/assets/final`);
   // Chromium's download navigation bypasses Playwright routing and reaches the real
   // auth-protected API. Check the API target above; use the identical static PNG
@@ -88,6 +90,8 @@ for (const width of [402, 390, 320]) test(`merge flow and PNG saving at ${width}
   await page.getByRole('link', { name: '사진 저장하기' }).click();
   const saved = await download;
   expect(await readFile((await saved.path())!)).toEqual(photo);
+  await expect(page.getByRole('status').filter({ hasText: '✓ 사진을 저장했어요' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: '✓ 사진을 저장했어요' })).toHaveCount(0, { timeout: 5000 });
   joined = false; owner = false; submitted = false; result = false; selected = false;
   await page.goto('/sessions/merge-ui');
   await page.getByLabel('내 이름').fill('예솔');
@@ -122,7 +126,7 @@ test('merge delay, failure and retry preserve submitted work', async ({ page }, 
     if (path.endsWith('/compose')) {
       compositions += 1;
       if (compositions > 1) { completed = true; return route.fulfill({ json: { result: snapshot().result } }); }
-      return route.fulfill({ json: { job: { id: 'merge-job', status: 'running' } } });
+      return route.fulfill({ json: { job: { id: 'merge-job', status: 'queued' } } });
     }
     if (path.endsWith('/jobs/merge-job')) return route.fulfill({ json: { job: { id: 'merge-job', status: failJob ? 'failed' : 'running', error: failJob ? '사진을 합치지 못했어요. 다시 시도해 주세요.' : undefined } } });
     if (path.endsWith('/assets/final')) return route.fulfill({ contentType: 'image/png', body: photo });
@@ -134,9 +138,14 @@ test('merge delay, failure and retry preserve submitted work', async ({ page }, 
   const characters = page.locator('[data-loading-characters]');
   await expect(characters).toBeVisible();
   await expect(characters).toHaveAttribute('aria-hidden', 'true');
+  const description = page.locator('.merging-screen .description');
+  await expect(description).toHaveText('처리 순서를 기다리고 있어요. 잠시 후 다시 확인해도 됩니다.');
   // Seek real CSS animations to the first jump apex; other characters still rest.
   for (const width of [402, 390, 320]) {
     await page.setViewportSize({ width, height: 874 });
+    // The queued notice breaks between its two sentences, never inside one.
+    expect(await description.evaluate(element => (element as HTMLElement).innerText)).toBe('처리 순서를 기다리고 있어요.\n잠시 후 다시 확인해도 됩니다.');
+    expect(await description.evaluate(element => Math.round(element.getBoundingClientRect().height / parseFloat(getComputedStyle(element).lineHeight)))).toBe(2);
     const positions = await characters.evaluate(element => {
       for (const animation of element.getAnimations({ subtree: true })) { animation.pause(); animation.currentTime = 590; }
       return [...element.querySelectorAll('span > span:last-child')].map(character => {
@@ -160,11 +169,30 @@ test('merge delay, failure and retry preserve submitted work', async ({ page }, 
   failJob = true;
   await page.clock.runFor(4000);
   await expect(page.getByText('사진을 합치지 못했어요. 다시 시도해 주세요.')).toBeVisible();
+  expect(await page.locator('.status-message').evaluate(element => (element as HTMLElement).innerText)).toBe('사진을 합치지 못했어요.\n다시 시도해 주세요.');
   await expect(page.getByText('제출 완료', { exact: true })).toBeVisible();
   await expect(characters).toHaveCount(0);
   await page.getByRole('button', { name: '사진 합치기', exact: true }).click();
   await expect(page.getByRole('link', { name: '사진 저장하기' })).toBeVisible();
   expect(compositions).toBe(2);
+  // Figma 586:12772 result: no badge or green summary; saving shows the 859:25318 notice above the buttons.
+  await expect(page.getByText('우리의 보정, 완료!')).toHaveCount(0);
+  await expect(page.getByText('의 보정이 모두 반영됐어요', { exact: false })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '처음부터 다시 만들기' })).toHaveAttribute('href', '/sessions/new');
+  const download = page.waitForEvent('download');
+  await page.getByRole('link', { name: '사진 저장하기' }).click();
+  expect(await readFile((await (await download).path())!)).toEqual(photo);
+  const notice = page.getByRole('status').filter({ hasText: '✓ 사진을 저장했어요' });
+  await expect(notice).toBeVisible();
+  for (const width of [402, 320]) {
+    await page.setViewportSize({ width, height: 874 });
+    const [toast, first] = await Promise.all([notice.boundingBox(), page.getByRole('link', { name: '처음부터 다시 만들기' }).boundingBox()]);
+    expect(toast!.x).toBeGreaterThanOrEqual(0); expect(toast!.x + toast!.width).toBeLessThanOrEqual(width);
+    expect(toast!.y + toast!.height).toBeLessThanOrEqual(first!.y);
+    await page.screenshot({ path: testInfo.outputPath(`result-saved-${width}.png`) });
+  }
+  await page.clock.runFor(3000);
+  await expect(notice).toHaveCount(0);
 });
 
 for (const owner of [true, false]) test(`merge result preview recovery and owner-only actions (${owner ? 'owner' : 'participant'})`, async ({ page }) => {

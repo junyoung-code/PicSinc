@@ -1,7 +1,7 @@
 "use client";
 import { uploadAsset, detectRemote, composeRemote } from "@/core/remote-client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Notice, PhotoPicker, StatusMessage } from "@/components/mobile-shell";
 import MobileShell, { MergeWelcome, MergeSteps } from "@/features/merge-flow/MergeShell";
 import MergeResultPreview from "@/features/merge-flow/MergeResultPreview";
@@ -19,6 +19,7 @@ import { visiblePolling } from "./polling";
 import { saveEditorSelection } from "./save-editor-selection";
 import type { OriginalDetectionState } from "@/features/photo-session/original-detection-state";
 import { sendFestivalEvent } from "@/core/festival-visit";
+import { sentenceLines } from "./sentence-lines";
 
 const labels: Record<Step, string> = { invite: "친구 초대하기", select: "내 얼굴 선택", guide: "내 사진 보정하기", upload: "보정본 올리기", review: "선택 영역 확인", status: "제출 현황", result: "최종 사진", overlap: "겹친 영역 확인" };
 const progress: Record<Step, number> = { invite: 16, select: 40, guide: 40, upload: 65, review: 65, status: 65, result: 100, overlap: 90 };
@@ -53,6 +54,8 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   const [loadingDetection, setLoadingDetection] = useState(false);
   const detecting = loadingDetection || ["idle", "queued", "running"].includes(detectionState.status);
   const [toast, setToast] = useState("");
+  // Figma 859:25318: "saved" notice above the result buttons, same as the retouch room.
+  const [savedNotice, setSavedNotice] = useState(0), saving = useRef(false);
   const [mergeDelayed, setMergeDelayed] = useState(false);
   const [claims, setClaims] = useState<{ regionId: string; participantId: string; nickname: string }[] | null>(null);
   const claimRequest = useRef(0);
@@ -229,6 +232,11 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   }, [base, original?.id, step, expired]);
 
   useEffect(() => {
+    if (!savedNotice) return;
+    const timer = window.setTimeout(() => setSavedNotice(0), 2600);
+    return () => clearTimeout(timer);
+  }, [savedNotice]);
+  useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(""), 2500);
     return () => clearTimeout(timer);
@@ -329,6 +337,19 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     catch (error) { sendFestivalEvent("stage_failed", inviteToken, { stage: "composition", errorCode: error instanceof RequestError ? `http_${error.status}` : "client_error", clientEventId: crypto.randomUUID() }); report(error); if (error instanceof RequestError && error.status === 409) await refresh().catch(report); }
     finally { setBusy(false); setMerging(false); }
   }
+  async function saveResult(event: MouseEvent<HTMLAnchorElement>) {
+    // Fetch first so the notice only shows once the photo really reached the phone.
+    event.preventDefault();
+    const href = event.currentTarget.href;
+    if (saving.current || !data?.result) return;
+    sendFestivalEvent("save_clicked", inviteToken, { assetId: data.result.resultAssetId, clientEventId: crypto.randomUUID() });
+    saving.current = true; setMessage("");
+    try {
+      const response = await fetch(href); if (!response.ok) throw new Error("사진 저장에 실패했어요. 다시 눌러주세요.");
+      const url = URL.createObjectURL(await response.blob()), a = document.createElement("a"); a.href = url; a.download = "moira-final.png"; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setSavedNotice(n => n + 1);
+    } catch { setMessage("사진 저장에 실패했어요. 다시 눌러주세요."); } finally { saving.current = false; }
+  }
   async function copy() {
     try { await navigator.clipboard.writeText(shareUrl); setToast("초대 링크를 복사했어요."); }
     catch { setMessage("링크를 선택해서 복사해 주세요."); }
@@ -338,9 +359,9 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   if (expired) return <MobileShell title="보정방 만료"><h1>보정방이 만료됐어요</h1><p className="description">사진은 방을 만든 뒤 24시간 동안 보관됩니다. 새 보정방에서 다시 시작해 주세요.</p><a className="primary-button" href="/sessions/new">새 보정방 만들기</a></MobileShell>;
   if (!data) return <MobileShell title="초대받은 보정방" helpTopic={canJoin ? "join" : undefined} progress={10} footer={canJoin ? <button className="primary-button" disabled={busy || !nickname.trim()} onClick={() => void join()}>{busy ? "참여하는 중…" : "참여하기"}</button> : undefined}>
     {canJoin ? <><MergeWelcome inviter={inviter} /><form onSubmit={event => { event.preventDefault(); void join(); }}><label className="name-field">내 이름<input required autoComplete="nickname" maxLength={40} value={nickname} onChange={event => setNickname(event.target.value)} placeholder="친구들이 알아볼 이름" /></label></form><MergeSteps /></> : <div className="loading-screen"><div className="spinner" /><p>보정방을 불러오고 있어요.</p></div>}
-    <StatusMessage message={message} />{message && !canJoin && <button className="secondary-button" onClick={() => location.reload()}>다시 불러오기</button>}
+    <StatusMessage message={sentenceLines(message)} />{message && !canJoin && <button className="secondary-button" onClick={() => location.reload()}>다시 불러오기</button>}
   </MobileShell>;
-  if (merging) return <MobileShell title="사진 합치는 중" progress={90} helpTopic="status"><div className="loading-screen merging-screen" role="status"><LoadingCharacters className={mergeStyles.composingCharacters} /><h1>{mergeDelayed ? <>평소보다 오래<br />걸리고 있어요</> : <>각자의 보정을<br />한 장에 담고 있어요</>}</h1><p className="description">{mergeDelayed ? <>사진을 안전하게 합치고 있어요.<br />잠시만 기다려 주세요.</> : message || "선택한 얼굴만 원본 사진에 자연스럽게 합치는 중이에요."}</p></div></MobileShell>;
+  if (merging) return <MobileShell title="사진 합치는 중" progress={90} helpTopic="status"><div className="loading-screen merging-screen" role="status"><LoadingCharacters className={mergeStyles.composingCharacters} /><h1>{mergeDelayed ? <>평소보다 오래<br />걸리고 있어요</> : <>각자의 보정을<br />한 장에 담고 있어요</>}</h1><p className="description">{mergeDelayed ? <>사진을 안전하게 합치고 있어요.<br />잠시만 기다려 주세요.</> : sentenceLines(message) || "선택한 얼굴만 원본 사진에 자연스럽게 합치는 중이에요."}</p></div></MobileShell>;
 
   const roster = <ul className="participant-list">{photoDisplay.participants.map(person => <li key={person.id}><img className="avatar" src={`/images/figma-current/home/${person.id === data.session.ownerParticipantId ? "lilac" : "pink"}.png`} alt="" /><span className="participant-name">{person.nickname}{!owner && person.id === me?.id ? " (나)" : ""}</span>{(step !== "invite" || person.id === data.session.ownerParticipantId) && <span className={`badge ${person.submitted ? "complete" : person.id === data.session.ownerParticipantId && step === "invite" ? "owner" : ""}`}>{person.submitted ? "제출 완료" : person.id === data.session.ownerParticipantId && step === "invite" ? "대표자" : "보정 중"}</span>}</li>)}</ul>;
   const shareField = <div className="share-field"><input aria-label="친구에게 보낼 초대 링크" value={shareUrl} readOnly onFocus={event => event.currentTarget.select()} /><button className="small-button" onClick={() => void copy()}>복사</button></div>;
@@ -370,16 +391,15 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   } else if (step === "overlap") {
     content = <><h1>겹친 부분에 사용할<br />사진을 골라주세요</h1><p className="description">표시된 겹침을 확인하고 영역별 보정본을 지정해 주세요. 저장한 뒤 다시 병합합니다.</p><div className="overlap-editor"><RegionEditor inviteToken={inviteToken} overlapOnly onDirtyChange={setDirty} onSaved={() => { setDirty(false); void refresh().then(() => recordStep("status")).catch(report); }} /></div></>;
   } else {
-    content = <><div className="result-heading"><p className={mergeStyles.tag}>우리의 보정, 완료!</p><h1>모두의 마음에 드는<br />우리 사진 완성.</h1><p className="description">각자의 취향이 한 장에 모였어요.</p></div>{data.result && <MergeResultPreview key={data.result.previewAssetId} src={assetUrl(data.result.previewAssetId)} onError={() => sendFestivalEvent("stage_failed", inviteToken, { stage: "result_view", errorCode: "image_load_failed", clientEventId: crypto.randomUUID() })} />}
-      {data.result && currentResult && <p className={mergeStyles.success}><img src="/images/merge-ui/check.svg" alt="" />{data.participants.filter(person => person.submitted).map(person => person.nickname).join(" · ")}의 보정이 모두 반영됐어요.</p>}
+    content = <><div className="result-heading"><h1>모두의 마음에 드는<br />우리 사진 완성.</h1><p className="description">각자의 취향이 한 장에 모였어요.</p></div>{data.result && <MergeResultPreview key={data.result.previewAssetId} src={assetUrl(data.result.previewAssetId)} onError={() => sendFestivalEvent("stage_failed", inviteToken, { stage: "result_view", errorCode: "image_load_failed", clientEventId: crypto.randomUUID() })} />}
       {data.result && data.result.version !== data.session.version && <><Notice>제출 내용이 바뀌었어요. 위 사진은 이전 결과입니다. 대표자가 다시 병합해 주세요.</Notice>{owner && <button className="secondary-button" onClick={() => navigate("status")}>제출 현황으로 돌아가기</button>}</>}
       {Boolean(data.result?.unassignedOverlapPixels) && <><Notice>겹친 영역에 임시로 적용된 보정본이 있어요. 대표자가 확인하고 수정할 수 있어요.</Notice>{owner && <button className="secondary-button" onClick={() => navigate("overlap")}>겹친 영역 확인하기</button>}</>}
     </>;
-    footer = <><a className="secondary-button" href="/sessions/new">다른 사진으로 새로 하기</a>{data.result && <a className="primary-button" href={assetUrl(data.result.resultAssetId)} download onClick={() => sendFestivalEvent("save_clicked", inviteToken, { assetId: data.result!.resultAssetId, clientEventId: crypto.randomUUID() })}>사진 저장하기</a>}</>;
+    footer = <><a className="secondary-button" href="/sessions/new">처음부터 다시 만들기</a>{data.result && <a className="primary-button" href={assetUrl(data.result.resultAssetId)} download onClick={event => void saveResult(event)}>사진 저장하기</a>}{savedNotice > 0 && <p key={savedNotice} className="save-toast" role="status">✓ 사진을 저장했어요</p>}</>;
   }
   const previous: Partial<Record<Step, Step>> = { select: owner ? "invite" : "upload", upload: owner ? "select" : "guide", review: "upload", status: owner ? "upload" : "select", overlap: "result" };
   return <MobileShell helpTopic={step === "invite" ? "invite" : step === "select" || step === "review" ? "select" : step === "upload" ? "upload" : step === "guide" ? "guide" : step === "status" || step === "result" ? "status" : undefined} title={step === "status" && !owner && me?.submitted ? "제출 완료" : labels[step]} progress={progress[step]} onBack={step === "invite" ? () => location.assign("/sessions/new") : previous[step] ? () => navigate(previous[step]!) : undefined} footer={footer}>
-    {content}<StatusMessage message={message} />
+    {content}<StatusMessage message={sentenceLines(message)} />
     {confirmDelete && <DeleteRoomDialog base={base} onCancel={() => setConfirmDelete(false)} onDeleted={() => { current.current.dirty = false; editorBack.current = null; location.replace("/sessions/new"); }} />}
     {toast && <div className="copy-toast" role="status">{toast}</div>}
   </MobileShell>;

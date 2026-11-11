@@ -120,6 +120,13 @@ dialog.help-sheet h2 { color: inherit; font-size: 18px; line-height: 26px; font-
 .help-copy { color: inherit; font-size: 14px; font-weight: 400; line-height: 24px; margin-bottom: 24px; }
 .help-copy p { margin: 0; line-height: 24px; word-break: keep-all; overflow-wrap: anywhere; }
 .help-sheet .primary-button { margin-top: auto; flex-shrink: 0; font-size: 14px; font-weight: 700; }
+/* Messages from sentenceLines() put each sentence on its own line. */
+.status-message, .merging-screen .description { white-space: pre-line; }
+/* Figma 859:25318 saved notice: rises above the sticky footer buttons, then leaves (same as the retouch room's saveToast). */
+.screen-footer .save-toast { position: absolute; left: 50%; bottom: calc(100% + 4px); z-index: 2; box-sizing: border-box; min-width: 216px; max-width: calc(100% - 32px); margin: 0; padding: 8px 24px; border: 2px solid #25232b; border-radius: 6px; background: #a7ebd9; color: #25232b; font-size: 14px; line-height: 24px; font-weight: 700; text-align: center; white-space: nowrap; pointer-events: none; animation: save-toast 2.6s ease both; }
+@keyframes save-toast { 0% { opacity: 0; transform: translate(-50%, 14px); } 12%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, 6px); } }
+@keyframes save-toast-fade { 0%, 100% { opacity: 0; transform: translateX(-50%); } 10%, 85% { opacity: 1; transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) { .screen-footer .save-toast { animation-name: save-toast-fade; } }
 .copy-toast { position: fixed; z-index: 50; left: 50%; transform: translateX(-50%); bottom: max(24px, env(safe-area-inset-bottom)); width: max-content; max-width: calc(100vw - 48px); padding: 12px 20px; border-radius: 12px; color: white; background: #29282f; font-size: 14px; box-shadow: 0 4px 18px #0002; }
 .cancel-photo { position: absolute; top: 6px; right: 6px; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); }
 .cancel-photo:hover { color: var(--primary); }
