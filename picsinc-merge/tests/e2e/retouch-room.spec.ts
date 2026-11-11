@@ -92,15 +92,29 @@ test('whole-photo touch tells the user when the classic budget is full and start
  await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();
  const save=page.getByRole('button',{name:'전체 사진 편집 완료',exact:true}),canvas=page.locator('canvas[aria-label="보정 미리보기"]');await expect(save).toBeEnabled();
  const scrub=async()=>{const b=(await canvas.boundingBox())!,x=b.x+b.width*.2,y=b.y+b.height*.3;await page.mouse.move(x,y);await page.mouse.down();for(let k=0;k<16;k++)await page.mouse.move(x+(k%2?b.width*.5:0),y+k*3,{steps:25});await page.mouse.up();};
- const notice=page.getByRole('status').filter({hasText:'600구간'});
+ const notice=page.getByRole('status').filter({hasText:'다듬을 수 있는 만큼 다 썼어요'});
  for(let i=0;i<6&&!(await notice.count());i++)await scrub();
- await expect(notice).toBeVisible();await expect(notice).toContainText('편집 완료 후 다시 열면');
+ await expect(notice).toBeVisible();await expect(notice).toContainText('다시 열면 이어서 다듬을 수 있어요');
  await save.click();
  await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();await expect(save).toBeEnabled();
  const before=await pixels(page),b=(await canvas.boundingBox())!,x=b.x+b.width*.5,y=b.y+b.height*.5;
  await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+20,y,{steps:4});await page.mouse.up();
  await expect.poll(async()=>(await pixels(page)).equals(before)).toBeFalsy();
  await expect(notice).toHaveCount(0);
+});
+
+test('back arrow in whole-photo step asks before leaving the room',async({page})=>{
+ const png=await sharp({create:{width:200,height:200,channels:3,background:'#888'}}).png().toBuffer();await backend(page,initial('global'),png,200,200);
+ await page.goto(`/sessions/${roomId}/collaboration`);
+ await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'이전 화면',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'보정방에서 나갈까요?'});
+ await expect(dialog).toBeVisible();await expect(dialog).toContainText('대표자가 나가면');
+ await dialog.getByRole('button',{name:'계속 보정하기',exact:true}).click();
+ await expect(dialog).toHaveCount(0);await expect(page).toHaveURL(new RegExp(`/sessions/${roomId}/collaboration$`));
+ await page.getByRole('button',{name:'이전 화면',exact:true}).click();
+ await page.getByRole('dialog',{name:'보정방에서 나갈까요?'}).getByRole('button',{name:'나가기',exact:true}).click();
+ await expect(page).toHaveURL(/\/$/);
 });
 
 test('personal editor uses the server mask for preview and records saved controls',async({page})=>{

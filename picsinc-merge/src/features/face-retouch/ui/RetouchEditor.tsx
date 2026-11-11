@@ -230,7 +230,7 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
     if(!allowed)setNotice("터치 보정은 선택한 얼굴 주변에서만 적용돼요.");
     const result=touch.current.move(editRef.current,next,allowed);
     // Rooms have no undo/reset buttons, so point to the step that starts a fresh budget.
-    if(result.full)setNotice(room?.scope==="global"?"터치·복원은 한 번에 각각 600구간까지 돼요. 편집 완료 후 다시 열면 이어서 다듬을 수 있어요.":room?"터치·복원은 각각 600구간까지 돼요. 남은 부분은 전체 사진 터치 보정에서 다듬어주세요.":"터치·복원은 각각 600구간까지 지원해요. 마지막 터치를 취소하거나 초기화해주세요.");
+    if(result.full)setNotice(room?.scope==="global"?"한 번에 다듬을 수 있는 만큼 다 썼어요. 위의 '저장'을 누르고 다시 열면 이어서 다듬을 수 있어요.":room?"한 번에 다듬을 수 있는 만큼 다 썼어요. 남은 부분은 다음 단계인 전체 사진 터치 보정에서 다듬어 주세요.":"터치·복원은 각각 600구간까지 지원해요. 마지막 터치를 취소하거나 초기화해주세요.");
     update(result.state);
   }
   function endPointer(e:ReactPointerEvent<HTMLDivElement>,cancel=false){
