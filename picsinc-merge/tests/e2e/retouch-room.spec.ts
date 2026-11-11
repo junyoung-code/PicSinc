@@ -87,6 +87,49 @@ test('whole-photo touch has no face controls, keeps prior pixels on restore, ret
  await page.screenshot({path:'private/retouch-e2e/room-final.png',fullPage:true});
 });
 
+test('whole-photo touch tells the user when the classic budget is full and starts fresh after saving',async({page})=>{
+ const width=400,height=400,data=Buffer.alloc(width*height*3);
+ for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*3;data[i]=(x*7)%256;data[i+1]=(y*5)%256;data[i+2]=100;}
+ const png=await sharp(data,{raw:{width,height,channels:3}}).png().toBuffer();await backend(page,initial('global'),png,width,height);
+ await page.goto(`/sessions/${roomId}/collaboration`);
+ await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();
+ const save=page.getByRole('button',{name:'전체 사진 편집 완료',exact:true}),canvas=page.locator('canvas[aria-label="보정 미리보기"]');await expect(save).toBeEnabled();
+ const scrub=async()=>{const b=(await canvas.boundingBox())!,x=b.x+b.width*.2,y=b.y+b.height*.3;await page.mouse.move(x,y);await page.mouse.down();for(let k=0;k<16;k++)await page.mouse.move(x+(k%2?b.width*.5:0),y+k*3,{steps:25});await page.mouse.up();};
+ const notice=page.getByRole('status').filter({hasText:'다듬을 수 있는 만큼 다 썼어요'});
+ for(let i=0;i<6&&!(await notice.count());i++)await scrub();
+ await expect(notice).toBeVisible();await expect(notice).toContainText('다시 열면 이어서 다듬을 수 있어요');
+ await save.click();
+ await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();await expect(save).toBeEnabled();
+ const before=await pixels(page),b=(await canvas.boundingBox())!,x=b.x+b.width*.5,y=b.y+b.height*.5;
+ await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+20,y,{steps:4});await page.mouse.up();
+ await expect.poll(async()=>(await pixels(page)).equals(before)).toBeFalsy();
+ await expect(notice).toHaveCount(0);
+});
+
+test('back arrow in whole-photo step asks before leaving the room',async({page})=>{
+ const png=await sharp({create:{width:200,height:200,channels:3,background:'#888'}}).png().toBuffer();await backend(page,initial('global'),png,200,200);
+ await page.goto(`/sessions/${roomId}/collaboration`);
+ await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'이전 화면',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'보정방에서 나갈까요?'});
+ await expect(dialog).toBeVisible();await expect(dialog).toContainText('대표자가 나가면');
+ await dialog.getByRole('button',{name:'계속 보정하기',exact:true}).click();
+ await expect(dialog).toHaveCount(0);await expect(page).toHaveURL(new RegExp(`/sessions/${roomId}/collaboration$`));
+ // Phone back gesture (browser history) asks the same question instead of leaving.
+ await page.goBack();
+ await expect(dialog).toBeVisible();await expect(page).toHaveURL(new RegExp(`/sessions/${roomId}/collaboration$`));
+ await dialog.getByRole('button',{name:'계속 보정하기',exact:true}).click();await expect(dialog).toHaveCount(0);
+ // Opening and closing the whole-photo editor must not trigger the leave question.
+ await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();
+ await expect(page.getByRole('button',{name:'전체 사진 편집 완료',exact:true})).toBeEnabled();
+ await page.getByRole('button',{name:'뒤로 가기',exact:true}).click();
+ await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true})).toBeVisible();
+ await page.waitForTimeout(500);await expect(dialog).toHaveCount(0);
+ await page.goBack();await expect(dialog).toBeVisible();
+ await dialog.getByRole('button',{name:'나가기',exact:true}).click();
+ await expect(page).toHaveURL(/\/$/);
+});
+
 test('personal editor uses the server mask for preview and records saved controls',async({page})=>{
  test.skip(!existsSync(fixture),'Local private fixture required');
  const runtimeErrors:string[]=[];page.on('pageerror',error=>runtimeErrors.push(error.message));
@@ -164,7 +207,8 @@ test('editor back and cancel return to one room history entry',async({page})=>{
  await page.goBack();await expect(open).toBeVisible();
  await open.click();await expect(page.getByRole('button',{name:'전체 사진 편집 완료',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'뒤로 가기',exact:true}).click();await expect(open).toBeVisible();
- await page.goBack();await expect(page).toHaveURL(/\/retouch$/);
+ // Editors leave no extra entries; the next back is a leave attempt, which asks first (B-034).
+ await page.goBack();await expect(page.getByRole('dialog',{name:'보정방에서 나갈까요?'})).toBeVisible();await expect(page).toHaveURL(new RegExp(`/sessions/${roomId}/collaboration$`));
 });
 
 

@@ -5,7 +5,7 @@ import type { JobView, WorkerAssignment, WorkerCompletion } from "@/core/process
 import { workerPresenceView, type WorkerName } from "@/core/worker-presence";
 import { supabaseServer } from "@/integrations/storage/supabase-server";
 import { SupabasePhotoSessionStore } from "@/integrations/storage/supabase-photo-session-store";
-import { SessionError } from "./errors";
+import { isSessionError, SessionError } from "./errors";
 import { boundedMs, recordFestivalEvent } from "@/core/festival-analytics-server";
 
 type Auth = { inviteToken: string; participantId: string; sessionToken: string };
@@ -157,7 +157,7 @@ export async function claimWorker(): Promise<WorkerAssignment | null> {
       attempt: row.attempts, queue_ms: boundedMs(Date.parse(row.updated_at) - Date.parse(row.available_at)) });
     return {id:row.id,leaseToken:row.lease_token,kind:row.kind,input:row.input,files,outputs};
   } catch(error) {
-    await db().rpc('fail_processing_job',{p_id:row.id,p_lease_token:row.lease_token,p_code:error instanceof SessionError && error.status<500?'invalid_input':'transient'});
+    await db().rpc('fail_processing_job',{p_id:row.id,p_lease_token:row.lease_token,p_code:isSessionError(error) && error.status<500?'invalid_input':'transient'});
     throw error;
   }
 }

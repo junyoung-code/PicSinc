@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { heavyTaskGate, type HeavyTaskGate } from "@/core/heavy-task";
 import type { DetectedRegions } from "@/features/region-editor/detected-regions";
-import { SessionError } from "./errors";
+import { isSessionError, SessionError } from "./errors";
 import type { OriginalDetectionState } from "./original-detection-state";
 
 export type ScheduleAfterResponse = (work: () => Promise<void>) => void;
@@ -47,7 +47,7 @@ export class OriginalDetectionJobs {
     this.jobs.set(sessionId, job);
     let task: (() => Promise<DetectedRegions>) | undefined = work;
     const fail = (error: unknown) => {
-      job.state = { status: "failed", code: error instanceof SessionError && error.status === 429 ? "busy" : "failed", error: error instanceof SessionError ? error.message : "사람 영역을 찾지 못했어요. 다시 시도하거나 직접 선택해 주세요." };
+      job.state = { status: "failed", code: isSessionError(error) && error.status === 429 ? "busy" : "failed", error: isSessionError(error) ? error.message : "사람 영역을 찾지 못했어요. 다시 시도하거나 직접 선택해 주세요." };
       console.error("original detection job", JSON.stringify({ requestId, status: "failed", code: job.state.code }));
       finish({ error });
     };

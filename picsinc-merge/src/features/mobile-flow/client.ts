@@ -2,8 +2,14 @@
 import { useEffect, useState } from "react";
 
 export class RequestError extends Error { constructor(message: string, public status: number, public code?: string) { super(message); } }
+// fetch rejects with an English TypeError ("Failed to fetch") when offline, and screens show
+// error.message as is. Keep it a TypeError so existing network-retry checks still match.
+export const networkErrorMessage = "인터넷 연결이 끊겼어요. 연결을 확인해 주세요.";
+export class NetworkError extends TypeError { constructor() { super(networkErrorMessage); this.name = "NetworkError"; } }
 export async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { ...init, cache: "no-store" });
+  let response: Response;
+  try { response = await fetch(url, { ...init, cache: "no-store" }); }
+  catch (error) { throw error instanceof TypeError ? new NetworkError() : error; }
   const body = await response.json().catch(() => null);
   if (!response.ok) throw new RequestError(body?.error ?? "요청을 처리하지 못했어요. 다시 시도해 주세요.", response.status, body?.code);
   return body as T;

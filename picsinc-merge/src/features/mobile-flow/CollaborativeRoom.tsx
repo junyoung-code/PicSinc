@@ -23,13 +23,15 @@ import RoomPhotoPreview from '@/features/retouch-room-flow/RoomPhotoPreview';
 
 type Editor = { scope: "personal" | "global"; token: string; version: number; imageId: string; maskId?: string; regions?: DetectedRegions["regions"] };
 type Claim = { regionId: string; participantId: string; nickname: string };
+const leaveGuarded = (phase: string) => phase === 'global' || phase === 'review';
+
 export default function CollaborativeRoom({ inviteToken, initialSnapshot, initialRoom }: { inviteToken: string; initialSnapshot: FlowSnapshot; initialRoom: CollaborationView }) {
   const [snapshot, setSnapshot] = useState(initialSnapshot), [room, setRoom] = useState(initialRoom);
   const [editor, setEditor] = useState<Editor | null>(null), [claims, setClaims] = useState<Claim[] | null>(null);
   const [detection, setDetection] = useState<DetectedRegions | null>(null), [detecting, setDetecting] = useState(true);
   const [error, setError] = useState(""), [detectionError, setDetectionError] = useState(""), [busy, setBusy] = useState(false), [expired, setExpired] = useState(false);
   const [shareUrl, setShareUrl] = useState(""), [now, setNow] = useState(Date.now());
-  const [confirm, setConfirm] = useState<'start' | 'skip' | 'finalize' | 'delete' | null>(null);
+  const [confirm, setConfirm] = useState<'start' | 'skip' | 'finalize' | 'delete' | 'leave' | null>(null);
   const [deleted, setDeleted] = useState(false), [lightbox, setLightbox] = useState(false);
   const [finalizing, setFinalizing] = useState(false), [finalizeFailed, setFinalizeFailed] = useState(false);
   const [roomReadError, setRoomReadError] = useState('');
@@ -44,6 +46,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   const revision = useRef(0), claimRevision = useRef(0), initialClaims = useRef<Claim[] | null>(null);
   const dirty = useRef(false), detailBack = useRef<(() => boolean) | null>(null), saving = useRef(false);
   const editorBack = useRef<(() => boolean) | null>(null);
+  const claimPollError = useRef('');
   const registerEditorBack = useCallback((handler: (() => boolean) | null) => { editorBack.current = handler; }, []);
   const retryDetection = useRef<() => void>(() => {});
   const pendingSave = useRef<{ edit: RoomEditRecord['edit']; assetId: string } | null>(null);
@@ -81,12 +84,20 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     const stop = visiblePolling(3000, async () => { try { await refresh(); } catch (e) { if (e instanceof RequestError && e.status === 410) report(e); else setRoomReadError((e as Error).message); throw e; } });
     return () => { clearInterval(clock); stop(); };
   }, [base]);
+  // An action error ("다른 참여자의 편집이 끝난 후…") is about the moment it happened.
+  // Once the room moves on (new step or a different editor), it no longer applies.
+  useEffect(() => { setError(''); }, [room.phase, room.editorId]);
   useEffect(() => {
     if (room.phase !== "personal" || expired) return;
     let active = true;
     const stop = visiblePolling(3000, async () => {
       const started = claimRevision.current;
-      try { const result = await request<{claims: Claim[]}>(`${base}/region-claims`); if (active && started === claimRevision.current) { initialClaims.current ??= result.claims; setClaims(result.claims); } } catch (e) { if (active) report(e); }
+      try {
+        const result = await request<{claims: Claim[]}>(`${base}/region-claims`);
+        if (active && started === claimRevision.current) { initialClaims.current ??= result.claims; setClaims(result.claims); }
+        // A later successful poll clears the error that an earlier failed poll left on screen.
+        if (active && claimPollError.current) { const stale = claimPollError.current; claimPollError.current = ''; setError(current => current === stale ? '' : current); }
+      } catch (e) { if (active) { claimPollError.current = (e as Error).message; report(e); } }
     });
     return () => { active = false; stop(); };
   }, [base, room.phase, expired]);
@@ -122,12 +133,23 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     beat(); const timer = setInterval(beat, 20_000);
     return () => clearInterval(timer);
   }, [editor?.token, expired]);
+  // Keep one extra history entry while leaving would strand the room, so a phone back
+  // gesture lands here first. Editors push their own entry on top of it.
+  useEffect(() => {
+    if (leaveGuarded(room.phase) && !editor && !history.state?.roomGuard && !history.state?.roomEdit) history.pushState({roomGuard:true}, "", location.href);
+  }, [room.phase, editor]);
   useEffect(() => {
     const leave = (e: BeforeUnloadEvent) => { if (dirty.current || saving.current) { e.preventDefault(); e.returnValue = ""; } };
-    const back = () => {
+    const back = (event: PopStateEvent) => {
       if (detailBack.current) { if (detailBack.current()) detailBack.current = null; else history.pushState({roomDetail:true}, "", location.href); return; }
       if (latest.current.editor && editorBack.current?.()) { history.pushState({roomEdit:true}, "", location.href); return; }
-      if (latest.current.editor) void cancelEditor(true);
+      if (latest.current.editor) { void cancelEditor(true); return; }
+      // Phone back (Android back, iPhone swipe) in the whole-photo/review steps: same leave
+      // confirmation as the ← button, instead of silently leaving the room (B-034).
+      // Landing on the guard itself (an editor just closed) is not a leave attempt.
+      // A guard left over from an earlier step: step past it.
+      if (event.state?.roomGuard) { if (!leaveGuarded(latest.current.room.phase)) history.back(); return; }
+      if (leaveGuarded(latest.current.room.phase)) { history.pushState({roomGuard:true}, "", location.href); setConfirm('leave'); }
     };
     window.addEventListener("beforeunload", leave); window.addEventListener("popstate", back);
     return () => { window.removeEventListener("beforeunload", leave); window.removeEventListener("popstate", back); };
@@ -252,7 +274,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   if (room.phase === 'review' && owner) footer = <button className="primary-button" disabled={busy} onClick={() => setConfirm('finalize')}>최종 완료</button>;
   const heading = { lobby: owner ? startConfirm ? '이 참여자들과 함께\n보정을 시작할까요?' : '함께할 친구를 초대해요' : '입장했어요!\n친구들과 곧 시작해요.', personal: done ? '내 보정이 끝났어요' : '사진 속 내 얼굴을\n모두 선택해주세요', composing: error ? '사진을 완성하지 못했어요' : '우리 사진을 완성하고 있어요', global: locked && room.editorId !== me ? `${editorName ?? '친구'}님이 전체 사진을\n보정하고 있어요` : lastEdit ? `${lastEditorName}님이 보정 작업을\n끝냈어요` : '모두의 보정이 모였어요', review: owner ? '모두의 보정을 확인해주세요' : '대표자의 최종 완료를 기다려요', final: '모두의 마음에 드는\n우리 사진 완성.' }[room.phase];
   const description = { lobby: owner ? startConfirm ? '시작하면 참여 인원이 확정되고 초대가 마감돼요.' : '링크만 보내면 앱 없이 참여할 수 있어요.' : '대표자가 시작하면\n내 얼굴 선택 화면으로 이동해요.', personal: done ? '모두 끝나면 전체 사진을 보정하거나,\n건너뛰고 바로 결과를 확인할 수 있어요.' : '보정 영역을 선택해서 편집할 수 있어요.', composing: error ? '저장한 보정은 유지돼요.\n다시 시도해 주세요.' : '각자의 보정을 한 장에 모으고 있어요.\n잠시만 기다려 주세요.', global: locked && room.editorId !== me ? '보정과 저장이 끝나면 이어서 보정할 수 있어요.' : lastEdit ? '원하면 이어서 보정할 수 있어요.' : '어색한 곳은 다음 단계에서 터치 보정으로 고칠 수 있어요.', review: '최종 완료하면 완성 사진을 함께 저장할 수 있어요.', final: '각자의 취향이 한 장에 모였어요.' }[room.phase];
-  return <MobileShell title={title} hideBack={room.phase !== 'global' && room.phase !== 'review'} onBack={startConfirm ? () => setConfirm(null) : undefined} showProgress progress={{lobby:10,personal:done?60:35,composing:85,global:60,review:85,final:100}[room.phase]} action={room.phase === 'personal' && !done && !room.personalToken ? <span id="region-save-action"/> : globalHeaderAction} footer={room.phase === 'final' ? finalFooter : footer}>
+  return <MobileShell title={title} hideBack={room.phase !== 'global' && room.phase !== 'review'} onBack={startConfirm ? () => setConfirm(null) : room.phase === 'global' || room.phase === 'review' ? () => setConfirm('leave') : undefined} showProgress progress={{lobby:10,personal:done?60:35,composing:85,global:60,review:85,final:100}[room.phase]} action={room.phase === 'personal' && !done && !room.personalToken ? <span id="region-save-action"/> : globalHeaderAction} footer={room.phase === 'final' ? finalFooter : footer}>
     <div className={styles.heading}><h1 className={room.phase === 'final' ? styles.resultTitle : undefined}>{heading}</h1><p className="description">{description}</p></div>
     {room.phase === 'lobby' && owner && !startConfirm && <div className={styles.share}><div className={styles.shareRow}><input aria-label="초대 링크" value={shareUrl} readOnly/><button aria-label="초대 링크 복사" onClick={() => void navigator.clipboard.writeText(shareUrl).then(() => setError('초대 링크를 복사했어요.')).catch(() => setError('링크를 길게 눌러 복사해주세요.'))}>복사</button></div><div className={styles.time}><span>남은 시간 · 24시간 제한</span><strong>{Math.floor(remaining/3600000)}시간 {Math.floor(remaining/60000)%60}분</strong></div></div>}
     {room.phase === 'personal' && done && <p aria-live="polite">{room.rosterIds.length}명 중 {room.completedIds.length}명 보정 완료</p>}
@@ -270,6 +292,8 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     {room.phase === 'final' && room.latestAssetId && <RoomPhotoPreview className={styles.result} src={assetUrl(room.latestAssetId)} alt="확정된 최종 사진" onEnlarge={() => setLightbox(true)}/>}
     <StatusMessage message={error || roomReadError}/>
     {confirm === 'delete' && <DeleteRoomDialog base={base} onCancel={() => setConfirm(null)} onDeleted={() => location.assign('/retouch/rooms/new')}/>}
+    {/* The back arrow here used to be a plain link home: the owner could leave by accident and friends were stuck. */}
+    {confirm === 'leave' && <RoomDialog title="보정방에서 나갈까요?" confirmLabel="나가기" cancelLabel="계속 보정하기" onCancel={() => setConfirm(null)} onConfirm={() => location.assign('/')}>{owner ? <p>대표자가 나가면 친구들은 사진을 완성할 수 없어요.<br/>초대 링크로 다시 들어오면 이어서 할 수 있어요.</p> : <p>나가도 대표자가 사진을 완성할 수 있어요.<br/>초대 링크로 다시 들어오면 완성 사진을 받을 수 있어요.</p>}</RoomDialog>}
     {confirm === 'skip' && <RoomDialog title="터치 보정을 건너뛸까요?" confirmLabel="건너뛰고 결과 확인" cancelLabel="돌아가기" busy={busy} onCancel={() => setConfirm(null)} onConfirm={() => { setConfirm(null); void act({action:'end-global'}); }}><p>추가 터치 없이 사진을 완성해요.<br/>최종 완료 후에는 보정을 바꿀 수 없어요.</p></RoomDialog>}
     {confirm === 'finalize' && <RoomDialog title="사진을 최종 완료할까요?" confirmLabel="사진 최종 완료" cancelLabel="한 번 더 확인하기" busy={busy} onCancel={() => setConfirm(null)} onConfirm={() => { setConfirm(null); void act({action:'finalize'}); }}><p>모두의 보정이 한 장에 반영돼요.<br/>최종 완료 후에는 보정을 바꿀 수 없어요.</p></RoomDialog>}
     {lightbox && room.latestAssetId && <ResultLightbox src={assetUrl(room.latestAssetId)} onClose={() => setLightbox(false)}/>}
