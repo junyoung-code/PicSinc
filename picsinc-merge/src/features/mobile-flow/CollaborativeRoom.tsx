@@ -34,6 +34,13 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   const [finalizing, setFinalizing] = useState(false), [finalizeFailed, setFinalizeFailed] = useState(false);
   const [roomReadError, setRoomReadError] = useState('');
   const [saveView, setSaveView] = useState(false);
+  // Figma 859:25318: a short "saved" notice rises above the buttons, then leaves.
+  const [savedNotice, setSavedNotice] = useState(0);
+  useEffect(() => {
+    if (!savedNotice) return;
+    const timer = window.setTimeout(() => setSavedNotice(0), 2600);
+    return () => window.clearTimeout(timer);
+  }, [savedNotice]);
   const revision = useRef(0), claimRevision = useRef(0), initialClaims = useRef<Claim[] | null>(null);
   const dirty = useRef(false), detailBack = useRef<(() => boolean) | null>(null), saving = useRef(false);
   const editorBack = useRef<(() => boolean) | null>(null);
@@ -199,7 +206,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     try {
       const response = await fetch(assetUrl(room.latestAssetId)); if (!response.ok) throw new Error("사진 저장에 실패했어요. 다시 눌러주세요.");
       const url = URL.createObjectURL(await response.blob()), a = document.createElement("a"); a.href=url;a.download="moira-final.png";a.click();setTimeout(()=>URL.revokeObjectURL(url),60_000);
-      setSaveView(true);
+      setSaveView(true); setSavedNotice(n => n + 1);
     } catch (e) { report(e); } finally { setBusy(false); }
   }
   async function prepareFinal() {
@@ -212,14 +219,14 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   const remaining = Math.max(0, Date.parse(snapshot.session.expiresAt) - now);
   if (deleted) return <DeletedRoomScreen/>;
   if (expired || !remaining) return <MobileShell title="보정방 만료"><h1>보정방이 만료됐어요</h1><p>방 생성 후 24시간이 지났어요.</p><a href="/retouch/rooms/new">새 보정방 만들기</a></MobileShell>;
-  if (finalizing || finalizeFailed && room.phase !== 'final') return <RoomProcessState title={finalizeFailed ? '최종 완료 실패' : '최종 완료 처리 중'} heading={finalizeFailed ? '사진 최종 완료를\n처리하지 못했어요' : '최종 보정본을\n저장하고 있어요'} description={finalizeFailed ? '지금까지 저장된 보정 결과는 유지돼요.' : '저장이 끝날 때까지 잠시 기다려 주세요'} error={finalizeFailed ? error || '저장된 사진은 유지돼요. 다시 시도해 주세요.' : undefined} errorTitle="최종 완료를 처리하지 못했어요" onRetry={() => void act({action:'finalize'})} retrying={busy} onBack={finalizeFailed ? () => { setFinalizeFailed(false); setError(''); } : undefined}/>;
+  if (finalizing || finalizeFailed && room.phase !== 'final') return <RoomProcessState title={finalizeFailed ? '최종 완료 실패' : '최종 완료 처리 중'} heading={finalizeFailed ? '사진 최종 완료를\n처리하지 못했어요' : '최종 보정본을\n저장하고 있어요'} description={finalizeFailed ? '지금까지 저장된 보정 결과는 유지돼요.' : '저장이 끝날 때까지 잠시 기다려 주세요'} error={finalizeFailed ? error || '저장된 사진은 유지돼요.\n다시 시도해 주세요.' : undefined} errorTitle="최종 완료를 처리하지 못했어요" onRetry={() => void act({action:'finalize'})} retrying={busy} onBack={finalizeFailed ? () => { setFinalizeFailed(false); setError(''); } : undefined}/>;
   if (room.phase === 'composing') {
     const failed = room.job?.status === 'failed';
-    const issue = failed ? room.job?.error || '저장된 보정은 유지돼요. 다시 시도해 주세요.' : roomReadError || error;
+    const issue = failed ? room.job?.error || '저장된 보정은 유지돼요.\n다시 시도해 주세요.' : roomReadError || error;
     const ready = snapshot.result?.version === snapshot.session.version;
-    return <RoomProcessState title={issue ? '사진 합치기 확인' : '사진 합치는 중'} heading={failed ? '사진을 합치지 못했어요' : issue ? '사진 합치기 상태를\n확인하지 못했어요' : '우리 사진을\n완성하고 있어요'} description={issue ? '지금까지 저장된 보정 결과는 유지돼요.' : '각자의 보정을 한 장에 모으고 있어요. 잠시만 기다려 주세요.'} error={issue || undefined} errorTitle={failed ? '사진을 합치지 못했어요' : '연결을 확인해 주세요'} retrying={busy} onRetry={failed && !owner ? undefined : () => { if (owner && failed) void act({action:'compose'}); else if (owner && ready && snapshot.result) void act({action:'open-global',resultAssetId:snapshot.result.resultAssetId}); else void refresh().catch(report); }} waiting={failed && !owner ? '대표자가 다시 시도할 때까지 기다려 주세요.' : room.job?.status === 'queued' ? '처리 순서를 기다리고 있어요.' : undefined}/>;
+    return <RoomProcessState title={issue ? '사진 합치기 확인' : '사진 합치는 중'} heading={failed ? '사진을 합치지 못했어요' : issue ? '사진 합치기 상태를\n확인하지 못했어요' : '우리 사진을\n완성하고 있어요'} description={issue ? '지금까지 저장된 보정 결과는 유지돼요.' : '각자의 보정을 한 장에 모으고 있어요.\n잠시만 기다려 주세요.'} error={issue || undefined} errorTitle={failed ? '사진을 합치지 못했어요' : '연결을 확인해 주세요'} retrying={busy} onRetry={failed && !owner ? undefined : () => { if (owner && failed) void act({action:'compose'}); else if (owner && ready && snapshot.result) void act({action:'open-global',resultAssetId:snapshot.result.resultAssetId}); else void refresh().catch(report); }} waiting={failed && !owner ? '대표자가 다시 시도할 때까지 기다려 주세요.' : room.job?.status === 'queued' ? '처리 순서를 기다리고 있어요.' : undefined}/>;
   }
-  const finalFooter = <><a className="secondary-button" href="/retouch/rooms/new">처음부터 다시 만들기</a><button className="primary-button" disabled={busy} onClick={() => void downloadFinal()}>{busy ? '저장 중…' : '사진 저장하기'}</button></>;
+  const finalFooter = <><a className="secondary-button" href="/retouch/rooms/new">처음부터 다시 만들기</a><button className="primary-button" disabled={busy} onClick={() => void downloadFinal()}>{busy ? '저장 중…' : '사진 저장하기'}</button>{savedNotice > 0 && <p key={savedNotice} className={styles.saveToast} role="status">✓ 사진을 저장했어요</p>}</>;
   // Figma 560:11923. Closing leaves the finished room for home.
   if (room.phase === 'final' && saveView && room.latestAssetId) return <MobileShell title="사진 저장" hideBack showHelp={false} showProgress progress={100} action={<button onClick={() => location.assign('/')}>닫기</button>} footer={finalFooter}>
     <div className={styles.heading}><h1 className={styles.resultTitle}>사진을 길게 눌러<br/>기기에 저장해 주세요.</h1><p className="description">브라우저에 따라 ‘이미지 저장’ 또는<br/>‘사진에 추가’를 선택해 주세요.</p></div>
@@ -244,7 +251,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   if (room.phase === 'global') footer = locked && room.editorId !== me ? <button className={styles.waitingButton} disabled>보정 대기 중</button> : <><button className="primary-button" disabled={busy} onClick={() => void openGlobal()}>{lastEdit ? '마무리 보정하기' : '터치 보정으로 전체 다듬기'}</button>{owner && !lastEdit && <button className="secondary-button" disabled={busy || locked} onClick={() => setConfirm('skip')}>터치 보정 건너뛰기</button>}</>;
   if (room.phase === 'review' && owner) footer = <button className="primary-button" disabled={busy} onClick={() => setConfirm('finalize')}>최종 완료</button>;
   const heading = { lobby: owner ? startConfirm ? '이 참여자들과 함께\n보정을 시작할까요?' : '함께할 친구를 초대해요' : '입장했어요!\n친구들과 곧 시작해요.', personal: done ? '내 보정이 끝났어요' : '사진 속 내 얼굴을\n모두 선택해주세요', composing: error ? '사진을 완성하지 못했어요' : '우리 사진을 완성하고 있어요', global: locked && room.editorId !== me ? `${editorName ?? '친구'}님이 전체 사진을\n보정하고 있어요` : lastEdit ? `${lastEditorName}님이 보정 작업을\n끝냈어요` : '모두의 보정이 모였어요', review: owner ? '모두의 보정을 확인해주세요' : '대표자의 최종 완료를 기다려요', final: '모두의 마음에 드는\n우리 사진 완성.' }[room.phase];
-  const description = { lobby: owner ? startConfirm ? '시작하면 참여 인원이 확정되고 초대가 마감돼요.' : '링크만 보내면 앱 없이 참여할 수 있어요.' : '대표자가 시작하면\n내 얼굴 선택 화면으로 이동해요.', personal: done ? '모두 끝나면 전체 사진을 보정하거나,\n건너뛰고 바로 결과를 확인할 수 있어요.' : '보정 영역을 선택해서 편집할 수 있어요.', composing: error ? '저장한 보정은 유지돼요. 다시 시도해 주세요.' : '각자의 보정을 한 장에 모으고 있어요.\n잠시만 기다려 주세요.', global: locked && room.editorId !== me ? '보정과 저장이 끝나면 이어서 보정할 수 있어요.' : lastEdit ? '원하면 이어서 보정할 수 있어요.' : '어색한 곳은 다음 단계에서 터치 보정으로 고칠 수 있어요.', review: '최종 완료하면 완성 사진을 함께 저장할 수 있어요.', final: '각자의 취향이 한 장에 모였어요.' }[room.phase];
+  const description = { lobby: owner ? startConfirm ? '시작하면 참여 인원이 확정되고 초대가 마감돼요.' : '링크만 보내면 앱 없이 참여할 수 있어요.' : '대표자가 시작하면\n내 얼굴 선택 화면으로 이동해요.', personal: done ? '모두 끝나면 전체 사진을 보정하거나,\n건너뛰고 바로 결과를 확인할 수 있어요.' : '보정 영역을 선택해서 편집할 수 있어요.', composing: error ? '저장한 보정은 유지돼요.\n다시 시도해 주세요.' : '각자의 보정을 한 장에 모으고 있어요.\n잠시만 기다려 주세요.', global: locked && room.editorId !== me ? '보정과 저장이 끝나면 이어서 보정할 수 있어요.' : lastEdit ? '원하면 이어서 보정할 수 있어요.' : '어색한 곳은 다음 단계에서 터치 보정으로 고칠 수 있어요.', review: '최종 완료하면 완성 사진을 함께 저장할 수 있어요.', final: '각자의 취향이 한 장에 모였어요.' }[room.phase];
   return <MobileShell title={title} hideBack={room.phase !== 'global' && room.phase !== 'review'} onBack={startConfirm ? () => setConfirm(null) : undefined} showProgress progress={{lobby:10,personal:done?60:35,composing:85,global:60,review:85,final:100}[room.phase]} action={room.phase === 'personal' && !done && !room.personalToken ? <span id="region-save-action"/> : globalHeaderAction} footer={room.phase === 'final' ? finalFooter : footer}>
     <div className={styles.heading}><h1 className={room.phase === 'final' ? styles.resultTitle : undefined}>{heading}</h1><p className="description">{description}</p></div>
     {room.phase === 'lobby' && owner && !startConfirm && <div className={styles.share}><div className={styles.shareRow}><input aria-label="초대 링크" value={shareUrl} readOnly/><button aria-label="초대 링크 복사" onClick={() => void navigator.clipboard.writeText(shareUrl).then(() => setError('초대 링크를 복사했어요.')).catch(() => setError('링크를 길게 눌러 복사해주세요.'))}>복사</button></div><div className={styles.time}><span>남은 시간 · 24시간 제한</span><strong>{Math.floor(remaining/3600000)}시간 {Math.floor(remaining/60000)%60}분</strong></div></div>}

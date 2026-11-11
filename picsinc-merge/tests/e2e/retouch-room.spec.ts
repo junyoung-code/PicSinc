@@ -81,6 +81,9 @@ test('whole-photo touch has no face controls, keeps prior pixels on restore, ret
  await expect(page.getByRole('button',{name:'사진 저장하기',exact:true})).toBeVisible();
  await page.reload();await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기'})).toHaveCount(0);
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'사진 저장하기',exact:true}).click();expect((await download).suggestedFilename()).toBe('moira-final.png');
+ const notice=page.getByRole('status').filter({hasText:'✓ 사진을 저장했어요'});await expect(notice).toBeVisible();
+ await page.waitForTimeout(700);await page.screenshot({path:'private/retouch-e2e/room-save-notice.png'});
+ await expect(notice).toHaveCount(0,{timeout:5000});
  await page.screenshot({path:'private/retouch-e2e/room-final.png',fullPage:true});
 });
 
@@ -130,6 +133,26 @@ for (const actionLabel of ['완료', '이대로 진행하기']) test(`selected r
  await expect(page.getByText('영역 저장 실패').first()).toBeVisible();
  expect(await page.evaluate(()=>{const e=new Event('beforeunload',{cancelable:true});dispatchEvent(e);return e.defaultPrevented;})).toBeTruthy();
  await next.click();await expect(page.getByRole('button',{name:'내 얼굴 보정 완료',exact:true})).toBeEnabled({timeout:100000});
+});
+
+test('personal editor roster shows me first and updates friends live',async({page})=>{
+ const width=400,height=400,png=await sharp({create:{width,height,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ const mask=await sharp({create:{width,height,channels:3,background:'#ffffff'}}).png().toBuffer();
+ const state={...initial('personal'),completedIds:[],personalToken:'personal-token',personalMaskAssetId:'mask'};
+ const server=await backend(page,state,png,width,height,mask);
+ await page.goto(`/retouch/rooms/${roomId}`);await page.getByRole('button',{name:'내 영역 보정 이어가기'}).click();
+ await expect(page.getByRole('button',{name:'내 얼굴 보정 완료',exact:true})).toBeEnabled({timeout:100000});
+ const people=page.getByRole('region',{name:'친구 보정 현황'}).getByRole('listitem');
+ await expect(people).toHaveCount(2);
+ const friend=people.filter({hasText:'예솔'});
+ await expect(friend).toContainText('보정 중');
+ // Room polling alone (no focus event) must update the card while the editor is open.
+ server.update({completedIds:['friend']});
+ await expect(friend).toContainText('보정 완료',{timeout:10000});
+ await expect(people.nth(0)).toHaveText(/^나\s*보정 중$/);
+ await expect(people.nth(1)).toHaveText(/^예솔\s*보정 완료$/);
+ await expect(people.locator('img')).toHaveCount(2);
+ await page.screenshot({path:'private/retouch-e2e/room-personal-roster.png'});
 });
 
 test('editor back and cancel return to one room history entry',async({page})=>{
