@@ -23,7 +23,8 @@ import RoomPhotoPreview from '@/features/retouch-room-flow/RoomPhotoPreview';
 
 type Editor = { scope: "personal" | "global"; token: string; version: number; imageId: string; maskId?: string; regions?: DetectedRegions["regions"] };
 type Claim = { regionId: string; participantId: string; nickname: string };
-const leaveGuarded = (phase: string) => phase === 'global' || phase === 'review';
+// Phone back in these steps asks before leaving: in the lobby too, since leaving is easy to do by accident (민재님 11/12).
+const leaveGuarded = (phase: string) => phase === 'lobby' || phase === 'global' || phase === 'review';
 
 export default function CollaborativeRoom({ inviteToken, initialSnapshot, initialRoom }: { inviteToken: string; initialSnapshot: FlowSnapshot; initialRoom: CollaborationView }) {
   const [snapshot, setSnapshot] = useState(initialSnapshot), [room, setRoom] = useState(initialRoom);
@@ -47,6 +48,15 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     const timer = window.setTimeout(() => setSavedNotice(0), 2600);
     return () => window.clearTimeout(timer);
   }, [savedNotice]);
+  // Short lobby notices in the same style as the saved notice: link copied, a friend joined.
+  const [lobbyToast, setLobbyToast] = useState<{text: string; key: number} | null>(null);
+  const showLobbyToast = useCallback((text: string) => setLobbyToast(t => ({text, key: (t?.key ?? 0) + 1})), []);
+  useEffect(() => {
+    if (!lobbyToast) return;
+    const timer = window.setTimeout(() => setLobbyToast(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [lobbyToast]);
+  const knownIds = useRef(new Set(initialSnapshot.participants.map(p => p.id)));
   const revision = useRef(0), claimRevision = useRef(0), initialClaims = useRef<Claim[] | null>(null);
   const dirty = useRef(false), detailBack = useRef<(() => boolean) | null>(null), saving = useRef(false);
   const editorBack = useRef<(() => boolean) | null>(null);
@@ -243,6 +253,11 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     } catch (e) { report(e); } finally { setBusy(false); }
   }
   useEffect(() => {
+    const joined = snapshot.participants.filter(p => !knownIds.current.has(p.id));
+    joined.forEach(p => knownIds.current.add(p.id));
+    if (owner && room.phase === 'lobby' && joined.length) showLobbyToast(`${joined.map(p => p.nickname).join(', ')}님이 들어왔어요`);
+  }, [snapshot.participants, owner, room.phase, showLobbyToast]);
+  useEffect(() => {
     const before = seenPhase.current; seenPhase.current = room.phase;
     if (owner || room.phase !== 'final' || before === 'final') return;
     setFinalArriving(true);
@@ -290,7 +305,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   const startConfirm = room.phase === 'lobby' && confirm === 'start';
   const title = { lobby: owner ? startConfirm ? '참여자 확정' : '친구 초대하기' : '친구들과 시작 기다리기', personal: done ? '친구 기다리기' : '내 얼굴 선택', composing: '최종 사진 만들기', global: '전체 사진 보정', review: '최종 사진 확인', final: '완성 사진' }[room.phase];
   let footer: React.ReactNode;
-  if (room.phase === 'lobby' && owner) footer = <div className={styles.actions}><button className="secondary-button" disabled={busy} onClick={() => setConfirm(startConfirm ? null : 'delete')}>{startConfirm ? '취소' : '처음부터 다시'}</button><button className="primary-button" disabled={busy} onClick={() => { if (startConfirm) { setConfirm(null); void act({action:'start'}); } else setConfirm('start'); }}>시작하기</button></div>;
+  if (room.phase === 'lobby' && owner) footer = <div className={styles.actions}><button className="secondary-button" disabled={busy} onClick={() => setConfirm(startConfirm ? null : 'delete')}>{startConfirm ? '취소' : '처음부터 다시'}</button><button className="primary-button" disabled={busy} onClick={() => { if (startConfirm) { setConfirm(null); void act({action:'start'}); } else setConfirm('start'); }}>시작하기</button>{lobbyToast && <p key={lobbyToast.key} className={styles.saveToast} role="status">{lobbyToast.text}</p>}</div>;
   if (room.phase === 'personal' && allDone && owner) footer = <button className="primary-button" disabled={busy} onClick={() => void act({action:'compose'})}>전체 사진 확인하기</button>;
   if (room.phase === 'global') footer = locked && room.editorId !== me ? <button className={styles.waitingButton} disabled>보정 대기 중</button> : <><button className="primary-button" disabled={busy} onClick={() => void openGlobal()}>{lastEdit ? '마무리 보정하기' : '터치 보정으로 전체 다듬기'}</button>{owner && !lastEdit && <button className="secondary-button" disabled={busy || locked} onClick={() => setConfirm('skip')}>터치 보정 건너뛰기</button>}</>;
   if (room.phase === 'review' && owner) footer = <button className="primary-button" disabled={busy} onClick={() => setConfirm('finalize')}>최종 완료</button>;
@@ -298,10 +313,10 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   const description = { lobby: owner ? startConfirm ? '시작하면 참여 인원이 확정되고 초대가 마감돼요.' : '링크만 보내면 앱 없이 참여할 수 있어요.' : '대표자가 시작하면\n내 얼굴 선택 화면으로 이동해요.', personal: done ? '모두 끝나면 전체 사진을 보정하거나,\n건너뛰고 바로 결과를 확인할 수 있어요.' : '보정 영역을 선택해서 편집할 수 있어요.', composing: error ? '저장한 보정은 유지돼요.\n다시 시도해 주세요.' : '각자의 보정을 한 장에 모으고 있어요.\n잠시만 기다려 주세요.', global: locked && room.editorId !== me ? '보정과 저장이 끝나면 이어서 보정할 수 있어요.' : lastEdit ? '원하면 이어서 보정할 수 있어요.' : '어색한 곳은 다음 단계에서 터치 보정으로 고칠 수 있어요.', review: '최종 완료하면 완성 사진을 함께 저장할 수 있어요.', final: '각자의 취향이 한 장에 모였어요.' }[room.phase];
   return <MobileShell title={title} hideBack={room.phase !== 'global' && room.phase !== 'review'} onBack={startConfirm ? () => setConfirm(null) : room.phase === 'global' || room.phase === 'review' ? () => setConfirm('leave') : undefined} showProgress progress={{lobby:10,personal:done?60:35,composing:85,global:60,review:85,final:100}[room.phase]} action={room.phase === 'personal' && !done && !room.personalToken ? <span id="region-save-action"/> : globalHeaderAction} footer={room.phase === 'final' ? finalFooter : footer}>
     <div className={styles.heading}><h1 className={room.phase === 'final' ? styles.resultTitle : undefined}>{heading}</h1><p className="description">{description}</p></div>
-    {room.phase === 'lobby' && owner && !startConfirm && <div className={styles.share}><div className={styles.shareRow}><input aria-label="초대 링크" value={shareUrl} readOnly/><button aria-label="초대 링크 복사" onClick={() => void navigator.clipboard.writeText(shareUrl).then(() => setError('초대 링크를 복사했어요.')).catch(() => setError('링크를 길게 눌러 복사해주세요.'))}>복사</button></div><div className={styles.time}><span>남은 시간 · 24시간 제한</span><strong>{Math.floor(remaining/3600000)}시간 {Math.floor(remaining/60000)%60}분</strong></div></div>}
+    {room.phase === 'lobby' && owner && !startConfirm && <div className={styles.share}><div className={styles.shareRow}><input aria-label="초대 링크" value={shareUrl} readOnly/><button aria-label="초대 링크 복사" onClick={() => void navigator.clipboard.writeText(shareUrl).then(() => showLobbyToast('초대 링크를 복사했어요')).catch(() => setError('링크를 길게 눌러 복사해주세요.'))}>복사</button></div><div className={styles.time}><span>남은 시간 · 24시간 제한</span><strong>{Math.floor(remaining/3600000)}시간 {Math.floor(remaining/60000)%60}분</strong></div></div>}
     {room.phase === 'personal' && done && <p aria-live="polite">{room.rosterIds.length}명 중 {room.completedIds.length}명 보정 완료</p>}
     {(room.phase === 'lobby' || room.phase === 'personal' && done) && roster}
-    {room.phase === 'lobby' && !owner && <><div className={styles.infoCard}><strong>대표자가 참여 인원을 확인하고 있어요.</strong><p>이 화면에서 잠시 기다려 주세요.<br/>이미 참여한 기기에서는 다시 접속할 수 있어요.</p></div><a href="/" className="secondary-button">보정방 나가기</a></>}
+    {room.phase === 'lobby' && !owner && <><div className={styles.infoCard}><strong>대표자가 참여 인원을 확인하고 있어요.</strong><p>이 화면에서 잠시 기다려 주세요.<br/>이미 참여한 기기에서는 다시 접속할 수 있어요.</p></div><button className="secondary-button" onClick={() => setConfirm('leave')}>보정방 나가기</button></>}
     {room.phase === 'personal' && !done && <>
       {room.personalToken && <button className="secondary-button" disabled={busy} onClick={() => void openPersonal().catch(() => {})}>내 영역 보정 이어가기</button>}
       {!room.personalToken && claims === null && <p role="status">선택 상태를 불러오고 있어요.</p>}
@@ -315,7 +330,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     <StatusMessage message={error || roomReadError}/>
     {confirm === 'delete' && <DeleteRoomDialog base={base} onCancel={() => setConfirm(null)} onDeleted={() => location.assign('/retouch/rooms/new')}/>}
     {/* The back arrow here used to be a plain link home: the owner could leave by accident and friends were stuck. */}
-    {confirm === 'leave' && <RoomDialog title="보정방에서 나갈까요?" confirmLabel="나가기" cancelLabel="계속 보정하기" onCancel={() => setConfirm(null)} onConfirm={() => location.assign('/')}>{owner ? <p>대표자가 나가면 친구들은 사진을 완성할 수 없어요.<br/>초대 링크로 다시 들어오면 이어서 할 수 있어요.</p> : <p>나가도 대표자가 사진을 완성할 수 있어요.<br/>초대 링크로 다시 들어오면 완성 사진을 받을 수 있어요.</p>}</RoomDialog>}
+    {confirm === 'leave' && <RoomDialog title="보정방에서 나갈까요?" confirmLabel="나가기" cancelLabel={room.phase === 'lobby' ? '계속 기다리기' : '계속 보정하기'} onCancel={() => setConfirm(null)} onConfirm={() => location.assign('/')}>{room.phase === 'lobby' ? owner ? <p>대표자가 나가면 친구들은 보정을 시작할 수 없어요.<br/>초대 링크로 다시 들어오면 이어서 할 수 있어요.</p> : <p>초대 링크로 다시 들어오면<br/>이어서 참여할 수 있어요.</p> : owner ? <p>대표자가 나가면 친구들은 사진을 완성할 수 없어요.<br/>초대 링크로 다시 들어오면 이어서 할 수 있어요.</p> : <p>나가도 대표자가 사진을 완성할 수 있어요.<br/>초대 링크로 다시 들어오면 완성 사진을 받을 수 있어요.</p>}</RoomDialog>}
     {confirm === 'skip' && <RoomDialog title="터치 보정을 건너뛸까요?" confirmLabel="건너뛰고 결과 확인" cancelLabel="돌아가기" busy={busy} onCancel={() => setConfirm(null)} onConfirm={() => { setConfirm(null); void act({action:'end-global'}); }}><p>추가 터치 없이 사진을 완성해요.<br/>최종 완료 후에는 보정을 바꿀 수 없어요.</p></RoomDialog>}
     {confirm === 'finalize' && <RoomDialog title="사진을 최종 완료할까요?" confirmLabel="사진 최종 완료" cancelLabel="한 번 더 확인하기" busy={busy} onCancel={() => setConfirm(null)} onConfirm={() => { setConfirm(null); void act({action:'finalize'}); }}><p>모두의 보정이 한 장에 반영돼요.<br/>최종 완료 후에는 보정을 바꿀 수 없어요.</p></RoomDialog>}
     {lightbox && room.latestAssetId && <ResultLightbox src={assetUrl(room.latestAssetId)} onClose={() => setLightbox(false)}/>}

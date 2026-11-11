@@ -318,6 +318,32 @@ test('other editor blocks global entry and review blocks every new edit', async 
  await expect(page.getByRole('button',{name:'완료',exact:true})).toHaveCount(0);
 });
 
+test('lobby shows short join and copy notices, and leaving asks first', async ({page,context}) => {
+ await context.grantPermissions(['clipboard-read','clipboard-write']);
+ const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ const server=await backend(page,initial('lobby'),png,40,40);
+ await page.goto(`/retouch/rooms/${roomId}`);
+ await expect(page.getByRole('heading',{name:'함께할 친구를 초대해요'})).toBeVisible();
+ await expect(page.getByText('님이 들어왔어요')).toHaveCount(0);
+ server.update({rosterIds:['owner','friend','third']});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await expect(page.getByRole('status').filter({hasText:'지연님이 들어왔어요'})).toBeVisible();
+ await expect(page.getByText('지연님이 들어왔어요')).toHaveCount(0,{timeout:6000});
+ await page.getByRole('button',{name:'초대 링크 복사'}).click();
+ await expect(page.getByRole('status').filter({hasText:'초대 링크를 복사했어요'})).toBeVisible();
+ await expect(page.getByText('초대 링크를 복사했어요')).toHaveCount(0,{timeout:6000});
+ await page.goBack();
+ await expect(page.getByRole('dialog',{name:'보정방에서 나갈까요?'})).toBeVisible();
+ await page.getByRole('button',{name:'계속 기다리기',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'함께할 친구를 초대해요'})).toBeVisible();
+ const friend=await context.newPage();await backend(friend,initial('lobby'),png,40,40,undefined,'friend');
+ await friend.goto(`/retouch/rooms/${roomId}`);
+ await friend.getByRole('button',{name:'보정방 나가기',exact:true}).click();
+ await expect(friend.getByRole('dialog',{name:'보정방에서 나갈까요?'})).toContainText('이어서 참여할 수 있어요');
+ await friend.getByRole('button',{name:'나가기',exact:true}).click();
+ await expect(friend).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+ await friend.close();
+});
+
 test('participant waits for owner finalization and retries the same final PNG', async ({page,context}) => {
  const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  const server=await backend(page,initial('review'),png,40,40,undefined,'friend');
@@ -325,6 +351,7 @@ test('participant waits for owner finalization and retries the same final PNG', 
  await expect(page.getByRole('heading',{name:'대표자의 최종 완료를 기다려요'})).toBeVisible();
  await expect(page.getByRole('button',{name:'최종 완료',exact:true})).toHaveCount(0);
  server.update({phase:'final'});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await expect(page.getByRole('heading',{name:/최종 보정본을/})).toBeVisible(); // friends see the owner's saving screen for a moment
  const save=page.getByRole('button',{name:'사진 저장하기',exact:true});await expect(save).toBeVisible();
  server.failNextDownload();await save.click();await expect(page.getByRole('status').filter({hasText:'사진 저장에 실패'})).toBeVisible();
  const getPNG=async(p:Page)=>{const download=p.waitForEvent('download');await p.getByRole('button',{name:'사진 저장하기',exact:true}).click();const file=await download;expect(file.suggestedFilename()).toBe('moira-final.png');return readFile((await file.path())!);};
