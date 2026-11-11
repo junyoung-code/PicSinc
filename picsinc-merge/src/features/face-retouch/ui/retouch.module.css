@@ -56,6 +56,8 @@
 .messages { font-size:11px; line-height:18px; color:var(--moira-muted); }
 .messages p { margin:6px 0; }
 .messages [role=alert],.warning { color:#9c3434; }
+.panelWarnings { margin-top:18px; color:#9c3434; font-size:11px; line-height:18px; text-align:center; word-break:keep-all; text-wrap:balance; }
+.panelWarnings p { margin:0; }
 .emptyError { border:2px solid var(--moira-ink); border-radius:4px; background:var(--moira-surface); padding:12px; font-size:12px; line-height:20px; color:#9c3434; }
 .entry { margin:24px 8px 20px; }
 .badge { display:inline-flex; align-items:center; min-height:28px; padding:3px 12px; border:2px solid var(--moira-ink); border-radius:4px; background:var(--moira-mint); font-size:12px; font-weight:700; }

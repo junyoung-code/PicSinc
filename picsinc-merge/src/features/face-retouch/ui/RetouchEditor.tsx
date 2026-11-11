@@ -323,8 +323,10 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
           {room&&notice&&!(room.scope==="personal"&&!faces.length)&&<p className={styles.overviewHint} role="status">{notice}</p>}
         </div>}
       </div>}
+      {/* Engine limits: shown inside the tool box so they are seen while editing (민재님 11/11). */}
+      {(limited||strained)&&<div className={styles.panelWarnings} aria-live="polite">{limited&&<p>다른 얼굴과 가까운 변형은 보호 영역에서 제한돼요.</p>}{strained&&<p>윤곽이 접히지 않도록 변형 강도를 제한했어요.</p>}</div>}
     </section>}
-    <div className={styles.messages} aria-live="polite">{!room&&notice&&<p>{notice}</p>}{photo&&(error||engineError||calculationError)&&<p role="alert">{error||engineError||calculationError}</p>}{limited&&<p className={styles.warning}>다른 얼굴과 가까운 변형은 보호 영역에서 제한돼요.</p>}{strained&&<p className={styles.warning}>윤곽이 접히지 않도록 변형 강도를 제한했어요.</p>}</div>
+    <div className={styles.messages} aria-live="polite">{!room&&notice&&<p>{notice}</p>}{photo&&(error||engineError||calculationError)&&<p role="alert">{error||engineError||calculationError}</p>}</div>
     </div>
     {saving&&<section className={styles.saveFailure} aria-label="보정 저장 중" aria-busy="true">
       <header className={styles.header}><strong>보정 저장 중</strong></header>
