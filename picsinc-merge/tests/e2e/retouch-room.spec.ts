@@ -127,6 +127,15 @@ test('back arrow in whole-photo step asks before leaving the room',async({page})
  await expect(page).toHaveURL(/\/$/);
 });
 
+test('after the final step the first phone back leaves the room',async({page})=>{
+ const png=await sharp({create:{width:200,height:200,channels:3,background:'#888'}}).png().toBuffer();await backend(page,initial('review'),png,200,200);
+ await page.goto('/retouch');await page.goto(`/sessions/${roomId}/collaboration`);
+ await page.getByRole('button',{name:'최종 완료',exact:true}).click();await page.getByRole('button',{name:'사진 최종 완료',exact:true}).click();
+ await expect(page.getByRole('heading',{name:/우리 사진 완성/})).toBeVisible();
+ await page.waitForTimeout(500);
+ await page.goBack();await expect(page).toHaveURL(/\/retouch$/);
+});
+
 test('personal editor uses the server mask for preview and records saved controls',async({page})=>{
  test.skip(!existsSync(fixture),'Local private fixture required');
  const runtimeErrors:string[]=[];page.on('pageerror',error=>runtimeErrors.push(error.message));

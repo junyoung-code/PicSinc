@@ -40,6 +40,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   const dirty = useRef(false), detailBack = useRef<(() => boolean) | null>(null), saving = useRef(false);
   const editorBack = useRef<(() => boolean) | null>(null);
   const claimPollError = useRef('');
+  const guardPushed = useRef(false);
   const registerEditorBack = useCallback((handler: (() => boolean) | null) => { editorBack.current = handler; }, []);
   const retryDetection = useRef<() => void>(() => {});
   const pendingSave = useRef<{ edit: RoomEditRecord['edit']; assetId: string } | null>(null);
@@ -129,7 +130,10 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   // Keep one extra history entry while leaving would strand the room, so a phone back
   // gesture lands here first. Editors push their own entry on top of it.
   useEffect(() => {
-    if (leaveGuarded(room.phase) && !editor && !history.state?.roomGuard && !history.state?.roomEdit) history.pushState({roomGuard:true}, "", location.href);
+    if (leaveGuarded(room.phase) && !editor && !history.state?.roomGuard && !history.state?.roomEdit) { history.pushState({roomGuard:true}, "", location.href); guardPushed.current = true; }
+    // After the final step the guard is no longer needed: drop it so the first back really goes back (B-037).
+    // Only a guard this page pushed: a reload or same-URL visit can carry an old one over.
+    else if (!leaveGuarded(room.phase) && !editor && guardPushed.current && history.state?.roomGuard) { guardPushed.current = false; history.back(); }
   }, [room.phase, editor]);
   useEffect(() => {
     const leave = (e: BeforeUnloadEvent) => { if (dirty.current || saving.current) { e.preventDefault(); e.returnValue = ""; } };
@@ -142,7 +146,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
       // Landing on the guard itself (an editor just closed) is not a leave attempt.
       // A guard left over from an earlier step: step past it.
       if (event.state?.roomGuard) { if (!leaveGuarded(latest.current.room.phase)) history.back(); return; }
-      if (leaveGuarded(latest.current.room.phase)) { history.pushState({roomGuard:true}, "", location.href); setConfirm('leave'); }
+      if (leaveGuarded(latest.current.room.phase)) { history.pushState({roomGuard:true}, "", location.href); guardPushed.current = true; setConfirm('leave'); }
     };
     window.addEventListener("beforeunload", leave); window.addEventListener("popstate", back);
     return () => { window.removeEventListener("beforeunload", leave); window.removeEventListener("popstate", back); };
