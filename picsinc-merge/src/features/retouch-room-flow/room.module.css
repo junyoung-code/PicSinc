@@ -139,3 +139,6 @@
 .shell :global(.delete-room-dialog .delete-room-buttons) button:last-child { flex-grow:1.5; background:#e02e38; color:white; }
 @media(max-width:360px) { .shell :global(.delete-room-dialog .delete-room-buttons) { flex-direction:column-reverse; } }
 .shell .imageButton:disabled { opacity:1; cursor:wait; }
+
+/* A room dialog shown over the editor sits outside the screen frame: the host takes the frame's theme colors and Neo button styles without adding a layout box (④ N-31). */
+.shell.dialogHost { display:contents; }

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { StatusMessage } from "@/components/mobile-shell";
 import MobileShell from "@/features/retouch-room-flow/RetouchShell";
 import styles from "@/features/retouch-room-flow/room.module.css";
+import theme from "@/features/home/theme.module.css";
 import type { CollaborationAction, CollaborationView } from "@/features/photo-session/collaboration-types";
 import type { DetectedRegions } from "@/features/region-editor/detected-regions";
 import MobileRegionEditor from "@/features/region-editor/MobileRegionEditor";
@@ -300,7 +301,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   </MobileShell>;
   if (editor) {
     const valid = editor.scope === "personal" ? room.phase === "personal" && room.personalToken === editor.token && !done : room.phase === "global" && room.editToken === editor.token && room.editorId === me && Date.parse(room.leaseUntil ?? "") > now;
-    return <><RetouchEditor key={editor.token} participants={<>{editor.scope === "personal" && roster}<StatusMessage message={error}/>{!valid && <p role="alert">편집권이 만료되었거나 단계가 바뀌었어요. 뒤로 가서 최신 상태를 확인해주세요.</p>}</>} room={{imageUrl:assetUrl(editor.imageId),maskUrl:editor.maskId?assetUrl(editor.maskId):undefined,scope:editor.scope,regions:editor.regions,nickname:snapshot.participants.find(p=>p.id===me)?.nickname??"나",disabled:!valid,onSave:save,onCancel:()=>void cancelEditor(),onBackHandlerChange:registerEditorBack,onDirtyChange:value=>{dirty.current=value;}}}/>{discardAsk && <RoomDialog title="변경사항을 저장하지 않고 나갈까요?" confirmLabel="나가기" cancelLabel="계속 보정하기" onCancel={() => setDiscardAsk(false)} onConfirm={() => void discardEditor()}><p>저장하지 않은 보정은 사라져요.</p></RoomDialog>}</>;
+    return <><RetouchEditor key={editor.token} participants={<>{editor.scope === "personal" && roster}<StatusMessage message={error}/>{!valid && <p role="alert">편집권이 만료되었거나 단계가 바뀌었어요. 뒤로 가서 최신 상태를 확인해주세요.</p>}</>} room={{imageUrl:assetUrl(editor.imageId),maskUrl:editor.maskId?assetUrl(editor.maskId):undefined,scope:editor.scope,regions:editor.regions,nickname:snapshot.participants.find(p=>p.id===me)?.nickname??"나",disabled:!valid,onSave:save,onCancel:()=>void cancelEditor(),onBackHandlerChange:registerEditorBack,onDirtyChange:value=>{dirty.current=value;}}}/>{discardAsk && <div className={`${theme.theme} ${styles.shell} ${styles.dialogHost}`}><RoomDialog title="변경사항을 저장하지 않고 나갈까요?" confirmLabel="나가기" cancelLabel="계속 보정하기" onCancel={() => setDiscardAsk(false)} onConfirm={() => void discardEditor()}><p>저장하지 않은 보정은 사라져요.</p></RoomDialog></div>}</>;
   }
   const editorName = snapshot.participants.find(p => p.id === room.editorId)?.nickname;
   const locked = !!room.editorId && Date.parse(room.leaseUntil ?? "") > now;
