@@ -34,6 +34,10 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   const [confirm, setConfirm] = useState<'start' | 'skip' | 'finalize' | 'delete' | 'leave' | null>(null);
   const [deleted, setDeleted] = useState(false), [lightbox, setLightbox] = useState(false);
   const [finalizing, setFinalizing] = useState(false), [finalizeFailed, setFinalizeFailed] = useState(false);
+  // Friends jumped straight to the finished photo while the owner saw "최종 보정본을 저장하고 있어요".
+  // Show them the same screen for a moment when the room turns final while they watch.
+  const [finalArriving, setFinalArriving] = useState(false);
+  const seenPhase = useRef(initialRoom.phase);
   const [roomReadError, setRoomReadError] = useState('');
   const [saveView, setSaveView] = useState(false);
   const revision = useRef(0), claimRevision = useRef(0), initialClaims = useRef<Claim[] | null>(null);
@@ -228,6 +232,13 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
       setSaveView(true);
     } catch (e) { report(e); } finally { setBusy(false); }
   }
+  useEffect(() => {
+    const before = seenPhase.current; seenPhase.current = room.phase;
+    if (owner || room.phase !== 'final' || before === 'final') return;
+    setFinalArriving(true);
+    const timer = setTimeout(() => setFinalArriving(false), 1600);
+    return () => clearTimeout(timer);
+  }, [room.phase, owner]);
   async function prepareFinal() {
     if (busy) return;
     setBusy(true); setError('');
@@ -239,6 +250,8 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   if (deleted) return <DeletedRoomScreen/>;
   if (expired || !remaining) return <MobileShell title="보정방 만료"><h1>보정방이 만료됐어요</h1><p>방 생성 후 24시간이 지났어요.</p><a href="/retouch/rooms/new">새 보정방 만들기</a></MobileShell>;
   if (finalizing || finalizeFailed && room.phase !== 'final') return <RoomProcessState title={finalizeFailed ? '최종 완료 실패' : '최종 완료 처리 중'} heading={finalizeFailed ? '사진 최종 완료를\n처리하지 못했어요' : '최종 보정본을\n저장하고 있어요'} description={finalizeFailed ? '지금까지 저장된 보정 결과는 유지돼요.' : '저장이 끝날 때까지 잠시 기다려 주세요'} error={finalizeFailed ? error || '저장된 사진은 유지돼요. 다시 시도해 주세요.' : undefined} errorTitle="최종 완료를 처리하지 못했어요" onRetry={() => void act({action:'finalize'})} retrying={busy} onBack={finalizeFailed ? () => { setFinalizeFailed(false); setError(''); } : undefined}/>;
+  if (finalArriving) return <RoomProcessState title="최종 완료 처리 중" heading={'최종 보정본을
+저장하고 있어요'} description="저장이 끝날 때까지 잠시 기다려 주세요"/>;
   if (room.phase === 'composing') {
     const failed = room.job?.status === 'failed';
     const issue = failed ? room.job?.error || '저장된 보정은 유지돼요. 다시 시도해 주세요.' : roomReadError || error;
