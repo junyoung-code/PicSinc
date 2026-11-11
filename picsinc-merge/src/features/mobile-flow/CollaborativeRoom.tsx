@@ -252,8 +252,11 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   }
   const editorName = snapshot.participants.find(p => p.id === room.editorId)?.nickname;
   const locked = !!room.editorId && Date.parse(room.leaseUntil ?? "") > now;
+  // The editor's own lease (e.g. closed the editor without saving) must not tell them to wait for themselves.
+  const lockedByOther = locked && room.editorId !== me;
   const lastEdit = room.history.at(-1);
   const lastEditorName = snapshot.participants.find(p => p.id === lastEdit?.participantId)?.nickname ?? '친구';
+  const waitingHint = !owner ? '편집이 끝나면 이어서 터치 보정할 수 있어요.' : lastEdit ? '편집이 끝나면 이어서 보정하거나 최종 완료할 수 있어요.' : '편집이 끝나면 터치 보정하거나 건너뛸 수 있어요.';
   const globalHeaderAction = room.phase === 'global' && !locked && !!lastEdit && owner ? <button disabled={busy} onClick={() => void prepareFinal()}>최종 완료</button> : undefined;
   const allDone = room.rosterIds.length > 0 && room.completedIds.length === room.rosterIds.length;
   const startConfirm = room.phase === 'lobby' && confirm === 'start';
@@ -279,8 +282,8 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     </>}
     {room.phase === 'personal' && done && !allDone && <div className={styles.waiting}>친구들의 보정을 기다려 주세요</div>}
     {room.phase === 'personal' && done && allDone && !owner && <div className={styles.waiting}>대표자가 전체 사진을 확인하고 있어요</div>}
-    {room.phase === 'global' && (locked || lastEdit) && <div className={styles.globalStatus} role="status"><strong>{locked ? `${editorName ?? '친구'}님 편집 중 · 잠시 기다려 주세요` : `${lastEditorName}님 편집 완료`}</strong><p>{locked ? '지금은 개인 보정·건너뛰기·최종 완료를 할 수 없어요.' : '최신 저장 결과에서 이어서 터치 보정할 수 있어요.'}</p></div>}
-    {room.latestAssetId && ['global','review'].includes(room.phase) && <div className={room.phase === 'global' && (locked || lastEdit) ? styles.globalPhoto : styles.photoStage}><RoomPhotoPreview className={styles.previewPhoto} src={assetUrl(room.latestAssetId)} alt="저장된 보정 결과"/></div>}
+    {room.phase === 'global' && (lockedByOther || lastEdit) && <div className={styles.globalStatus} role="status"><strong>{lockedByOther ? `${editorName ?? '친구'}님 편집 중 · 잠시 기다려 주세요` : `${lastEditorName}님 편집 완료`}</strong><p>{lockedByOther ? waitingHint : '최신 저장 결과에서 이어서 터치 보정할 수 있어요.'}</p></div>}
+    {room.latestAssetId && ['global','review'].includes(room.phase) && <div className={room.phase === 'global' && (lockedByOther || lastEdit) ? styles.globalPhoto : styles.photoStage}><RoomPhotoPreview className={styles.previewPhoto} src={assetUrl(room.latestAssetId)} alt="저장된 보정 결과"/></div>}
     {room.phase === 'final' && room.latestAssetId && <RoomPhotoPreview className={styles.result} src={assetUrl(room.latestAssetId)} alt="확정된 최종 사진" onEnlarge={() => setLightbox(true)}/>}
     {room.phase === 'final' && <p className={styles.done}><img src="/images/retouch-ui/check.svg" alt=""/>{snapshot.participants.filter(p=>room.completedIds.includes(p.id)).map(p=>p.nickname).join(' · ') || '모두'}의 보정이 모두 반영됐어요</p>}
     <StatusMessage message={error || roomReadError}/>

@@ -235,12 +235,21 @@ test('lobby starts recognition and personal completion waits for everyone', asyn
  await expect(page.getByRole('button',{name:'완료',exact:true})).toHaveCount(0);
 });
 
+test('my own unexpired lease after closing the editor does not ask me to wait', async ({page}) => {
+ const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ await backend(page,{...initial('global'),editorId:'owner',leaseUntil:new Date(Date.now()+90000).toISOString()},png,40,40);
+ await page.goto(`/retouch/rooms/${roomId}`);
+ await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true})).toBeEnabled();
+ await expect(page.getByText('잠시 기다려 주세요')).toHaveCount(0);
+});
+
 test('other editor blocks global entry and review blocks every new edit', async ({page}) => {
  const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  const server=await backend(page,{...initial('global'),editorId:'friend',leaseUntil:new Date(Date.now()+90000).toISOString()},png,40,40);
  await page.goto(`/retouch/rooms/${roomId}`);
  await expect(page.getByRole('heading',{name:'예솔님이 전체 사진을 보정하고 있어요'})).toBeVisible();
  await expect(page.getByRole('button',{name:'보정 대기 중',exact:true})).toBeDisabled();
+ await expect(page.getByText('편집이 끝나면 터치 보정하거나 건너뛸 수 있어요.',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'터치 보정 건너뛰기'})).toHaveCount(0);
  server.update({editorId:null,leaseUntil:null,latestAssetId:'friend-saved'});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true})).toBeEnabled();
