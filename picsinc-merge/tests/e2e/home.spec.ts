@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 for (const width of [402, 390, 320]) {
   test(`home splash, two feature entries and layout at ${width}px`, async ({ page }, testInfo) => {
@@ -64,6 +64,10 @@ test("direct merge entry does not show a duplicate splash", async ({ page }) => 
   await expect(page.getByLabel("MOIRA 시작 화면")).toHaveCount(0);
 });
 
+// Merge rooms ask for "내 이름"; retouch and collaboration rooms use SessionEntry's "내 닉네임" and "이 보정방에 참여하기".
+const nameField = (page: Page, path: string) => page.getByLabel(path === "/sessions/home-invite" ? "내 이름" : "내 닉네임", { exact: true });
+const joinButton = (page: Page, path: string) => page.getByRole("button", { name: path === "/sessions/home-invite" ? "참여하기" : "이 보정방에 참여하기", exact: true });
+
 // HTTP substitutes isolate entry routing; these do not verify a live room or DB.
 for (const path of ["/sessions/home-invite", "/retouch/rooms/home-invite", "/sessions/home-invite/collaboration"]) {
   test(`invitation opens directly: ${path}`, async ({ page }) => {
@@ -72,10 +76,10 @@ for (const path of ["/sessions/home-invite", "/retouch/rooms/home-invite", "/ses
     await page.route("**/api/sessions/home-invite", route => route.fulfill({ status: 403, json: { error: "참여 후 이용해주세요." } }));
     await page.route("**/api/sessions/home-invite/invitation", route => route.fulfill({ json: { ownerNickname: "민선" } }));
     await page.goto(path);
-    await expect(page.getByLabel("내 이름", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "참여하기", exact: true })).toBeDisabled();
-    await page.getByLabel("내 이름", { exact: true }).fill("친구");
-    await expect(page.getByRole("button", { name: "참여하기", exact: true })).toBeEnabled();
+    await expect(nameField(page, path)).toBeVisible();
+    await expect(joinButton(page, path)).toBeDisabled();
+    await nameField(page, path).fill("친구");
+    await expect(joinButton(page, path)).toBeEnabled();
     expect(new URL(page.url()).pathname).toBe(path);
     // Next's same-URL history replacement may emit another navigation event.
     expect([...new Set(navigations)]).toEqual([path]);

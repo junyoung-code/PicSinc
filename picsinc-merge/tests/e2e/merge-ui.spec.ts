@@ -58,7 +58,8 @@ for (const width of [402, 390, 320]) test(`merge flow and PNG saving at ${width}
   await page.getByRole('button', { name: '확인', exact: true }).click();
   await expect(page.getByRole('dialog')).not.toBeVisible();
   await page.getByRole('button', { name: '시작하기', exact: true }).click();
-  await page.getByRole('button', { name: '영역 편집하기' }).click();
+  // The fixture detects no people, so the owner takes the manual path (3237cc9).
+  await page.getByRole('button', { name: '직접 영역 선택하기' }).click();
   await expect(page.getByRole('dialog', { name: '내 영역 선택' })).toBeVisible();
   await page.getByRole('button', { name: '브러시', exact: true }).click();
   const canvas = page.locator('canvas');
@@ -253,11 +254,13 @@ for (const owner of [true, false]) test(`merge result preview recovery and owner
     return route.fulfill({ json: {} });
   });
   await page.goto('/sessions/merge-result-errors?step=result');
-  await expect(page.getByRole('alert')).toContainText('완성된 사진을 불러오지 못했어요');
+  // Next adds its own empty route-announcer alert, so match the card by text.
+  const previewError = page.getByRole('alert').filter({ hasText: '완성된 사진을 불러오지 못했어요' });
+  await expect(previewError).toBeVisible();
   await expect(page.getByRole('link', { name: '사진 저장하기' })).toHaveAttribute('href', `${base}/assets/final`);
   await page.getByRole('button', { name: '사진 다시 불러오기' }).click();
   await expect.poll(() => page.getByAltText('함께 보정한 최종 사진').evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
-  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(previewError).toHaveCount(0);
   expect(previewRequests).toBeGreaterThanOrEqual(2);
   await expect(page.getByRole('button', { name: '겹친 영역 확인하기' })).toHaveCount(owner ? 1 : 0);
   await expect(page.getByRole('button', { name: '제출 현황으로 돌아가기' })).toHaveCount(owner ? 1 : 0);
