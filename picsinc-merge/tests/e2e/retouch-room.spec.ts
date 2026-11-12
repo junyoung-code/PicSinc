@@ -101,7 +101,7 @@ test('personal editor uses the server mask for preview and records saved control
  const outputWidth=await page.locator('canvas[aria-label="보정 미리보기"]').evaluate((c:HTMLCanvasElement)=>c.width),outputHeight=after.length/4/outputWidth;
  for(let y=0;y<outputHeight;y++){const a=(y*outputWidth+Math.ceil(outputWidth/2))*4,b=(y+1)*outputWidth*4;expect(after.subarray(a,b).equals(before.subarray(a,b))).toBeTruthy();}
  await page.screenshot({path:'private/retouch-e2e/room-personal.png',fullPage:true});
- server.failNextSave();await save.click();await expect(page.getByRole('alert').filter({hasText:'저장에 실패'})).toBeVisible();
+ server.failNextSave();await save.click();await page.getByRole('button',{name:'내 보정 저장',exact:true}).click();await expect(page.getByRole('alert').filter({hasText:'저장에 실패'})).toBeVisible();
  await expect(page.getByRole('button',{name:'재시도',exact:true})).toBeEnabled();
  expect((await pixels(page)).equals(after)).toBeTruthy();await page.getByRole('button',{name:'재시도',exact:true}).click();
  await expect(page.getByRole('heading',{name:'내 보정이 끝났어요'})).toBeVisible();expect(server.saved().state.edit.settings).toBeTruthy();
