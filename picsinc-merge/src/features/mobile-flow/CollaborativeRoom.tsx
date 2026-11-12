@@ -59,7 +59,8 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     const timer = window.setTimeout(() => setLobbyToast(null), 2600);
     return () => window.clearTimeout(timer);
   }, [lobbyToast]);
-  const knownIds = useRef(new Set(initialSnapshot.participants.map(p => p.id)));
+  const knownPeople = useRef(new Map(initialSnapshot.participants.map(p => [p.id, p.nickname] as const)));
+  const [leaving, setLeaving] = useState(false);
   const revision = useRef(0), claimRevision = useRef(0), initialClaims = useRef<Claim[] | null>(null);
   const dirty = useRef(false), detailBack = useRef<(() => boolean) | null>(null), saving = useRef(false);
   const editorBack = useRef<(() => boolean) | null>(null);
@@ -80,6 +81,18 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   const report = (e: unknown) => { if (e instanceof RequestError && e.code === 'SESSION_DELETED') setDeleted(true); else if (e instanceof RequestError && e.status === 410) setExpired(true); setError((e as Error).message); };
   const roster = <ParticipantStatus participants={snapshot.participants} completedIds={room.completedIds} currentId={me} rosterIds={room.rosterIds} ownerId={snapshot.session.ownerParticipantId} compact={!!editor || room.phase === 'personal' && !done}/>;
 
+  async function leaveRoom() {
+    if (!owner && room.phase === 'lobby') {
+      setLeaving(true);
+      try { await request(`/api/retouch/rooms/${encodeURIComponent(inviteToken)}/participants`, { method: 'DELETE' }); }
+      catch (e) {
+        // The owner started meanwhile: stay and show the new step instead of leaving a frozen roster.
+        if (e instanceof RequestError && e.status === 409) { setLeaving(false); setConfirm(null); setError('대표자가 보정을 시작해서 지금은 나갈 수 없어요.'); await refresh().catch(report); return; }
+        // Any other failure keeps the old behaviour: leave locally, the server keeps the seat.
+      }
+    }
+    location.assign('/');
+  }
   async function refresh() {
     const started = revision.current;
     const [s, r] = await Promise.all([request<FlowSnapshot>(base), request<CollaborationView>(`${base}/collaboration`)]);
@@ -263,9 +276,13 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     } catch (e) { report(e); } finally { setBusy(false); }
   }
   useEffect(() => {
-    const joined = snapshot.participants.filter(p => !knownIds.current.has(p.id));
-    joined.forEach(p => knownIds.current.add(p.id));
-    if (owner && room.phase === 'lobby' && joined.length) showLobbyToast(`${joined.map(p => p.nickname).join(', ')}님이 들어왔어요`);
+    const known = knownPeople.current;
+    const joined = snapshot.participants.filter(p => !known.has(p.id));
+    const current = new Set(snapshot.participants.map(p => p.id));
+    const left = [...known].filter(([id]) => !current.has(id)).map(([, nickname]) => nickname);
+    knownPeople.current = new Map(snapshot.participants.map(p => [p.id, p.nickname] as const));
+    const notices = [joined.length ? `${joined.map(p => p.nickname).join(', ')}님이 들어왔어요` : '', left.length ? `${left.join(', ')}님이 나갔어요` : ''].filter(Boolean);
+    if (owner && room.phase === 'lobby' && notices.length) showLobbyToast(notices.join(' · '));
   }, [snapshot.participants, owner, room.phase, showLobbyToast]);
   useEffect(() => {
     const before = seenPhase.current; seenPhase.current = room.phase;
@@ -340,7 +357,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
     <StatusMessage message={error || roomReadError}/>
     {confirm === 'delete' && <DeleteRoomDialog base={base} onCancel={() => setConfirm(null)} onDeleted={() => location.assign('/retouch/rooms/new')}/>}
     {/* The back arrow here used to be a plain link home: the owner could leave by accident and friends were stuck. */}
-    {confirm === 'leave' && <RoomDialog title="보정방에서 나갈까요?" confirmLabel="나가기" cancelLabel={room.phase === 'lobby' ? '계속 기다리기' : '계속 보정하기'} onCancel={() => setConfirm(null)} onConfirm={() => location.assign('/')}>{room.phase === 'lobby' ? owner ? <p>대표자가 나가면 친구들은 보정을 시작할 수 없어요.<br/>초대 링크로 다시 들어오면 이어서 할 수 있어요.</p> : <p>초대 링크로 다시 들어오면<br/>이어서 참여할 수 있어요.</p> : owner ? <p>대표자가 나가면 친구들은 사진을 완성할 수 없어요.<br/>초대 링크로 다시 들어오면 이어서 할 수 있어요.</p> : <p>나가도 대표자가 사진을 완성할 수 있어요.<br/>초대 링크로 다시 들어오면 완성 사진을 받을 수 있어요.</p>}</RoomDialog>}
+    {confirm === 'leave' && <RoomDialog title="보정방에서 나갈까요?" confirmLabel="나가기" cancelLabel={room.phase === 'lobby' ? '계속 기다리기' : '계속 보정하기'} busy={leaving} onCancel={() => setConfirm(null)} onConfirm={() => void leaveRoom()}>{room.phase === 'lobby' ? owner ? <p>대표자가 나가면 친구들은 보정을 시작할 수 없어요.<br/>초대 링크로 다시 들어오면 이어서 할 수 있어요.</p> : <p>대표자 화면의 참여자 목록에서 빠져요.<br/>초대 링크로 다시 들어와 참여할 수 있어요.</p> : owner ? <p>대표자가 나가면 친구들은 사진을 완성할 수 없어요.<br/>초대 링크로 다시 들어오면 이어서 할 수 있어요.</p> : <p>나가도 대표자가 사진을 완성할 수 있어요.<br/>초대 링크로 다시 들어오면 완성 사진을 받을 수 있어요.</p>}</RoomDialog>}
     {confirm === 'skip' && <RoomDialog title="터치 보정을 건너뛸까요?" confirmLabel="건너뛰고 결과 확인" cancelLabel="돌아가기" busy={busy} onCancel={() => setConfirm(null)} onConfirm={() => { setConfirm(null); void act({action:'end-global'}); }}><p>추가 터치 없이 사진을 완성해요.<br/>최종 완료 후에는 보정을 바꿀 수 없어요.</p></RoomDialog>}
     {confirm === 'finalize' && <RoomDialog title="사진을 최종 완료할까요?" confirmLabel="사진 최종 완료" cancelLabel="한 번 더 확인하기" busy={busy} onCancel={() => setConfirm(null)} onConfirm={() => { setConfirm(null); void act({action:'finalize'}); }}><p>모두의 보정이 한 장에 반영돼요.<br/>최종 완료 후에는 보정을 바꿀 수 없어요.</p></RoomDialog>}
     {lightbox && room.latestAssetId && <ResultLightbox src={assetUrl(room.latestAssetId)} onClose={() => setLightbox(false)}/>}

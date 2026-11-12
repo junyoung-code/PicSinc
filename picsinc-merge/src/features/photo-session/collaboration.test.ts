@@ -110,6 +110,29 @@ test('collaborative rooms freeze roster, isolate completion from other saves, lo
  } finally {await db.close();}
 });
 
+test('a participant who leaves the lobby is removed from the room and the start roster',async()=>{
+ const db=await currentSchemaDatabase();
+ try {
+  await create(db);
+  await action(db,owner,'enable');
+  const late=id(5);
+  await value(db,`select join_photo_session($1,$2,'Guest','guest-hash','guest-recovery')`,[room,guest]);
+  await value(db,`select join_photo_session($1,$2,'Late','late-hash','late-recovery')`,[room,late]);
+  const before=await value<number>(db,`select version from photo_sessions where id=$1`,[room]);
+  await assert.rejects(()=>value(db,`select leave_retouch_room($1,$2)`,[room,owner]),/Forbidden/);
+  await value(db,`select leave_retouch_room($1,$2)`,[room,guest]);
+  assert.equal(await value(db,`select count(*)::int from participants where id=$1`,[guest]),0);
+  assert.equal(await value(db,`select count(*)::int from participant_credentials where participant_id=$1`,[guest]),0);
+  assert.equal(await value<number>(db,`select version from photo_sessions where id=$1`,[room]),before+1);
+  // A retried request after the row is gone is not an error and changes nothing.
+  await value(db,`select leave_retouch_room($1,$2)`,[room,guest]);
+  assert.equal(await value<number>(db,`select version from photo_sessions where id=$1`,[room]),before+1);
+  assert.deepEqual((await action(db,owner,'start')).rosterIds,[owner,late]);
+  await assert.rejects(()=>value(db,`select leave_retouch_room($1,$2)`,[room,late]),/Collaboration locked/);
+  assert.equal(await value(db,`select has_function_privilege('anon','leave_retouch_room(uuid,uuid)','execute')`),false);
+ } finally {await db.close();}
+});
+
 test('new merge rooms automatically enqueue detection without collaboration and accept external edits',async()=>{
  const db=await currentSchemaDatabase();
  try {
