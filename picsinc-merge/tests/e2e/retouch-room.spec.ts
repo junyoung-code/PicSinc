@@ -13,11 +13,14 @@ async function backend(page:Page,initialRoom:CollaborationView,png:Buffer,width:
  const actions:string[]=[];
  let releaseSave:(()=>void)|undefined; let saveGate:Promise<void>|undefined;
  let claims:Array<{regionId:string;participantId:string;nickname:string}>=[];
- const snapshot=()=>({session:{id:'session',inviteToken:roomId,ownerParticipantId:'owner',originalAssetId:'original',version:5,createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+86400000).toISOString()},currentParticipantId:participantId,participants:[{id:'owner',sessionId:'session',nickname:'민선',submitted:state.completedIds.includes('owner')},{id:'friend',sessionId:'session',nickname:'예솔',submitted:true},...(state.rosterIds.includes('third')?[{id:'third',sessionId:'session',nickname:'지연',submitted:state.completedIds.includes('third')}]:[])].sort((x,y)=>(state as {byId?:boolean}).byId?x.id.localeCompare(y.id):0),assets:[{id:'original',kind:'original',width,height,contentType:'image/png'}],originalSelections:initialRoom.personalToken&&mask?[{participantId,maskAssetId:'mask',selectedRegionIds:['region-1']}]:[],selections:[],result:null});
+ const gone=new Set<string>(); let leaveStatus=204;
+ const fullSnapshot=()=>({session:{id:'session',inviteToken:roomId,ownerParticipantId:'owner',originalAssetId:'original',version:5,createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+86400000).toISOString()},currentParticipantId:participantId,participants:[{id:'owner',sessionId:'session',nickname:'민선',submitted:state.completedIds.includes('owner')},{id:'friend',sessionId:'session',nickname:'예솔',submitted:true},...(state.rosterIds.includes('third')?[{id:'third',sessionId:'session',nickname:'지연',submitted:state.completedIds.includes('third')}]:[])].sort((x,y)=>(state as {byId?:boolean}).byId?x.id.localeCompare(y.id):0),assets:[{id:'original',kind:'original',width,height,contentType:'image/png'}],originalSelections:initialRoom.personalToken&&mask?[{participantId,maskAssetId:'mask',selectedRegionIds:['region-1']}]:[],selections:[],result:null});
+ const snapshot=()=>{const s=fullSnapshot();return {...s,participants:s.participants.filter(p=>!gone.has(p.id))};};
  await page.route('**/api/**',async route=>{
   const request=route.request(),path=new URL(request.url()).pathname;
   const json=(data:unknown,status=200)=>route.fulfill({status,json:data});
   if(path===base)return json(snapshot());
+  if(path===`/api/retouch/rooms/${roomId}/participants`&&request.method()==='DELETE'){actions.push('leave');if(leaveStatus!==204)return json({error:'현재 단계에서는 수정할 수 없어요.'},leaveStatus);gone.add(participantId);return route.fulfill({status:204,body:''});}
   if(path===`${base}/collaboration`){
    if(request.method()==='GET')return json(state);
    const body=request.postDataJSON(); actions.push(body.action);
@@ -52,7 +55,7 @@ async function backend(page:Page,initialRoom:CollaborationView,png:Buffer,width:
   if(path==='/api/uploads/upload/complete')return json({asset:{id:'uploaded'}});
   return json({error:`Unhandled ${path}`},404);
  });
- return {state:()=>state,actions,update:(patch:Partial<CollaborationView>)=>{state={...state,...patch};},failNextDownload:()=>{failDownload=true;},holdSave:()=>{saveGate=new Promise<void>(resolve=>{releaseSave=resolve;});},releaseSave:()=>{releaseSave?.();saveGate=undefined;},failNextSave:()=>{failSave=2;},saved:()=>saved,claim:()=>{claims=[{regionId:'region-1',participantId:'owner',nickname:'민선'}];},failNextSelection:()=>{failSelection=true;}};
+ return {state:()=>state,actions,leave:(id:string)=>{gone.add(id);},failLeave:(status:number)=>{leaveStatus=status;},update:(patch:Partial<CollaborationView>)=>{state={...state,...patch};},failNextDownload:()=>{failDownload=true;},holdSave:()=>{saveGate=new Promise<void>(resolve=>{releaseSave=resolve;});},releaseSave:()=>{releaseSave?.();saveGate=undefined;},failNextSave:()=>{failSave=2;},saved:()=>saved,claim:()=>{claims=[{regionId:'region-1',participantId:'owner',nickname:'민선'}];},failNextSelection:()=>{failSelection=true;}};
 }
 
 test('whole-photo touch has no face controls, keeps prior pixels on restore, retries save and finalizes',async({page})=>{
@@ -379,16 +382,27 @@ test('lobby shows short join and copy notices, and leaving asks first', async ({
  await page.getByRole('button',{name:'초대 링크 복사'}).click();
  await expect(page.getByRole('status').filter({hasText:'초대 링크를 복사했어요'})).toBeVisible();
  await expect(page.getByText('초대 링크를 복사했어요')).toHaveCount(0,{timeout:6000});
+ server.leave('third');await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await expect(page.getByRole('status').filter({hasText:'지연님이 나갔어요'})).toBeVisible(); // B-042
+ await expect(page.getByText('지연',{exact:true})).toHaveCount(0);
  await page.goBack();
  await expect(page.getByRole('dialog',{name:'보정방에서 나갈까요?'})).toBeVisible();
  await page.getByRole('button',{name:'계속 기다리기',exact:true}).click();
  await expect(page.getByRole('heading',{name:'함께할 친구를 초대해요'})).toBeVisible();
- const friend=await context.newPage();await backend(friend,initial('lobby'),png,40,40,undefined,'friend');
+ const friend=await context.newPage();const friendServer=await backend(friend,initial('lobby'),png,40,40,undefined,'friend');
  await friend.goto(`/retouch/rooms/${roomId}`);
+ // The owner started meanwhile: the friend stays and sees why (B-042).
+ friendServer.failLeave(409);
  await friend.getByRole('button',{name:'보정방 나가기',exact:true}).click();
- await expect(friend.getByRole('dialog',{name:'보정방에서 나갈까요?'})).toContainText('이어서 참여할 수 있어요');
+ await friend.getByRole('button',{name:'나가기',exact:true}).click();
+ await expect(friend.getByText('대표자가 보정을 시작해서 지금은 나갈 수 없어요.')).toBeVisible();
+ await expect(friend).toHaveURL(new RegExp(`/retouch/rooms/${roomId}$`));
+ friendServer.failLeave(204);
+ await friend.getByRole('button',{name:'보정방 나가기',exact:true}).click();
+ await expect(friend.getByRole('dialog',{name:'보정방에서 나갈까요?'})).toContainText('참여자 목록에서 빠져요');
  await friend.getByRole('button',{name:'나가기',exact:true}).click();
  await expect(friend).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+ expect(friendServer.actions.filter(a=>a==='leave')).toHaveLength(2);
  await friend.close();
 });
 

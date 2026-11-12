@@ -1,5 +1,15 @@
 # 현재 상태
 
+## 대기실 참여자 나가기 — 2026-11-12
+
+- 함께 보정 대기실에서 참여자가 "보정방 나가기"를 확인하면 서버(`DELETE /api/retouch/rooms/[inviteToken]/participants`)가 새 DB 함수 `leave_retouch_room`으로 참여자와 참여증을 지우고 쿠키를 지운다. 대표자 대기실에는 "○○님이 나갔어요"가 뜨고, 시작 시 확정되는 인원에서도 빠진다. 대표자는 나갈 수 없고, 시작된 뒤에는 409로 거절해 참여자 화면에 이유를 보인다.
+- 새 마이그레이션 `supabase/migrations/20261112080000_leave_retouch_room.sql`. **운영 DB 적용 전**에는 나가기 요청이 실패해도 예전처럼 홈으로만 이동한다.
+- 확인: PGlite DB 검사(삭제·재시도·시작 후 거절·권한), 단위 296 통과, retouch e2e 48 통과(사진 파일 없는 retouch-ui 1개 제외). 운영 DB·실제 휴대폰은 미실시.
+
+## QA 수정 묶음 병합 — 2026-11-12
+
+- PR #5(`fix/collab-bugs`)로 함께 보정·사진 합치기 QA 수정과 Figma 맞춤을 main에 병합했다(`ffb3d75`). 커밋별 변경·이유·확인은 `../docs/decisions/2026-11-12-qa-수정-커밋-기록.md`.
+
 ## 사진 내부 확대 — 2026-11-12
 
 - `core/photo-viewport.ts`·기능 옆 검사, `region-editor/MobileRegionEditor.tsx`·`mobile-editor.module.css`, `face-retouch/ui/RetouchEditor.tsx`, `tests/e2e/retouch-photo-zoom.spec.ts`에 사진 확대만 반영했다. 제품 동작은 [사진 내부 확대](MASTER_SPEC.md#사진-내부-확대--2026-11-12)를 따른다. 의존성·API·보정 엔진·저장 형식은 변경하지 않았다.
