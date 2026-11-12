@@ -1,5 +1,9 @@
 # ④ 전체 연결과 검증
 
+## 사진 내부 확대 — 2026-11-12
+
+메인이 `core/photo-viewport.ts`와 영역 편집·보정기의 사진 제스처만 연결한다. 범위는 [사진 내부 확대](../../MASTER_SPEC.md#사진-내부-확대--2026-11-12)를 따르며 좌표·이동 제한 단위 검사와 `retouch-photo-zoom.spec.ts`·`playwright.photo-zoom.config.ts`의 모바일 설정 및 기존 선택 흐름으로 검증한다. Chrome의 CDP 터치와 WebKit의 합성 포인터 검증 범위를 구분한다. 변경 파일·결과·미확인 항목은 STATE에 기록한다.
+
 ## 얼굴 분석 실패 로그 — 2026-11-10
 
 메인이 얼굴 분석 Worker·클라이언트와 `/api/retouch/diagnostics`의 실패 로그만 추가한다. 기록 범위는 [MASTER_SPEC](../../MASTER_SPEC.md#협업-보정방--별도-경로에-보존)을 따르며 분석·UI·복구 동작은 바꾸지 않는다. 실패 단계·개인정보 제외·로그 저장/전송 실패의 비간섭을 집중 검사하고 결과는 STATE에 기록한다.

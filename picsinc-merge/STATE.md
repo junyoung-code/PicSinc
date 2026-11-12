@@ -1,5 +1,13 @@
 # 현재 상태
 
+## 사진 내부 확대 — 2026-11-12
+
+- `core/photo-viewport.ts`·기능 옆 검사, `region-editor/MobileRegionEditor.tsx`·`mobile-editor.module.css`, `face-retouch/ui/RetouchEditor.tsx`, `tests/e2e/retouch-photo-zoom.spec.ts`에 사진 확대만 반영했다. 제품 동작은 [사진 내부 확대](MASTER_SPEC.md#사진-내부-확대--2026-11-12)를 따른다. 의존성·API·보정 엔진·저장 형식은 변경하지 않았다.
+- 집중 Node 40개와 Chrome 5개 통과: 확대 중심·이동 제한·해상도 증가, 핀치/더블 탭의 선택 비간섭, 기존 얼굴별 보정과 영역 선택 저장 실패/재시도 흐름을 확인했다. 비증분 타입·diff 검사 통과.
+- Chrome은 합성 이미지·기준점·HTTP 응답 대체와 실제 WebGL/CDP 터치를 사용했다. 실제 휴대폰·운영 배포는 미실시다.
+- 모바일 후속 검사: 보정기 기본 배율에서 사진 위 스크롤이 막힘과 핀치 뒤 한 손가락 이동 중단을 재현했다. 두 편집기의 제스처 처리만 보완했으며 나머지 보정·저장 기능은 유지했다. `playwright.photo-zoom.config.ts`에 iPhone 13/SE WebKit·Pixel 7/Galaxy S9 Chrome 설정을 추가했다. 모바일 8개·기존 선택/저장 회귀 3개·집중 Node 40개·비증분 타입·diff 검사 통과(반복 실행 제외).
+- 모바일 검증 한계: Chrome은 CDP 터치, WebKit은 실제 엔진·모바일 설정·네이티브 탭과 합성 포인터를 사용했다. WebKit의 여러 손가락 검사에서는 포인터 캡처를 테스트에서 대체하므로 iOS 네이티브 제스처 중재/스크롤이나 실기기 성능의 검증이 아니다. 실기기 제어 연결·iOS Simulator/Android 도구는 제공되지 않았으며 운영 배포는 하지 않았다.
+
 ## 개인 보정 컷별 취소·적용과 결과 확인 — 2026-11-12
 
 - `JunYoung`에서 `RetouchEditor.tsx`·`retouch.module.css`의 기존 상태·캔버스를 재사용해 공통 컷 동작과 Figma 결과 확인 화면을 연결했다. 새 의존성·엔진·API·저장 형식 변경은 없다. 제품 동작은 [협업 보정방](MASTER_SPEC.md#협업-보정방--별도-경로에-보존)을 따른다.

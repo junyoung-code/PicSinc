@@ -20,6 +20,7 @@ import LoadingCharacters from "@/components/LoadingCharacters";
 import theme from "@/features/home/theme.module.css";
 import { FlowProgress } from "@/components/FlowProgress";
 import Link from "next/link";
+import { animatePhotoView, boundPhotoView, photoPreviewScale, photoScaleLimit, zoomPhotoAt } from "@/core/photo-viewport";
 
 type Photo = { id:number; bitmap:ImageBitmap; url:string; name:string; region?:HTMLCanvasElement; outline?:string };
 type Mode = "face" | "touch" | "restore" | "move";
@@ -46,13 +47,36 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
   const preview=useRef<PreviewQueue|null>(null),maskKey=useRef("");
   const generation=useRef(0),upload=useRef(0),detection=useRef<ReturnType<typeof detectFaces>|null>(null),editRef=useRef(edit);
   const view=useRef({zoom,pan});view.current={zoom,pan};
-  const gesture=useRef<{snapshot:EditState;last:Point;start:Point;pan:Point;changed:boolean;faceId?:string}|null>(null);
+  const fitRef=useRef(fit);fitRef.current=fit;
+  const stopZoom=useRef(()=>{});
+  const lastTap=useRef<{time:number;point:Point}|null>(null);
+  const gesture=useRef<{snapshot:EditState;last:Point;start:Point;clientY:number;pan:Point;changed:boolean;navigation?:boolean;faceId?:string}|null>(null);
   const pointers=useRef(new Map<number,Point>()),pinch=useRef<{distance:number;zoom:number;anchor:Point}|null>(null);
   const controlDefinition=controlDefinitions[control];
   const value=edit.settings[selected]?.[control]??0;
   const update=(next:EditState)=>{if(next===editRef.current)return;generation.current++;setRendering(true);editRef.current=next;setEdit(next);};
   const selectable=!!photo && !loading && !engineError && !saving && !room?.disabled;
   const active=selectable && !!selected;
+  function changeView(z:number,p:Point,smooth=false){
+    const el=viewport.current;if(!el||!photo)return;
+    stopZoom.current();
+    const size=fitRef.current;
+    z=Math.max(1,Math.min(photoScaleLimit(size.width/photo.bitmap.width)/(size.width/photo.bitmap.width),z));
+    const left=(el.clientWidth-size.width*z)/2,top=(el.clientHeight-size.height*z)/2;
+    const bounded=boundPhotoView({scale:z,x:left+p.x,y:top+p.y},size,{width:el.clientWidth,height:el.clientHeight});
+    const target={scale:z,x:bounded.x-left,y:bounded.y-top};
+    const apply=(next:typeof target)=>{view.current={zoom:next.scale,pan:{x:next.x,y:next.y}};setZoom(next.scale);setPan({x:next.x,y:next.y});};
+    if(smooth)stopZoom.current=animatePhotoView({scale:view.current.zoom,...view.current.pan},target,apply);
+    else apply(target);
+  }
+  function zoomAt(point:Point,z:number,smooth=false){
+    const el=viewport.current;if(!el)return;
+    const rect=el.getBoundingClientRect(),current=view.current;
+    const x=point.x-rect.left-el.clientLeft-el.clientWidth/2,y=point.y-rect.top-el.clientTop-el.clientHeight/2;
+    if(photo)z=Math.max(1,Math.min(photoScaleLimit(fit.width/photo.bitmap.width)/(fit.width/photo.bitmap.width),z));
+    const next=zoomPhotoAt({scale:current.zoom,...current.pan},{x,y},z);
+    changeView(z,{x:next.x,y:next.y},smooth);
+  }
   function overview(){
     cancelInteraction.current();cutSnapshot.current=null;setCompare(false);setCollapsed(true);setMode("face");setSelected("__touch");setZoom(1);setPan({x:0,y:0});
   }
@@ -90,7 +114,7 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
   },[room?.onBackHandlerChange]);
 
   useEffect(()=>{
-    return ()=>{upload.current++;generation.current++;detection.current?.cancel();};
+    return ()=>{stopZoom.current();upload.current++;generation.current++;detection.current?.cancel();};
   },[]);
   useEffect(()=>{
     if(!photo || !canvas.current) return;
@@ -125,12 +149,14 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
     const resize=()=>{const el=viewport.current;if(!el)return;const scale=Math.min(el.clientWidth/photo.bitmap.width,el.clientHeight/photo.bitmap.height);setFit({width:photo.bitmap.width*scale,height:photo.bitmap.height*scale});};
     const observer=new ResizeObserver(resize);observer.observe(viewport.current);resize();return ()=>observer.disconnect();
   },[photo]);
+  useEffect(()=>{changeView(view.current.zoom,view.current.pan);},[fit.width,fit.height]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(()=>{
     if(room?.scope!=="personal"||collapsed||fit.width<=1||!viewport.current)return;
     const face=faces.find(item=>item.id===selected);if(!face)return;
     const box=bounds(oval.map(index=>face.landmarks[index]));
-    const z=Math.max(1,Math.min(5,viewport.current.clientWidth/(box.width*fit.width*2),viewport.current.clientHeight/(box.height*fit.height*1.5)));
-    setZoom(z);setPan({x:(.5-box.x-box.width/2)*fit.width*z,y:(.5-box.y-box.height/2)*fit.height*z});
+    const maxZoom=photo?photoScaleLimit(fit.width/photo.bitmap.width)/(fit.width/photo.bitmap.width):1;
+    const z=Math.max(1,Math.min(maxZoom,viewport.current.clientWidth/(box.width*fit.width*2),viewport.current.clientHeight/(box.height*fit.height*1.5)));
+    changeView(z,{x:(.5-box.x-box.width/2)*fit.width*z,y:(.5-box.y-box.height/2)*fit.height*z},true);
   },[room?.scope,selected,faces,fit.width,fit.height,collapsed]);
   useEffect(()=>{
     if(!photo||!renderer.current||!preview.current) return;
@@ -143,10 +169,19 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
   const compareRef=useRef(compare);compareRef.current=compare;
   function drawPreview(){
     if(!photo||!renderer.current) return;
-    const scale=Math.min(1,1600/Math.max(photo.bitmap.width,photo.bitmap.height));
+    const scale=photoPreviewScale(photo.bitmap,fitRef.current.width*view.current.zoom,window.devicePixelRatio||1);
     try{renderer.current.draw(Math.round(photo.bitmap.width*scale),Math.round(photo.bitmap.height*scale),compareRef.current);refreshLens.current();}catch(e){setEngineError((e as Error).message);}
   }
   useEffect(()=>{drawPreview();},[compare,photo]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Keep pinch frames light; sharpen the current view once the gesture settles.
+  useEffect(()=>{const timer=window.setTimeout(()=>{if(!saving)drawPreview();},120);return()=>clearTimeout(timer);},[zoom,fit.width,saving]); // eslint-disable-line react-hooks/exhaustive-deps
+  const wheelHandler=useRef((event:WheelEvent)=>{});
+  wheelHandler.current=(event)=>{
+    if(!selectable||reviewing||pointers.current.size||(event.target as HTMLElement).closest("button"))return;
+    event.preventDefault();
+    zoomAt({x:event.clientX,y:event.clientY},view.current.zoom*Math.exp(-event.deltaY*(event.deltaMode===1?.05:.005)));
+  };
+  useEffect(()=>{const el=viewport.current;if(!el)return;const wheel=(event:WheelEvent)=>wheelHandler.current(event);el.addEventListener("wheel",wheel,{passive:false});return()=>el.removeEventListener("wheel",wheel);},[]);
   useEffect(()=>{
     const release=()=>setCompare(false);
     const down=(e:KeyboardEvent)=>{if(!reviewing && e.code==="Space" && !["INPUT","BUTTON","TEXTAREA"].includes((e.target as HTMLElement).tagName)){e.preventDefault();setCompare(true);}};
@@ -210,15 +245,17 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
   function startPointer(e:ReactPointerEvent<HTMLDivElement>){
     const button=(e.target as HTMLElement).closest("button");
     if(!photo||reviewing||room?.disabled||saving||loading||engineError||(button&&!button.dataset.faceId))return;
+    stopZoom.current();
     e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);pointers.current.set(e.pointerId,{x:e.clientX,y:e.clientY});
     if(pointers.current.size===2){
       update(touch.current.finish(editRef.current,true));setTouchStart(null);setCursor(null);
       gesture.current=null;
       const [a,b]=[...pointers.current.values()],center={x:(a.x+b.x)/2,y:(a.y+b.y)/2},rect=viewport.current!.getBoundingClientRect();
-      pinch.current={distance:Math.hypot(a.x-b.x,a.y-b.y),zoom:view.current.zoom,anchor:{x:(center.x-rect.left-rect.width/2-view.current.pan.x)/view.current.zoom,y:(center.y-rect.top-rect.height/2-view.current.pan.y)/view.current.zoom}};return;
+      lastTap.current=null;
+      pinch.current={distance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),zoom:view.current.zoom,anchor:{x:(center.x-rect.left-rect.width/2-view.current.pan.x)/view.current.zoom,y:(center.y-rect.top-rect.height/2-view.current.pan.y)/view.current.zoom}};return;
     }
     if(pointers.current.size>2)return;
-    gesture.current={snapshot:editRef.current,last:point(e),start:{x:e.clientX,y:e.clientY},pan:{...view.current.pan},changed:false,faceId:button?.dataset.faceId};
+    gesture.current={snapshot:editRef.current,last:point(e),start:{x:e.clientX,y:e.clientY},clientY:e.clientY,pan:{...view.current.pan},changed:false,faceId:button?.dataset.faceId};
     setCursor(point(e));
     if((mode==="touch"||mode==="restore")&&active){
       const p=point(e);touch.current.begin(editRef.current,touchOwner,mode,p,radius,touchStrength/100);setTouchStart(p);
@@ -231,12 +268,16 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
     pointers.current.set(e.pointerId,{x:e.clientX,y:e.clientY});
     if(pinch.current&&pointers.current.size>=2){
       const [a,b]=[...pointers.current.values()],center={x:(a.x+b.x)/2,y:(a.y+b.y)/2},rect=viewport.current!.getBoundingClientRect();
-      const z=Math.max(1,Math.min(5,pinch.current.zoom*Math.hypot(a.x-b.x,a.y-b.y)/pinch.current.distance));
-      setZoom(z);setPan({x:center.x-rect.left-rect.width/2-pinch.current.anchor.x*z,y:center.y-rect.top-rect.height/2-pinch.current.anchor.y*z});return;
+      const maxZoom=photoScaleLimit(fit.width/photo.bitmap.width)/(fit.width/photo.bitmap.width);
+      const z=Math.max(1,Math.min(maxZoom,pinch.current.zoom*Math.hypot(a.x-b.x,a.y-b.y)/pinch.current.distance));
+      changeView(z,{x:center.x-rect.left-rect.width/2-pinch.current.anchor.x*z,y:center.y-rect.top-rect.height/2-pinch.current.anchor.y*z});return;
     }
     const g=gesture.current;if(!g)return;
     if(Math.hypot(e.clientX-g.start.x,e.clientY-g.start.y)>8)g.changed=true;
-    if(mode==="move"){setPan({x:g.pan.x+e.clientX-g.start.x,y:g.pan.y+e.clientY-g.start.y});g.changed=true;return;}
+    if(g.navigation||mode==="move"||mode==="face"&&view.current.zoom>1&&g.changed){changeView(view.current.zoom,{x:g.pan.x+e.clientX-g.start.x,y:g.pan.y+e.clientY-g.start.y});g.changed=true;return;}
+    if(mode==="face"&&view.current.zoom<=1&&g.changed&&e.pointerType==="touch"){
+      window.scrollBy(0,g.clientY-e.clientY);g.clientY=e.clientY;lastTap.current=null;return;
+    }
     const next=point(e);setCursor(next);
     if((mode==="touch"||mode==="restore")&&active)applyTouch(next);
   }
@@ -258,14 +299,30 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
     }
     update(touch.current.finish(editRef.current,cancel));setTouchStart(null);
     pointers.current.delete(e.pointerId);
-    if(!cancel&&!pinch.current&&g&&!g.changed&&Math.hypot(e.clientX-g.start.x,e.clientY-g.start.y)<=8&&photo&&mode==="face"){
-      const p=point(e);const target=faces.find(f=>g.faceId?f.id===g.faceId:regionDistance(p,faceArea(f,photo.bitmap.width,photo.bitmap.height))<1);if(target)selectFace(target.id);
+    if(pinch.current){
+      gesture.current=null;
+      if(cancel){pointers.current.clear();pinch.current=null;}
+      else if(pointers.current.size===1){
+        const remaining=[...pointers.current.values()][0];pinch.current=null;
+        gesture.current={snapshot:editRef.current,last:remaining,start:remaining,clientY:remaining.y,pan:{...view.current.pan},changed:true,navigation:true};
+      }else if(!pointers.current.size)pinch.current=null;
+      setCursor(null);return;
     }
-    if(pointers.current.size<2)pinch.current=null;gesture.current=null;
+    if(!cancel&&!pinch.current&&g&&!g.changed&&Math.hypot(e.clientX-g.start.x,e.clientY-g.start.y)<=8&&photo&&mode==="face"){
+      const p=point(e);const target=faces.find(f=>g.faceId?f.id===g.faceId:regionDistance(p,faceArea(f,photo.bitmap.width,photo.bitmap.height))<1);
+      if(target&&(!room||collapsed)){lastTap.current=null;selectFace(target.id);}
+      else {
+        const previous=lastTap.current,point={x:e.clientX,y:e.clientY},time=performance.now();
+        if(previous&&time-previous.time<300&&Math.hypot(point.x-previous.point.x,point.y-previous.point.y)<24){zoomAt(point,view.current.zoom>1.05?1:3,true);lastTap.current=null;}
+        else lastTap.current={time,point};
+      }
+    }
+    if(!pointers.current.size)pinch.current=null;gesture.current=null;
     setCursor(null);
   }
   const cancelInteraction=useRef(()=>{});
   cancelInteraction.current=()=>{
+    stopZoom.current();lastTap.current=null;
     update(touch.current.finish(editRef.current,true));setTouchStart(null);setCursor(null);
     pointers.current.clear();gesture.current=null;pinch.current=null;
   };

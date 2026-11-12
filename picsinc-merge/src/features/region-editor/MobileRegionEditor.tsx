@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { DetectedRegions } from "./detected-regions";
 import { paintBrush, type Point } from "./mask-geometry";
-import { editableContours, visibleContours, smoothedDisplayContour, findContourHandle, finishContourGesture, spacedHandleIndices, viewportToImage, zoomAround, type PendingContour, type ViewTransform } from "./contour-geometry";
+import { editableContours, visibleContours, smoothedDisplayContour, findContourHandle, finishContourGesture, spacedHandleIndices, viewportToImage, type PendingContour, type ViewTransform } from "./contour-geometry";
 import styles from "./mobile-editor.module.css";
 import { FlowProgress } from "@/components/FlowProgress";
 import { regionLabelPosition, regionOwnerLabel, type RegionClaim } from "./region-labels";
+import { animatePhotoView, boundPhotoView, photoScaleLimit, zoomPhotoAt as zoomAround } from "@/core/photo-viewport";
 
 export interface MobileRegionEditorProps {
   appearance?: "merge";
@@ -67,8 +68,11 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
   const contoursRef = useRef<Point[][]>([]);
   const viewRef = useRef<ViewTransform>({ scale: 1, x: 0, y: 0 });
   const pointers = useRef(new Map<number, Point>());
-  const gesture = useRef<{ start: Point; last: Point; before: Uint8Array; pending: PendingContour | null; moved: boolean } | null>(null);
+  const gesture = useRef<{ start: Point; last: Point; clientY: number; before: Uint8Array; pending: PendingContour | null; moved: boolean; navigation?: boolean } | null>(null);
   const pinch = useRef<{ distance: number; midpoint: Point; view: ViewTransform } | null>(null);
+  const stopZoom = useRef(() => {});
+  const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTap = useRef<{ time: number; point: Point; select: () => void } | null>(null);
   const redraw = useRef(() => {});
   const dirtyCallback = useRef(onDirtyChange); dirtyCallback.current = onDirtyChange;
   const [selectedIds, setSelectedIds] = useState(initialSelectedIds);
@@ -119,6 +123,8 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
 
   const initialIds = useRef(initialSelectedIds); initialIds.current = initialSelectedIds;
   const locked = busy || processing || !!resourceError || saving || claimPending || exitDialog;
+  function cancelTap() { if (tapTimer.current) clearTimeout(tapTimer.current); tapTimer.current = null; lastTap.current = null; }
+  useEffect(() => { if (locked) cancelTap(); return () => { cancelTap(); stopZoom.current(); }; }, [locked, expanded]);
 
   function changed() {
     let nextDirty = true;
@@ -270,8 +276,19 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
     const rect = canvas.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     const scale = Math.min(rect.width / width, rect.height / height);
-    viewRef.current = { scale, x: (rect.width - width * scale) / 2, y: (rect.height - height * scale) / 2 };
-    redraw.current();
+    setView({ scale, x: (rect.width - width * scale) / 2, y: (rect.height - height * scale) / 2 });
+  }
+  function setView(next: ViewTransform, smooth = false) {
+    const canvas = canvasRef.current; if (!canvas) return;
+    stopZoom.current();
+    const target = boundPhotoView(next, { width, height }, canvas.getBoundingClientRect());
+    const apply = (view: ViewTransform) => { viewRef.current = view; redraw.current(); };
+    if (smooth) stopZoom.current = animatePhotoView(viewRef.current, target, apply);
+    else apply(target);
+  }
+  function zoomAt(anchor: Point, scale: number, smooth = false) {
+    const rect = canvasRef.current!.getBoundingClientRect(), fitScale = Math.min(rect.width / width, rect.height / height);
+    setView(zoomAround(viewRef.current, anchor, Math.max(fitScale, Math.min(photoScaleLimit(fitScale), scale))), smooth);
   }
   function draw() {
     const canvas = canvasRef.current; if (!canvas) return;
@@ -325,6 +342,14 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
   redraw.current = draw;
   useEffect(() => { const canvas = canvasRef.current; if (!canvas) return; const observer = new ResizeObserver(fit); observer.observe(canvas); fit(); return () => observer.disconnect(); }, [expanded, width, height]);
   useEffect(() => { draw(); }, [revision, tool, selectedIds, expanded, loading, claimConflict, regionClaims, currentParticipantId, participantNickname]);
+  const wheelHandler = useRef((event: WheelEvent) => {});
+  wheelHandler.current = event => {
+    if (locked || !imageRef.current || pointers.current.size) return;
+    event.preventDefault(); cancelTap();
+    const rect = canvasRef.current!.getBoundingClientRect();
+    zoomAt({ x: event.clientX - rect.left, y: event.clientY - rect.top }, viewRef.current.scale * Math.exp(-event.deltaY * (event.deltaMode === 1 ? .05 : .005)));
+  };
+  useEffect(() => { const canvas = canvasRef.current; if (!canvas) return; const wheel = (event: WheelEvent) => wheelHandler.current(event); canvas.addEventListener("wheel", wheel, { passive: false }); return () => canvas.removeEventListener("wheel", wheel); }, []);
   function local(event: React.PointerEvent<HTMLCanvasElement>): Point { const rect = event.currentTarget.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top }; }
   async function toggle(region: Region) {
     if (locked || claimPendingRef.current) return;
@@ -358,16 +383,17 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
   }
   function down(event: React.PointerEvent<HTMLCanvasElement>) {
     if (locked || !imageRef.current) return;
+    stopZoom.current();
     event.currentTarget.setPointerCapture(event.pointerId); const p = local(event); pointers.current.set(event.pointerId, p);
-    if (!expanded && pointers.current.size > 1) { gesture.current = null; return; }
     if (pointers.current.size === 2) {
+      cancelTap();
       if (gesture.current) { maskRef.current = gesture.current.before; refreshMask(false); } gesture.current = null;
       const [a, b] = [...pointers.current.values()]; pinch.current = { distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), midpoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, view: { ...viewRef.current } }; return;
     }
     if (pointers.current.size !== 1) return;
     const hit = viewportToImage(p, viewRef.current);
     const pending = tool === "points" ? findContourHandle(contoursRef.current, hit, viewRef.current.scale) : null;
-    gesture.current = { start: p, last: p, before: (tool === "brush" || tool === "erase") ? maskRef.current.slice() : maskRef.current, pending, moved: false };
+    gesture.current = { start: p, last: p, clientY: event.clientY, before: (tool === "brush" || tool === "erase") ? maskRef.current.slice() : maskRef.current, pending, moved: false };
     if (tool === "brush" || tool === "erase") { paintBrush(maskRef.current, width, height, hit, hit, brushSize / viewRef.current.scale, tool === "erase" ? 0 : 1); refreshMask(false); }
   }
   function move(event: React.PointerEvent<HTMLCanvasElement>) {
@@ -376,30 +402,59 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
     if (pointers.current.size >= 2 && pinch.current) {
       const [a, b] = [...pointers.current.values()], initial = pinch.current;
       const rect = event.currentTarget.getBoundingClientRect(), fitScale = Math.min(rect.width / width, rect.height / height);
-      const scale = Math.max(fitScale, Math.min(fitScale * 8, initial.view.scale * Math.hypot(a.x - b.x, a.y - b.y) / initial.distance));
+      const scale = Math.max(fitScale, Math.min(photoScaleLimit(fitScale), initial.view.scale * Math.hypot(a.x - b.x, a.y - b.y) / initial.distance));
       const view = zoomAround(initial.view, initial.midpoint, scale);
       view.x += (a.x + b.x) / 2 - initial.midpoint.x; view.y += (a.y + b.y) / 2 - initial.midpoint.y;
-      viewRef.current = view; draw(); return;
+      setView(view); return;
     }
     const current = gesture.current; if (!current) return;
     current.moved ||= Math.hypot(p.x - current.start.x, p.y - current.start.y) > 4;
+    if (current.navigation) {
+      setView({ ...viewRef.current, x: viewRef.current.x + p.x - current.last.x, y: viewRef.current.y + p.y - current.last.y });
+      current.last = p; return;
+    }
+    if (tool === "select" && current.moved) {
+      cancelTap();
+      const rect = event.currentTarget.getBoundingClientRect(), fitScale = Math.min(rect.width / width, rect.height / height);
+      if (viewRef.current.scale > fitScale * 1.01) setView({ ...viewRef.current, x: viewRef.current.x + p.x - current.last.x, y: viewRef.current.y + p.y - current.last.y });
+      else window.scrollBy(0, current.clientY - event.clientY);
+      current.last = local(event); current.clientY = event.clientY; return;
+    }
     const hit = viewportToImage(p, viewRef.current);
     if (current.pending) { current.pending.target = { x: Math.max(0, Math.min(width, hit.x)), y: Math.max(0, Math.min(height, hit.y)) }; draw(); }
-    else if (tool === "pan" || tool === "points") { viewRef.current.x += p.x - current.last.x; viewRef.current.y += p.y - current.last.y; draw(); }
+    else if (tool === "pan" || tool === "points") { setView({ ...viewRef.current, x: viewRef.current.x + p.x - current.last.x, y: viewRef.current.y + p.y - current.last.y }); }
     else if (tool === "brush" || tool === "erase") { paintBrush(maskRef.current, width, height, viewportToImage(current.last, viewRef.current), hit, brushSize / viewRef.current.scale, tool === "erase" ? 0 : 1); refreshMask(false); }
     current.last = p;
   }
   function end(event: React.PointerEvent<HTMLCanvasElement>, cancelled = false) {
     const current = gesture.current; pointers.current.delete(event.pointerId);
-    if (pinch.current) { if (!pointers.current.size) pinch.current = null; return; }
+    if (pinch.current) {
+      gesture.current = null;
+      if (cancelled) { pointers.current.clear(); pinch.current = null; }
+      else if (pointers.current.size === 1) {
+        const remaining = [...pointers.current.values()][0]; pinch.current = null;
+        gesture.current = { start: remaining, last: remaining, clientY: remaining.y + event.currentTarget.getBoundingClientRect().top, before: maskRef.current, pending: null, moved: true, navigation: true };
+      } else if (!pointers.current.size) pinch.current = null;
+      return;
+    }
     if (!current) return;
     gesture.current = null;
+    if (current.navigation) return;
     if (cancelled) { maskRef.current = current.before; refreshMask(false); return; }
     if (current.pending) { maskRef.current = finishContourGesture(current.before, width, height, current.pending, !current.moved); if (current.moved) { remember(current.before); changed(); } refreshMask(false); }
     else if (tool === "brush" || tool === "erase") { remember(current.before); changed(); refreshMask(); }
     else if (tool === "select" && !current.moved) {
-      const hit = viewportToImage(local(event), viewRef.current);
-      if (hit.x >= 0 && hit.y >= 0 && hit.x < width && hit.y < height) { const region = regionRef.current.find(region => region.mask[Math.floor(hit.y) * width + Math.floor(hit.x)]); if (region) void toggle(region); }
+      const point = local(event), previous = lastTap.current, time = performance.now();
+      const hit = viewportToImage(point, viewRef.current);
+      const select = () => { if (hit.x >= 0 && hit.y >= 0 && hit.x < width && hit.y < height) { const region = regionRef.current.find(region => region.mask[Math.floor(hit.y) * width + Math.floor(hit.x)]); if (region) void toggle(region); } };
+      cancelTap();
+      if (previous && time - previous.time < 300 && Math.hypot(point.x - previous.point.x, point.y - previous.point.y) < 24) {
+        const rect = event.currentTarget.getBoundingClientRect(), fitScale = Math.min(rect.width / width, rect.height / height);
+        zoomAt(point, viewRef.current.scale > fitScale * 1.05 ? fitScale : fitScale * 3, true);
+      } else {
+        previous?.select(); lastTap.current = { time, point, select };
+        tapTimer.current = setTimeout(() => { lastTap.current = null; tapTimer.current = null; select(); }, 300);
+      }
     }
   }
   async function save() {
