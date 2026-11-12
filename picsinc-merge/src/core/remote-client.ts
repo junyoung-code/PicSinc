@@ -20,12 +20,27 @@ function canRetryUpload(error: unknown) {
   return error.status === 429 || error.status >= 500 && error.status <= 599
     || error.status === 409 && ["Upload busy", "파일을 확인하고 있습니다. 잠시 후 다시 시도해 주세요."].includes(error.message);
 }
+// The server decodes one photo at a time and answers "busy" meanwhile. Another participant's
+// save can take several seconds, so busy answers get a longer, jittered wait (~16s in total);
+// network and server errors keep the short 3-attempt policy.
+const busyRetryDelays = [500, 1000, 2000, 3000, 4000, 5000];
+function isBusyUpload(error: unknown) {
+  return error instanceof RequestError && (error.status === 429 || error.status === 409);
+}
 async function retryUpload<T>(action: () => Promise<T>): Promise<T> {
-  for (let attempt = 0; ; attempt++) {
+  for (let failures = 0, busy = 0; ;) {
     try { return await action(); }
     catch (error) {
-      if (attempt >= 2 || !canRetryUpload(error)) throw error;
-      await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+      if (!canRetryUpload(error)) throw error;
+      let delay: number;
+      if (isBusyUpload(error)) {
+        if (busy >= busyRetryDelays.length) throw error;
+        delay = busyRetryDelays[busy++] + Math.random() * 300;
+      } else {
+        if (failures >= 2) throw error;
+        delay = 500 * ++failures;
+      }
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
 }

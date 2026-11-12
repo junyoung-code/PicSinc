@@ -12,6 +12,9 @@ a { color: var(--primary); text-underline-offset: 3px; }
 h1 { font-size: 25px; line-height: 1.5; letter-spacing: -.75px; margin: 0 0 14px; overflow-wrap: anywhere; }
 h2 { font-size: 19px; line-height: 1.5; margin: 0 0 12px; }
 p { line-height: 1.6; margin: 0 0 16px; }
+/* Korean copy wraps between words, not inside them. */
+h1, h2, h3, p { word-break: keep-all; }
+h2, h3, p { overflow-wrap: break-word; }
 .phone-shell { width: 100%; min-height: 100dvh; margin: 0 auto; background: white; display: flex; flex-direction: column; position: relative; padding-top: env(safe-area-inset-top); }
 .splash-screen { background: #e7e3ff; align-items: center; justify-content: center; overflow: hidden; isolation: isolate; animation: splash-exit .2s ease-in 1.3s both; }
 .splash-content { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; transform: translateY(-8px); }
@@ -100,7 +103,7 @@ p { line-height: 1.6; margin: 0 0 16px; }
 .recovery-panel { font-size: 12px; color: var(--muted); margin-top: 28px; border-top: 1px solid var(--line); padding-top: 16px; }
 .recovery-panel summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
 .recovery-panel input { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
-.help-sheet { position: fixed; inset: auto 0 0; width: min(100%, 402px); max-width: 100%; height: 390px; max-height: 90dvh; margin: 0 auto; padding: 34px 24px max(24px, env(safe-area-inset-bottom)); border: 0; border-radius: 20px 20px 0 0; background: white; color: #17152b; overflow-y: auto; }
+.help-sheet { position: fixed; inset: auto 0 0; width: min(100%, 402px); max-width: 100%; height: 390px; max-height: 90dvh; margin: 0 auto; padding: 28px 24px max(24px, env(safe-area-inset-bottom)); border: 0; border-radius: 20px 20px 0 0; background: white; color: #17152b; overflow-y: auto; }
 .help-sheet[open] { display: flex; flex-direction: column; animation: help-sheet-in .26s cubic-bezier(.2,.8,.2,1); transition: transform .2s ease; }
 .help-sheet.is-dragging { transition: none; }
 .help-sheet.is-closing { animation: help-sheet-out .18s ease-in forwards; pointer-events: none; }
@@ -110,11 +113,20 @@ p { line-height: 1.6; margin: 0 0 16px; }
 .sheet-handle { position: absolute; top: 0; left: calc(50% - 40px); width: 80px; height: 32px; padding: 0; border: 0; background: transparent; display: grid; place-items: start center; touch-action: none; cursor: grab; }
 .sheet-handle:active { cursor: grabbing; }
 .sheet-handle span { width: 48px; height: 4px; margin-top: 12px; border-radius: 999px; background: var(--line); }
-.help-sheet h2 { font-size: 19px; line-height: 28px; margin: 0 0 24px; flex-shrink: 0; word-break: keep-all; }
+/* Figma 586:13008 help sheet: Black 18/26 title, Regular 14/24 ink body, Bold 14 button. */
+/* `dialog.` outranks the merge screen's grey 14px `.merge h2` caption style. */
+dialog.help-sheet h2 { color: inherit; font-size: 18px; line-height: 26px; font-weight: 900; margin: 0 0 26px; flex-shrink: 0; word-break: keep-all; }
 .help-sheet h2:focus { outline: none; }
-.help-copy { color: var(--muted); font-size: 14px; line-height: 23px; margin-bottom: 24px; }
-.help-copy p { margin: 0; line-height: 23px; word-break: keep-all; overflow-wrap: anywhere; }
-.help-sheet .primary-button { margin-top: auto; flex-shrink: 0; font-size: 15px; }
+.help-copy { color: inherit; font-size: 14px; font-weight: 400; line-height: 24px; margin-bottom: 24px; }
+.help-copy p { margin: 0; line-height: 24px; word-break: keep-all; overflow-wrap: anywhere; }
+.help-sheet .primary-button { margin-top: auto; flex-shrink: 0; font-size: 14px; font-weight: 700; }
+/* Messages from sentenceLines() put each sentence on its own line. */
+.status-message, .merging-screen .description { white-space: pre-line; }
+/* Figma 859:25318 saved notice: rises above the sticky footer buttons, then leaves (same as the retouch room's saveToast). */
+.screen-footer .save-toast { position: absolute; left: 50%; bottom: calc(100% + 4px); z-index: 2; box-sizing: border-box; min-width: 216px; max-width: calc(100% - 32px); margin: 0; padding: 8px 24px; border: 2px solid #25232b; border-radius: 6px; background: #a7ebd9; color: #25232b; font-size: 14px; line-height: 24px; font-weight: 700; text-align: center; white-space: nowrap; pointer-events: none; animation: save-toast 2.6s ease both; }
+@keyframes save-toast { 0% { opacity: 0; transform: translate(-50%, 14px); } 12%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, 6px); } }
+@keyframes save-toast-fade { 0%, 100% { opacity: 0; transform: translateX(-50%); } 10%, 85% { opacity: 1; transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) { .screen-footer .save-toast { animation-name: save-toast-fade; } }
 .copy-toast { position: fixed; z-index: 50; left: 50%; transform: translateX(-50%); bottom: max(24px, env(safe-area-inset-bottom)); width: max-content; max-width: calc(100vw - 48px); padding: 12px 20px; border-radius: 12px; color: white; background: #29282f; font-size: 14px; box-shadow: 0 4px 18px #0002; }
 .cancel-photo { position: absolute; top: 6px; right: 6px; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); }
 .cancel-photo:hover { color: var(--primary); }
@@ -144,7 +156,7 @@ p { line-height: 1.6; margin: 0 0 16px; }
 .delete-room-dialog::backdrop { background: rgb(15 15 20 / 46%); }
 .delete-room-icon { width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 12px; display: grid; place-items: center; color: #e02e38; background: #ffeded; font-size: 24px; font-weight: 700; }
 .delete-room-dialog h2 { font-size: 20px; line-height: 28px; margin: 0 0 10px; }
-.delete-room-dialog p { font-size: 13px; line-height: 21px; color: var(--muted); margin: 0 0 8px; word-break: keep-all; }
+.delete-room-dialog p { font-size: 13px; line-height: 21px; color: var(--muted); margin: 0 0 8px; word-break: keep-all; text-wrap: balance; }
 .delete-room-warning { display: block; max-width: 200px; margin: 0 auto; padding: 4px 6px; border-radius: 10px; background: #fff2f2; color: #c7242e; font-size: 12px; line-height: 18px; }
 .delete-room-buttons { display: flex; gap: 10px; margin-top: 21px; }
 .delete-room-buttons button { min-height: 48px; border-radius: 12px; font-size: 14px; font-weight: 700; padding: 8px; }

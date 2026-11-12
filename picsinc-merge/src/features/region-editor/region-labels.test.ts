@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { regionLabelPosition, regionOwnerLabel } from "./region-labels";
+import { regionLabelPosition, regionOwnerLabel, withRo } from "./region-labels";
 
 test("same nickname does not turn another participant's claimed region into mine", () => {
   const claims = [{ regionId: "face-a", participantId: "other", nickname: "준영" }];
@@ -30,4 +30,11 @@ test("labels track image zoom and stay inside the viewport near image edges", ()
 
 test("panning a claimed person fully off-screen does not leave a misleading edge label", () => {
   assert.equal(regionLabelPosition({ x: 0, y: 0, width: 100, height: 100 }, { scale: 2, x: -201, y: 0 }, { width: 320, height: 400 }, 80), null);
+});
+
+test("participation copy picks 로 or 으로 from the last letter", () => {
+  assert.equal(withRo("테스트합치기참여"), "로");
+  assert.equal(withRo("민선"), "으로");
+  assert.equal(withRo("예솔"), "로");
+  assert.equal(withRo("Jun"), "(으)로");
 });

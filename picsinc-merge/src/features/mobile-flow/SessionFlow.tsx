@@ -1,7 +1,7 @@
 "use client";
 import { uploadAsset, detectRemote, composeRemote } from "@/core/remote-client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Notice, PhotoPicker, StatusMessage } from "@/components/mobile-shell";
 import MobileShell, { MergeWelcome, MergeSteps } from "@/features/merge-flow/MergeShell";
 import MergeResultPreview from "@/features/merge-flow/MergeResultPreview";
@@ -19,8 +19,13 @@ import { visiblePolling } from "./polling";
 import { saveEditorSelection } from "./save-editor-selection";
 import type { OriginalDetectionState } from "@/features/photo-session/original-detection-state";
 import { sendFestivalEvent } from "@/core/festival-visit";
+import { sentenceLines } from "./sentence-lines";
+import { characterFor, mergeCharacters } from "./characters";
+import { mergeProgressLabel } from "./flow-state";
 
 const labels: Record<Step, string> = { invite: "친구 초대하기", select: "내 얼굴 선택", guide: "내 사진 보정하기", upload: "보정본 올리기", review: "선택 영역 확인", status: "제출 현황", result: "최종 사진", overlap: "겹친 영역 확인" };
+// Friends pick their face after uploading the edited photo, so their face step is part of "03 보정본 제출":
+// showing 40 there made the bar go back (65 → 40 → 65) and looked like a skipped step (민재님 11/12).
 const progress: Record<Step, number> = { invite: 16, select: 40, guide: 40, upload: 65, review: 65, status: 65, result: 100, overlap: 90 };
 
 function remainingTime(expiresAt: string, now: number) {
@@ -53,6 +58,8 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   const [loadingDetection, setLoadingDetection] = useState(false);
   const detecting = loadingDetection || ["idle", "queued", "running"].includes(detectionState.status);
   const [toast, setToast] = useState("");
+  // Figma 859:25318: "saved" notice above the result buttons, same as the retouch room.
+  const [savedNotice, setSavedNotice] = useState(0), saving = useRef(false);
   const [mergeDelayed, setMergeDelayed] = useState(false);
   const [claims, setClaims] = useState<{ regionId: string; participantId: string; nickname: string }[] | null>(null);
   const claimRequest = useRef(0);
@@ -76,6 +83,8 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   useEffect(() => { if (selectedEdit && !editedId) chooseEdit(selectedEdit.id); }, [selectedEdit?.id, editedId]);
   const savedSelection = data?.selections.find(s => s.participantId === data.currentParticipantId && s.editedAssetId === selectedEdit?.id);
   const submittedCount = data?.participants.filter(p => p.submitted).length ?? 0;
+  // N-23: once everyone has submitted, guests are no longer waiting on friends, only on the host's merge.
+  const allSubmitted = Boolean(data?.participants.length) && submittedCount === data?.participants.length;
   const currentResult = Boolean(data?.result && data.result.version === data.session.version);
   useEffect(() => {
     if (step === "result" && data?.result) sendFestivalEvent("result_displayed", inviteToken,
@@ -229,6 +238,11 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   }, [base, original?.id, step, expired]);
 
   useEffect(() => {
+    if (!savedNotice) return;
+    const timer = window.setTimeout(() => setSavedNotice(0), 2600);
+    return () => clearTimeout(timer);
+  }, [savedNotice]);
+  useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(""), 2500);
     return () => clearTimeout(timer);
@@ -325,9 +339,22 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   async function compose() {
     if (!data || busy || !owner || !submittedCount) return;
     setBusy(true); setMerging(true); setMessage("");
-    try { await composeRemote(base, data.session.version, status => setMessage(status === "queued" ? "처리 순서를 기다리고 있어요. 잠시 후 다시 확인해도 됩니다." : "사진을 합치고 있어요.")); await refresh(); recordStep("result"); }
+    try { await composeRemote(base, data.session.version, status => setMessage(status === "queued" ? "처리 순서를 기다리고 있어요. 잠시 후 다시 확인해도 돼요." : "")); await refresh(); recordStep("result"); }
     catch (error) { sendFestivalEvent("stage_failed", inviteToken, { stage: "composition", errorCode: error instanceof RequestError ? `http_${error.status}` : "client_error", clientEventId: crypto.randomUUID() }); report(error); if (error instanceof RequestError && error.status === 409) await refresh().catch(report); }
     finally { setBusy(false); setMerging(false); }
+  }
+  async function saveResult(event: MouseEvent<HTMLAnchorElement>) {
+    // Fetch first so the notice only shows once the photo really reached the phone.
+    event.preventDefault();
+    const href = event.currentTarget.href;
+    if (saving.current || !data?.result) return;
+    sendFestivalEvent("save_clicked", inviteToken, { assetId: data.result.resultAssetId, clientEventId: crypto.randomUUID() });
+    saving.current = true; setMessage("");
+    try {
+      const response = await fetch(href); if (!response.ok) throw new Error("사진 저장에 실패했어요. 다시 눌러주세요.");
+      const url = URL.createObjectURL(await response.blob()), a = document.createElement("a"); a.href = url; a.download = "moira-final.png"; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setSavedNotice(n => n + 1);
+    } catch { setMessage("사진 저장에 실패했어요. 다시 눌러주세요."); } finally { saving.current = false; }
   }
   async function copy() {
     try { await navigator.clipboard.writeText(shareUrl); setToast("초대 링크를 복사했어요."); }
@@ -338,11 +365,11 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
   if (expired) return <MobileShell title="보정방 만료"><h1>보정방이 만료됐어요</h1><p className="description">사진은 방을 만든 뒤 24시간 동안 보관됩니다. 새 보정방에서 다시 시작해 주세요.</p><a className="primary-button" href="/sessions/new">새 보정방 만들기</a></MobileShell>;
   if (!data) return <MobileShell title="초대받은 보정방" helpTopic={canJoin ? "join" : undefined} progress={10} footer={canJoin ? <button className="primary-button" disabled={busy || !nickname.trim()} onClick={() => void join()}>{busy ? "참여하는 중…" : "참여하기"}</button> : undefined}>
     {canJoin ? <><MergeWelcome inviter={inviter} /><form onSubmit={event => { event.preventDefault(); void join(); }}><label className="name-field">내 이름<input required autoComplete="nickname" maxLength={40} value={nickname} onChange={event => setNickname(event.target.value)} placeholder="친구들이 알아볼 이름" /></label></form><MergeSteps /></> : <div className="loading-screen"><div className="spinner" /><p>보정방을 불러오고 있어요.</p></div>}
-    <StatusMessage message={message} />{message && !canJoin && <button className="secondary-button" onClick={() => location.reload()}>다시 불러오기</button>}
+    <StatusMessage message={sentenceLines(message)} />{message && !canJoin && <button className="secondary-button" onClick={() => location.reload()}>다시 불러오기</button>}
   </MobileShell>;
-  if (merging) return <MobileShell title="사진 합치는 중" progress={90} helpTopic="status"><div className="loading-screen merging-screen" role="status"><LoadingCharacters className={mergeStyles.composingCharacters} /><h1>{mergeDelayed ? <>평소보다 오래<br />걸리고 있어요</> : <>각자의 보정을<br />한 장에 담고 있어요</>}</h1><p className="description">{mergeDelayed ? <>사진을 안전하게 합치고 있어요.<br />잠시만 기다려 주세요.</> : message || "선택한 얼굴만 원본 사진에 자연스럽게 합치는 중이에요."}</p></div></MobileShell>;
+  if (merging) return <MobileShell title="사진 합치는 중" progress={90} helpTopic="status"><div className="loading-screen merging-screen" role="status"><LoadingCharacters className={mergeStyles.composingCharacters} /><h1>{mergeDelayed ? <>평소보다 오래<br />걸리고 있어요</> : <>각자의 보정을<br />한 장에 담고 있어요</>}</h1><p className="description">{mergeDelayed ? <>사진을 안전하게 합치고 있어요.<br />잠시만 기다려 주세요.</> : sentenceLines(message) || "선택한 얼굴만 원본 사진에 자연스럽게 합치는 중이에요."}</p></div></MobileShell>;
 
-  const roster = <ul className="participant-list">{photoDisplay.participants.map(person => <li key={person.id}><img className="avatar" src={`/images/figma-current/home/${person.id === data.session.ownerParticipantId ? "lilac" : "pink"}.png`} alt="" /><span className="participant-name">{person.nickname}{!owner && person.id === me?.id ? " (나)" : ""}</span>{(step !== "invite" || person.id === data.session.ownerParticipantId) && <span className={`badge ${person.submitted ? "complete" : person.id === data.session.ownerParticipantId && step === "invite" ? "owner" : ""}`}>{person.submitted ? "제출 완료" : person.id === data.session.ownerParticipantId && step === "invite" ? "대표자" : "보정 중"}</span>}</li>)}</ul>;
+  const roster = <ul className="participant-list">{photoDisplay.participants.map(person => <li key={person.id}><img className="avatar" src={characterFor(mergeCharacters, data.participants.map(other => other.id), data.session.ownerParticipantId, person.id)} alt="" /><span className="participant-name">{person.nickname}{!owner && person.id === me?.id ? " (나)" : ""}</span>{(step !== "invite" || person.id === data.session.ownerParticipantId) && <span className={`badge ${person.submitted ? "complete" : person.id === data.session.ownerParticipantId && step === "invite" ? "owner" : ""}`}>{person.submitted ? "제출 완료" : person.id === data.session.ownerParticipantId && step === "invite" ? "대표자" : mergeProgressLabel(data, person.id)}</span>}</li>)}</ul>;
   const shareField = <div className="share-field"><input aria-label="친구에게 보낼 초대 링크" value={shareUrl} readOnly onFocus={event => event.currentTarget.select()} /><button className="small-button" onClick={() => void copy()}>복사</button></div>;
   let content: ReactNode, footer: ReactNode;
   if (step === "invite") {
@@ -365,21 +392,20 @@ export default function SessionFlow({ inviteToken }: { inviteToken: string }) {
     content = <><h1>보정이 끝난 사진을<br />올려주세요</h1><p className="description">내 얼굴만 보정한 전체 사진을 선택해주세요.</p><PhotoPicker file={file} preview={preview} label="보정한 사진 선택" busy={busy} onChange={next => { const error = next ? photoError(next) : ""; setMessage(error); setFile(error ? null : next); setConsented(false); }} />{file && <Notice>사진을 자르거나 회전했다면 원본과 맞지 않을 수 있어요.<br />보정본은 방 참여자가 보고 합성에 사용하며, 방 생성 후 24시간까지 보관돼요.</Notice>}{file && <label className="photo-consent"><input type="checkbox" checked={consented} onChange={event => setConsented(event.target.checked)} />이 사진을 방 참여자와 공유하고 합성에 사용하는 데 동의해요.</label>}{owner && !me?.submitted && (selectedEdit || pendingEditId) && !file && <p className="description">업로드한 보정본이 있어요. 다시 올리지 않고 제출을 이어갈 수 있어요.</p>}{!owner && currentResult && <button className="text-button" onClick={() => navigate("result")}>현재 병합 결과 보기</button>}</>;
     footer = <button className="primary-button" disabled={(!file && !(owner && (selectedEdit || pendingEditId) && !me?.submitted)) || (Boolean(file) && !consented) || busy} onClick={() => void upload()}>{busy ? "처리 중…" : owner && !file && (selectedEdit || pendingEditId) && !me?.submitted ? "업로드한 보정본 제출하기" : "계속"}</button>;
   } else if (step === "status") {
-    content = <><h1>{owner ? <>{me?.submitted ? "내 제출이 끝났어요" : "친구들의 제출을 기다려요"}<br />{data.participants.length}명 중 {submittedCount}명 제출 완료</> : me?.submitted ? <>내 사진을 올렸어요<br />친구들을 기다리고 있어요</> : <>내 얼굴을 선택해<br />제출해주세요</>}</h1><p className="description">{!owner && me?.submitted ? <>{data.participants.length}명 중 {submittedCount}명이 사진을 올렸어요.<br />같은 링크에서 결과를 다시 확인할 수 있어요.</> : <>페이지를 닫아도 진행 상황이 유지돼요.{!owner && <><br />같은 링크에서 다시 확인할 수 있어요.</>}</>}</p>{roster}{!owner && !me?.submitted && <Notice>대표자가 ‘사진 합치기’ 버튼을 누르면 병합이 시작돼요.</Notice>}</>;
+    content = <><h1>{owner ? <>{me?.submitted ? "내 제출이 끝났어요" : "친구들의 제출을 기다려요"}<br />{data.participants.length}명 중 {submittedCount}명 제출 완료</> : me?.submitted ? allSubmitted ? <>모두 사진을 올렸어요<br />곧 사진이 완성돼요</> : <>내 사진을 올렸어요<br />친구들을 기다리고 있어요</> : <>내 얼굴을 선택해<br />제출해주세요</>}</h1><p className="description">{!owner && me?.submitted ? allSubmitted ? <>대표자가 사진을 합치면 바로 결과로 넘어가요.<br />같은 링크에서 결과를 다시 확인할 수 있어요.</> : <>{data.participants.length}명 중 {submittedCount}명이 사진을 올렸어요.<br />같은 링크에서 결과를 다시 확인할 수 있어요.</> : <>페이지를 닫아도 진행 상황이 유지돼요.{!owner && <><br />같은 링크에서 다시 확인할 수 있어요.</>}</>}</p>{roster}{!owner && !me?.submitted && <Notice>대표자가 ‘사진 합치기’ 버튼을 누르면 병합이 시작돼요.</Notice>}</>;
     footer = owner ? <button className="primary-button" disabled={!submittedCount || busy} onClick={() => void compose()}>{submittedCount ? "사진 합치기" : "한 명 이상 제출하면 병합할 수 있어요"}</button> : <button className="secondary-button" onClick={() => void refresh().catch(report)}>현황 새로고침</button>;
   } else if (step === "overlap") {
     content = <><h1>겹친 부분에 사용할<br />사진을 골라주세요</h1><p className="description">표시된 겹침을 확인하고 영역별 보정본을 지정해 주세요. 저장한 뒤 다시 병합합니다.</p><div className="overlap-editor"><RegionEditor inviteToken={inviteToken} overlapOnly onDirtyChange={setDirty} onSaved={() => { setDirty(false); void refresh().then(() => recordStep("status")).catch(report); }} /></div></>;
   } else {
-    content = <><div className="result-heading"><p className={mergeStyles.tag}>우리의 보정, 완료!</p><h1>모두의 마음에 드는<br />우리 사진 완성.</h1><p className="description">각자의 취향이 한 장에 모였어요.</p></div>{data.result && <MergeResultPreview key={data.result.previewAssetId} src={assetUrl(data.result.previewAssetId)} onError={() => sendFestivalEvent("stage_failed", inviteToken, { stage: "result_view", errorCode: "image_load_failed", clientEventId: crypto.randomUUID() })} />}
-      {data.result && currentResult && <p className={mergeStyles.success}><img src="/images/merge-ui/check.svg" alt="" />{data.participants.filter(person => person.submitted).map(person => person.nickname).join(" · ")}의 보정이 모두 반영됐어요.</p>}
+    content = <><div className="result-heading"><h1>모두의 마음에 드는<br />우리 사진 완성.</h1><p className="description">각자의 취향이 한 장에 모였어요.</p></div>{data.result && <MergeResultPreview key={data.result.previewAssetId} src={assetUrl(data.result.previewAssetId)} onError={() => sendFestivalEvent("stage_failed", inviteToken, { stage: "result_view", errorCode: "image_load_failed", clientEventId: crypto.randomUUID() })} />}
       {data.result && data.result.version !== data.session.version && <><Notice>제출 내용이 바뀌었어요. 위 사진은 이전 결과입니다. 대표자가 다시 병합해 주세요.</Notice>{owner && <button className="secondary-button" onClick={() => navigate("status")}>제출 현황으로 돌아가기</button>}</>}
       {Boolean(data.result?.unassignedOverlapPixels) && <><Notice>겹친 영역에 임시로 적용된 보정본이 있어요. 대표자가 확인하고 수정할 수 있어요.</Notice>{owner && <button className="secondary-button" onClick={() => navigate("overlap")}>겹친 영역 확인하기</button>}</>}
     </>;
-    footer = <><a className="secondary-button" href="/sessions/new">다른 사진으로 새로 하기</a>{data.result && <a className="primary-button" href={assetUrl(data.result.resultAssetId)} download onClick={() => sendFestivalEvent("save_clicked", inviteToken, { assetId: data.result!.resultAssetId, clientEventId: crypto.randomUUID() })}>사진 저장하기</a>}</>;
+    footer = <><a className="secondary-button" href="/sessions/new">처음부터 다시 만들기</a>{data.result && <a className="primary-button" href={assetUrl(data.result.resultAssetId)} download onClick={event => void saveResult(event)}>사진 저장하기</a>}{savedNotice > 0 && <p key={savedNotice} className="save-toast" role="status">✓ 사진을 저장했어요</p>}</>;
   }
   const previous: Partial<Record<Step, Step>> = { select: owner ? "invite" : "upload", upload: owner ? "select" : "guide", review: "upload", status: owner ? "upload" : "select", overlap: "result" };
-  return <MobileShell helpTopic={step === "invite" ? "invite" : step === "select" || step === "review" ? "select" : step === "upload" ? "upload" : step === "guide" ? "guide" : step === "status" || step === "result" ? "status" : undefined} title={step === "status" && !owner && me?.submitted ? "제출 완료" : labels[step]} progress={progress[step]} onBack={step === "invite" ? () => location.assign("/sessions/new") : previous[step] ? () => navigate(previous[step]!) : undefined} footer={footer}>
-    {content}<StatusMessage message={message} />
+  return <MobileShell helpTopic={step === "invite" ? "invite" : step === "select" || step === "review" ? "select" : step === "upload" ? "upload" : step === "guide" ? "guide" : step === "status" ? "status" : step === "result" ? "result" : undefined} title={step === "status" && !owner && me?.submitted ? "제출 완료" : labels[step]} progress={!owner && step === "select" ? progress.upload : progress[step]} onBack={step === "invite" ? () => location.assign("/sessions/new") : previous[step] ? () => navigate(previous[step]!) : undefined} footer={footer}>
+    {content}<StatusMessage message={sentenceLines(message)} />
     {confirmDelete && <DeleteRoomDialog base={base} onCancel={() => setConfirmDelete(false)} onDeleted={() => { current.current.dirty = false; editorBack.current = null; location.replace("/sessions/new"); }} />}
     {toast && <div className="copy-toast" role="status">{toast}</div>}
   </MobileShell>;

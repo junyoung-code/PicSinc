@@ -156,3 +156,29 @@ test("job polling retries temporary status failures without enqueuing a second c
   assert.equal(enqueues, 1);
   assert.equal(polls, 2);
 });
+
+test("busy completions keep retrying while another participant's save is processed", async t => {
+  fastRetries(t);
+  let completions = 0;
+  t.mock.method(globalThis, "fetch", async (url: string) => {
+    if (url === "/api/uploads") return json(prepared);
+    if (url === storageUrl) return new Response(null);
+    return ++completions <= 5 ? json({ error: "다른 사진을 처리하고 있어요." }, 429) : json(result);
+  });
+  assert.deepEqual(await uploadOriginal("A", new File(["x"], "x.png", { type: "image/png" })), result);
+  assert.equal(completions, 6);
+});
+
+test("busy retries are bounded and server errors keep the short retry policy", async t => {
+  fastRetries(t);
+  for (const [status, attempts] of [[429, 7], [500, 3]] as const) {
+    let completions = 0;
+    t.mock.method(globalThis, "fetch", async (url: string) => {
+      if (url === "/api/uploads") return json(prepared);
+      if (url === storageUrl) return new Response(null);
+      completions++; return json({ error: "Busy" }, status);
+    });
+    await assert.rejects(uploadOriginal("A", new File([`x${status}`], "x.png", { type: "image/png" })), error => error instanceof RequestError && error.status === status);
+    assert.equal(completions, attempts);
+  }
+});

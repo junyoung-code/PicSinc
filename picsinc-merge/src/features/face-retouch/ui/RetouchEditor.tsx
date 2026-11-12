@@ -286,7 +286,8 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
     const allowed=!area||regionDistance(next,area)<=1.35;
     if(!allowed)setNotice("터치 보정은 선택한 얼굴 주변에서만 적용돼요.");
     const result=touch.current.move(editRef.current,next,allowed);
-    if(result.full)setNotice("터치·복원은 각각 600구간까지 지원해요. 마지막 터치를 취소하거나 초기화해주세요.");
+    // Rooms have no undo/reset buttons, so point to the step that starts a fresh budget.
+    if(result.full)setNotice(room?.scope==="global"?"한 번에 다듬을 수 있는 만큼 다 썼어요. 위의 '저장'을 누르고 다시 열면 이어서 다듬을 수 있어요.":room?"한 번에 다듬을 수 있는 만큼 다 썼어요. 남은 부분은 다음 단계인 전체 사진 터치 보정에서 다듬어 주세요.":"터치·복원은 각각 600구간까지 지원해요. 마지막 터치를 취소하거나 초기화해주세요.");
     update(result.state);
   }
   function endPointer(e:ReactPointerEvent<HTMLDivElement>,cancel=false){
@@ -385,6 +386,9 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
         <button aria-pressed={mode!=="face"} disabled={!active} onClick={()=>{cancelInteraction.current();if(room?.scope==="personal"&&collapsed)cutSnapshot.current=editRef.current;setMode("touch");setCollapsed(false);}}>터치 보정</button>
       </div>}
       {room?.scope==="personal"&&faces.length>0&&collapsed&&<p className={styles.overviewHint}>보정할 얼굴을 선택해주세요.</p>}
+      {/* Limits: inside the tool box (민재님 11/11), at its top so small phones (375×667) still see them while editing. */}
+      {!collapsed&&mode!=="face"&&room&&notice&&!(room.scope==="personal"&&!faces.length)&&<p className={`${styles.overviewHint} ${styles.panelNotice}`} role="status">{notice}</p>}
+      {(limited||strained)&&<div className={styles.panelWarnings} aria-live="polite">{limited&&<p>다른 얼굴과 가까운 변형은 보호 영역에서 제한돼요.</p>}{strained&&<p>윤곽이 접히지 않도록 변형 강도를 제한했어요.</p>}</div>}
       {!collapsed&&<div id="retouch-tool-content">
         {mode==="face"?<>
           <nav className={styles.tabs} aria-label="보정 부위">{groups.map(g=><button key={g} aria-pressed={group===g} onClick={()=>{setGroup(g);setSelectedControl(controls.find(c=>c[2]===g)![0]);}}>{g}</button>)}</nav>
@@ -402,7 +406,7 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
       </div>}
     </section>}
     {reviewing&&<button className={styles.continueEditing} disabled={saving} onClick={()=>setReviewing(false)}>이어서 보정하기</button>}
-    <div className={styles.messages} aria-live="polite">{!room&&notice&&<p>{notice}</p>}{photo&&(error||engineError||calculationError)&&<p role="alert">{error||engineError||calculationError}</p>}{limited&&<p className={styles.warning}>다른 얼굴과 가까운 변형은 보호 영역에서 제한돼요.</p>}{strained&&<p className={styles.warning}>윤곽이 접히지 않도록 변형 강도를 제한했어요.</p>}</div>
+    <div className={styles.messages} aria-live="polite">{!room&&notice&&<p>{notice}</p>}{photo&&(error||engineError||calculationError)&&<p role="alert">{error||engineError||calculationError}</p>}</div>
     </div>
     {saving&&<section className={styles.saveFailure} aria-label="보정 저장 중" aria-busy="true">
       <header className={styles.header}><strong>보정 저장 중</strong></header>

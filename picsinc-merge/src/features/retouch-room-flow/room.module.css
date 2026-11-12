@@ -13,6 +13,7 @@
 .content { display:flex; flex-direction:column; align-items:stretch; gap:24px; padding:8px 24px 24px; flex:1; min-width:0; }
 .content h1 { font-size:24px; line-height:32px; font-weight:900; letter-spacing:0; margin:0; white-space:pre-line; word-break:keep-all; }
 .content .heroTitle { font-size:32px; line-height:40px; }
+.content .resultTitle { font-size:28px; line-height:36px; }
 .content p { margin:0; font-size:16px; line-height:24px; }
 .heading { display:flex; flex-direction:column; gap:8px; }
 .content :global(.description) { color:var(--moira-muted); margin:0; white-space:pre-line; }
@@ -23,7 +24,12 @@
 .shell :global(.name-field) { display:grid; gap:8px; margin:0; font-size:14px; line-height:24px; font-weight:700; }
 .shell :global(.name-field) input { width:100%; min-width:0; height:48px; border:3px solid var(--moira-ink); border-radius:0; background:white; color:var(--moira-ink); padding:9px 12px; font:400 16px/24px var(--moira-font); box-shadow:4px 4px 0 var(--moira-ink); }
 .shell :global(.notice),.shell :global(.status-message) { background:var(--moira-subtle); border-radius:4px; padding:12px; color:var(--moira-ink); font-size:12px; line-height:20px; }
-.footer { display:grid; gap:8px; padding:12px 24px max(26px,env(safe-area-inset-bottom)); background:white; }
+.footer { position:relative; display:grid; gap:8px; padding:12px 24px max(26px,env(safe-area-inset-bottom)); background:white; }
+/* Figma 859:25318 saved notice, 16px above the footer buttons; the rise never reaches them. */
+.footer .saveToast { position:absolute; left:50%; bottom:calc(100% + 4px); z-index:2; box-sizing:border-box; min-width:216px; max-width:calc(100% - 32px); margin:0; padding:8px 24px; border:2px solid var(--moira-ink); border-radius:6px; background:#a7ebd9; color:var(--moira-ink); font-size:14px; line-height:24px; font-weight:700; text-align:center; white-space:nowrap; pointer-events:none; animation:saveToast 2.6s ease both; }
+@keyframes saveToast { 0% { opacity:0; transform:translate(-50%,14px); } 12%, 82% { opacity:1; transform:translate(-50%,0); } 100% { opacity:0; transform:translate(-50%,6px); } }
+@keyframes saveToastFade { 0%, 100% { opacity:0; transform:translateX(-50%); } 10%, 85% { opacity:1; transform:translateX(-50%); } }
+@media(prefers-reduced-motion:reduce) { .footer .saveToast { animation-name:saveToastFade; } }
 .badge { align-self:flex-start; width:160px; display:inline-flex; align-items:center; justify-content:center; min-height:32px; padding:5px 12px; background:var(--moira-ink); color:white; border-radius:4px; font-size:12px; line-height:20px; font-weight:700; }
 .introArt { position:relative; height:208px; border:3px solid var(--moira-ink); border-radius:4px; background:var(--moira-subtle); box-shadow:6px 6px 0 var(--moira-ink); }
 .introPhoto { position:absolute; top:6px; left:24px; width:123px; padding:6px; border:3px solid var(--moira-ink); border-radius:4px; background:white; box-shadow:4px 4px 0 var(--moira-ink); transform:rotate(7deg); }
@@ -31,7 +37,8 @@
 .introArt > strong { position:absolute; top:42px; right:12px; width:138px; min-height:104px; display:grid; place-content:center; border:3px solid var(--moira-ink); border-radius:4px; box-shadow:4px 4px 0 var(--moira-ink); background:var(--moira-pink); font-size:24px; line-height:32px; font-weight:900; transform:rotate(-6deg); }
 .photoWindow { padding:8px; }
 .photoWindow :global(.photo-picker-wrap) { margin:0; }
-.photoWindow :global(.photo-picker) { min-height:255px; padding:24px 12px; border:2px dashed var(--moira-ink); border-radius:4px; background:var(--moira-subtle); gap:10px; box-shadow:4px 4px 0 var(--moira-ink); }
+/* Figma 527:3035: 2px dashes 8/6 with a solid 4px inner edge on the right and bottom. CSS dashed borders cannot set dash length, so the dashes are an SVG stroke. */
+.photoWindow :global(.photo-picker) { min-height:255px; padding:24px 12px; border:2px solid transparent; border-radius:4px; background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='100%25' height='100%25' rx='4' fill='none' stroke='%2325232b' stroke-width='4' stroke-dasharray='8 6'/%3E%3C/svg%3E") border-box, linear-gradient(var(--moira-subtle),var(--moira-subtle)) padding-box; gap:10px; box-shadow:inset -4px -4px 0 var(--moira-ink); }
 .photoWindow :global(.photo-picker) strong { font-size:14px; line-height:24px; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
 .photoWindow :global(.photo-picker) > span:not(:global(.upload-plus)) { font-size:12px; line-height:20px; color:var(--moira-muted); }
 .photoWindow :global(.photo-picker) :global(.upload-plus) { width:58px; height:58px; font-size:24px; line-height:32px; color:var(--moira-ink); background:var(--moira-accent); border:0; border-radius:18px; }
@@ -52,21 +59,21 @@
 .lobbyRoster .person img { grid-row:1/3; }
 .lobbyRoster .person span { grid-column:2; }
 .compactRoster { border:0; box-shadow:none; padding:0; margin:0; }
-.compactRoster .people { flex-direction:row; overflow-x:auto; gap:8px; padding:0 4px 4px 0; }
-.compactRoster .person { display:grid; grid-template-columns:28px minmax(0,1fr); grid-template-rows:20px 20px; align-content:center; column-gap:8px; row-gap:0; min-width:140px; flex:1 0 calc((100% - 8px)/2); height:54px; min-height:54px; padding:5px 8px; border:2px solid var(--moira-ink); border-radius:4px; box-shadow:3px 3px 0 var(--moira-ink); background:var(--moira-accent); }
+.compactRoster .people { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; padding:0 3px 3px 0; }
+.compactRoster[data-count="3"] .people { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.compactRoster .person { display:grid; grid-template-columns:28px minmax(0,1fr); grid-template-rows:20px 20px; align-content:center; column-gap:8px; row-gap:0; min-width:0; height:54px; min-height:54px; padding:5px 8px; border:2px solid var(--moira-ink); border-radius:4px; box-shadow:3px 3px 0 var(--moira-ink); background:var(--moira-accent); }
 .compactRoster .person:nth-child(even) { background:var(--moira-pink); }
 .compactRoster .person strong { font-size:12px; line-height:20px; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
-.compactRoster .person > span:not(.initialAvatar) { font-size:12px; line-height:20px; color:var(--moira-muted); grid-column:2; }
-.compactRoster .person .initialAvatar { grid-row:1/3; width:28px; height:28px; display:grid; place-items:center; align-self:center; background:var(--moira-ink); color:white; font-size:14px; line-height:24px; font-weight:700; }
+.compactRoster .person > span { font-size:12px; line-height:20px; color:var(--moira-muted); grid-column:2; }
+.compactRoster .person img { grid-row:1/3; width:24px; height:24px; align-self:center; justify-self:center; }
+.compactRoster[data-count="3"] .person { grid-template-columns:20px minmax(0,1fr); column-gap:5px; padding:5px 6px; }
+.compactRoster[data-count="3"] .person img { width:20px; height:20px; }
+.compactRoster[data-count="3"] .person > span { font-size:11px; white-space:nowrap; letter-spacing:-0.2px; }
 .result { display:block; width:258px; max-width:100%; height:auto; object-fit:contain; margin:0 auto; padding:10px; border:3px solid var(--moira-ink); border-radius:0; background:white; box-shadow:7px 7px 0 var(--moira-ink); }
 .previewPhoto { display:block; width:292px; max-width:100%; max-height:440px; object-fit:contain; margin:auto; }
 .photoStage { background:linear-gradient(white,var(--moira-accent) 45%,white); margin:0 -24px; padding:0 24px; }
-.done { display:flex; align-items:center; gap:10px; background:var(--moira-mint); border:3px solid var(--moira-ink); padding:7px 12px; font-size:12px!important; line-height:20px!important; box-shadow:3px 3px 0 var(--moira-ink); width:100%; }
-.done img { flex:none; width:20px; height:20px; }
-.resultBadge { margin-bottom:-16px; }
 .centered { align-items:center; text-align:center; }
 .centered > .heading { width:100%; }
-.textLink { display:flex; min-height:48px; align-items:center; justify-content:center; color:var(--moira-ink); text-decoration:none; font-size:14px; line-height:24px; font-weight:700; border:0; background:white; }
 .actions { display:flex; gap:8px; width:100%; }
 .share { display:grid; gap:8px; }
 .shareRow { display:flex; gap:8px; align-items:center; justify-content:space-between; border:1px solid var(--moira-subtle); border-radius:14px; padding:0 14px; min-height:48px; }
@@ -105,11 +112,16 @@
 .processingState .description { font-size:12px; line-height:20px; }
 .errorCard { border:2px solid var(--moira-ink); border-radius:4px; background:var(--moira-pink); padding:12px 16px; box-shadow:4px 4px 0 var(--moira-ink); }
 .errorCard strong { font-size:14px; line-height:24px; }
-.errorCard p { font-size:12px; line-height:20px; margin-top:4px; }
+.errorCard p { font-size:12px; line-height:20px; margin-top:4px; white-space:pre-line; }
 .failureCharacter { width:96px; height:96px; object-fit:contain; }
 .processingCharacters { width:calc(100% + 48px); max-width:402px; height:auto; object-fit:contain; margin-bottom:-48px; }
 .content .processingNote { font-size:12px; line-height:20px; color:var(--moira-muted); }
-.savePhoto { width:290px; max-width:100%; height:auto; max-height:55dvh; object-fit:contain; align-self:flex-start; }
+.savePhoto { width:auto; max-width:min(258px,100%); max-height:55dvh; align-self:center; }
+/* Until the photo arrives: keep the frame's size and show a soft moving shimmer. */
+.photoLoading { min-height:120px; background:linear-gradient(100deg, white 35%, var(--moira-accent) 50%, white 65%) 0 0/250% 100%; animation:photoShimmer 1.4s linear infinite; }
+.result.photoLoading { width:min(258px,100%); }
+@keyframes photoShimmer { from { background-position:100% 0; } to { background-position:0 0; } }
+@media(prefers-reduced-motion:reduce) { .photoLoading { animation:none; background:var(--moira-subtle); } }
 .globalStatus { width:100%; max-width:338px; padding:12px 16px; border:2px solid var(--moira-ink); border-radius:4px; box-shadow:4px 4px 0 var(--moira-ink); background:white; }
 .globalStatus strong { font-size:14px; line-height:24px; }
 .globalStatus p { margin-top:4px; font-size:12px; line-height:20px; }
@@ -120,4 +132,13 @@
 .photoError { color:var(--moira-ink,#25232b); width:100%; max-width:354px; align-self:center; }
 .photoError button { margin-top:12px; min-height:44px; width:100%; padding:8px 12px; border:2px solid var(--moira-ink,#25232b); border-radius:4px; box-shadow:3px 3px 0 var(--moira-ink,#25232b); background:white; color:var(--moira-ink,#25232b); font:700 14px/24px var(--moira-font,inherit); cursor:pointer; }
 .lightbox .photoError { margin:24px auto; }
+/* Room delete dialog keeps its red action but uses the Neo button shape. */
+.shell :global(.delete-room-dialog .delete-room-buttons) { gap:12px; margin-top:24px; padding:0 4px 4px 0; }
+.shell :global(.delete-room-dialog .delete-room-buttons) button { flex:1 1 0; min-width:0; min-height:56px; padding:10px 8px; border:2px solid var(--moira-ink); border-radius:4px; box-shadow:4px 4px 0 var(--moira-ink); font:700 16px/24px var(--moira-font); white-space:nowrap; }
+.shell :global(.delete-room-dialog .delete-room-buttons) button:first-child { background:white; color:var(--moira-ink); }
+.shell :global(.delete-room-dialog .delete-room-buttons) button:last-child { flex-grow:1.5; background:#e02e38; color:white; }
+@media(max-width:360px) { .shell :global(.delete-room-dialog .delete-room-buttons) { flex-direction:column-reverse; } }
 .shell .imageButton:disabled { opacity:1; cursor:wait; }
+
+/* A room dialog shown over the editor sits outside the screen frame: the host takes the frame's theme colors and Neo button styles without adding a layout box (④ N-31). */
+.shell.dialogHost { display:contents; }

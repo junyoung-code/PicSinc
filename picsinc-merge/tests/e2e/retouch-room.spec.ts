@@ -13,7 +13,7 @@ async function backend(page:Page,initialRoom:CollaborationView,png:Buffer,width:
  const actions:string[]=[];
  let releaseSave:(()=>void)|undefined; let saveGate:Promise<void>|undefined;
  let claims:Array<{regionId:string;participantId:string;nickname:string}>=[];
- const snapshot=()=>({session:{id:'session',inviteToken:roomId,ownerParticipantId:'owner',originalAssetId:'original',version:5,createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+86400000).toISOString()},currentParticipantId:participantId,participants:[{id:'owner',sessionId:'session',nickname:'민선',submitted:state.completedIds.includes('owner')},{id:'friend',sessionId:'session',nickname:'예솔',submitted:true}],assets:[{id:'original',kind:'original',width,height,contentType:'image/png'}],originalSelections:initialRoom.personalToken&&mask?[{participantId,maskAssetId:'mask',selectedRegionIds:['region-1']}]:[],selections:[],result:null});
+ const snapshot=()=>({session:{id:'session',inviteToken:roomId,ownerParticipantId:'owner',originalAssetId:'original',version:5,createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+86400000).toISOString()},currentParticipantId:participantId,participants:[{id:'owner',sessionId:'session',nickname:'민선',submitted:state.completedIds.includes('owner')},{id:'friend',sessionId:'session',nickname:'예솔',submitted:true},...(state.rosterIds.includes('third')?[{id:'third',sessionId:'session',nickname:'지연',submitted:state.completedIds.includes('third')}]:[])].sort((x,y)=>(state as {byId?:boolean}).byId?x.id.localeCompare(y.id):0),assets:[{id:'original',kind:'original',width,height,contentType:'image/png'}],originalSelections:initialRoom.personalToken&&mask?[{participantId,maskAssetId:'mask',selectedRegionIds:['region-1']}]:[],selections:[],result:null});
  await page.route('**/api/**',async route=>{
   const request=route.request(),path=new URL(request.url()).pathname;
   const json=(data:unknown,status=200)=>route.fulfill({status,json:data});
@@ -78,10 +78,70 @@ test('whole-photo touch has no face controls, keeps prior pixels on restore, ret
  expect(server.state().editorId).toBe('owner');await page.getByRole('button',{name:'재시도',exact:true}).click();
  await expect(page.getByRole('button',{name:'터치 보정 건너뛰기'})).toBeEnabled();expect(server.saved().state.scope).toBe('global');
  await page.getByRole('button',{name:'터치 보정 건너뛰기'}).click();await page.getByRole('button',{name:'건너뛰고 결과 확인',exact:true}).click();await page.getByRole('button',{name:'최종 완료',exact:true}).click();await page.getByRole('button',{name:'사진 최종 완료',exact:true}).click();
- await expect(page.getByRole('button',{name:'사진 저장',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'사진 저장하기',exact:true})).toBeVisible();
  await page.reload();await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기'})).toHaveCount(0);
- const download=page.waitForEvent('download');await page.getByRole('button',{name:'사진 저장',exact:true}).click();expect((await download).suggestedFilename()).toBe('moira-final.png');
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'사진 저장하기',exact:true}).click();expect((await download).suggestedFilename()).toBe('moira-final.png');
+ const notice=page.getByRole('status').filter({hasText:'✓ 사진을 저장했어요'});await expect(notice).toBeVisible();
+ await page.waitForTimeout(700);await page.screenshot({path:'private/retouch-e2e/room-save-notice.png'});
+ await expect(notice).toHaveCount(0,{timeout:5000});
  await page.screenshot({path:'private/retouch-e2e/room-final.png',fullPage:true});
+ // B-037: phone back on the save screen returns to the finished photo, and saving again reopens it.
+ const roomUrl=page.url();await page.goBack();await expect(page.getByRole('img',{name:'확정된 최종 사진'})).toBeVisible();expect(page.url()).toBe(roomUrl);
+ await page.getByRole('button',{name:'사진 저장하기',exact:true}).click();await expect(page.getByRole('img',{name:'저장할 완성 사진'})).toBeVisible();
+ await page.goBack();await expect(page.getByRole('img',{name:'확정된 최종 사진'})).toBeVisible();
+});
+
+test('whole-photo touch tells the user when the classic budget is full and starts fresh after saving',async({page})=>{
+ await page.setViewportSize({width:375,height:667}); // small phones must see the notice without scrolling (B-035)
+ const width=400,height=400,data=Buffer.alloc(width*height*3);
+ for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*3;data[i]=(x*7)%256;data[i+1]=(y*5)%256;data[i+2]=100;}
+ const png=await sharp(data,{raw:{width,height,channels:3}}).png().toBuffer();await backend(page,initial('global'),png,width,height);
+ await page.goto(`/sessions/${roomId}/collaboration`);
+ await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();
+ const save=page.getByRole('button',{name:'전체 사진 편집 완료',exact:true}),canvas=page.locator('canvas[aria-label="보정 미리보기"]');await expect(save).toBeEnabled();
+ const scrub=async()=>{const b=(await canvas.boundingBox())!,x=b.x+b.width*.2,y=b.y+b.height*.3;await page.mouse.move(x,y);await page.mouse.down();for(let k=0;k<16;k++)await page.mouse.move(x+(k%2?b.width*.5:0),y+k*3,{steps:25});await page.mouse.up();};
+ const notice=page.getByRole('status').filter({hasText:'다듬을 수 있는 만큼 다 썼어요'});
+ for(let i=0;i<6&&!(await notice.count());i++)await scrub();
+ await expect(notice).toBeVisible();await expect(notice).toContainText('다시 열면 이어서 다듬을 수 있어요');await expect(notice).toBeInViewport();
+ await save.click();
+ await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();await expect(save).toBeEnabled();
+ const before=await pixels(page),b=(await canvas.boundingBox())!,x=b.x+b.width*.5,y=b.y+b.height*.5;
+ await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+20,y,{steps:4});await page.mouse.up();
+ await expect.poll(async()=>(await pixels(page)).equals(before)).toBeFalsy();
+ await expect(notice).toHaveCount(0);
+});
+
+test('back arrow in whole-photo step asks before leaving the room',async({page})=>{
+ const png=await sharp({create:{width:200,height:200,channels:3,background:'#888'}}).png().toBuffer();await backend(page,initial('global'),png,200,200);
+ await page.goto(`/sessions/${roomId}/collaboration`);
+ await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'이전 화면',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'보정방에서 나갈까요?'});
+ await expect(dialog).toBeVisible();await expect(dialog).toContainText('대표자가 나가면');
+ await dialog.getByRole('button',{name:'계속 보정하기',exact:true}).click();
+ await expect(dialog).toHaveCount(0);await expect(page).toHaveURL(new RegExp(`/sessions/${roomId}/collaboration$`));
+ // Phone back gesture (browser history) asks the same question instead of leaving.
+ await page.goBack();
+ await expect(dialog).toBeVisible();await expect(page).toHaveURL(new RegExp(`/sessions/${roomId}/collaboration$`));
+ await dialog.getByRole('button',{name:'계속 보정하기',exact:true}).click();await expect(dialog).toHaveCount(0);
+ // Opening and closing the whole-photo editor must not trigger the leave question.
+ await page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true}).click();
+ await expect(page.getByRole('button',{name:'전체 사진 편집 완료',exact:true})).toBeEnabled();
+ await page.getByRole('button',{name:'뒤로 가기',exact:true}).click();
+ await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true})).toBeVisible();
+ await page.waitForTimeout(500);await expect(dialog).toHaveCount(0);
+ await page.goBack();await expect(dialog).toBeVisible();
+ await dialog.getByRole('button',{name:'나가기',exact:true}).click();
+ await expect(page).toHaveURL(/\/$/);
+});
+
+test('after the final step the first phone back leaves the room',async({page})=>{
+ const png=await sharp({create:{width:200,height:200,channels:3,background:'#888'}}).png().toBuffer();await backend(page,initial('review'),png,200,200);
+ await page.goto('/retouch');await page.goto(`/sessions/${roomId}/collaboration`);
+ await page.getByRole('button',{name:'최종 완료',exact:true}).click();await page.getByRole('button',{name:'사진 최종 완료',exact:true}).click();
+ await expect(page.getByRole('heading',{name:/우리 사진 완성/})).toBeVisible();
+ await page.waitForTimeout(500);
+ await page.goBack();await expect(page).toHaveURL(/\/retouch$/);
 });
 
 test('personal editor uses the server mask for preview and records saved controls',async({page})=>{
@@ -132,6 +192,72 @@ for (const actionLabel of ['완료', '이대로 진행하기']) test(`selected r
  await next.click();await expect(page.getByRole('button',{name:'내 얼굴 보정 완료',exact:true})).toBeEnabled({timeout:100000});
 });
 
+test('leaving region edit with changes asks in the Figma layout: 나가기 on top, 계속 편집 below (a4)',async({page})=>{
+ const width=400,height=400,png=await sharp({create:{width,height,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ const mask=await sharp({create:{width,height,channels:3,background:'#ffffff'}}).png().toBuffer();
+ const server=await backend(page,initial('personal'),png,width,height,mask);server.claim();
+ await page.goto(`/sessions/${roomId}/collaboration`);await expect(page.getByRole('button',{name:'이대로 진행하기',exact:true})).toBeEnabled();
+ for(const viewport of [390,320]){
+  await page.setViewportSize({width:viewport,height:844});
+  await page.getByRole('button',{name:'영역 편집하기',exact:true}).click();
+  // The fixture mask already covers everything, so erase to make a real change.
+  await page.getByRole('button',{name:'지우기',exact:true}).click();
+  const box=(await page.locator('canvas').first().boundingBox())!;
+  await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2+15,box.y+box.height/2+20,{steps:4});await page.mouse.up();
+  await page.getByRole('button',{name:'영역 편집 닫기',exact:true}).click();
+  const dialog=page.getByRole('alertdialog',{name:'변경사항을 저장하지 않고 나갈까요?'});await expect(dialog).toBeVisible();
+  const leave=dialog.getByRole('button',{name:'나가기',exact:true}),stay=dialog.getByRole('button',{name:'계속 편집',exact:true});
+  const [top,bottom]=[(await leave.boundingBox())!,(await stay.boundingBox())!];
+  expect(bottom.y-top.y-top.height).toBe(14);expect(top.width).toBe(bottom.width);expect(top.height).toBe(56);
+  expect(await leave.evaluate(e=>getComputedStyle(e).backgroundColor)).toBe('rgb(232, 222, 255)');
+  expect(await stay.evaluate(e=>getComputedStyle(e).backgroundColor)).toBe('rgb(255, 255, 255)');
+  expect(await dialog.evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);
+  await page.screenshot({path:`private/retouch-e2e/region-leave-${viewport}.png`});
+  await stay.click();await expect(dialog).toHaveCount(0);await expect(page.getByRole('button',{name:'영역 편집 닫기',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'영역 편집 닫기',exact:true}).click();await leave.click();
+  await expect(page.getByRole('button',{name:'영역 편집 닫기',exact:true})).toHaveCount(0);
+ }
+});
+
+test('personal editor roster shows me first and updates friends live',async({page})=>{
+ const width=400,height=400,png=await sharp({create:{width,height,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ const mask=await sharp({create:{width,height,channels:3,background:'#ffffff'}}).png().toBuffer();
+ const state={...initial('personal'),completedIds:[],personalToken:'personal-token',personalMaskAssetId:'mask'};
+ const server=await backend(page,state,png,width,height,mask);
+ await page.goto(`/retouch/rooms/${roomId}`);await page.getByRole('button',{name:'내 영역 보정 이어가기'}).click();
+ await expect(page.getByRole('button',{name:'내 얼굴 보정 완료',exact:true})).toBeEnabled({timeout:100000});
+ const people=page.getByRole('region',{name:'친구 보정 현황'}).getByRole('listitem');
+ await expect(people).toHaveCount(2);
+ const friend=people.filter({hasText:'예솔'});
+ await expect(friend).toContainText('보정 중');
+ // Room polling alone (no focus event) must update the card while the editor is open.
+ server.update({completedIds:['friend']});
+ await expect(friend).toContainText('보정 완료',{timeout:10000});
+ await expect(people.nth(0)).toHaveText(/^나\s*보정 중$/);
+ await expect(people.nth(1)).toHaveText(/^예솔\s*보정 완료$/);
+ await expect(people.locator('img')).toHaveCount(2);
+ await page.screenshot({path:'private/retouch-e2e/room-personal-roster.png'});
+});
+
+test('three-person roster keeps every friend and status visible on narrow phones (B-038)',async({page})=>{
+ const width=400,height=400,png=await sharp({create:{width,height,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ const mask=await sharp({create:{width,height,channels:3,background:'#ffffff'}}).png().toBuffer();
+ const state={...initial('personal'),rosterIds:['owner','friend','third'],completedIds:['third'],personalToken:'personal-token',personalMaskAssetId:'mask'};
+ await backend(page,state,png,width,height,mask);
+ await page.goto(`/retouch/rooms/${roomId}`);await page.getByRole('button',{name:'내 영역 보정 이어가기'}).click();
+ await expect(page.getByRole('button',{name:'내 얼굴 보정 완료',exact:true})).toBeEnabled({timeout:100000});
+ const people=page.getByRole('region',{name:'친구 보정 현황'}).getByRole('listitem');
+ await expect(people).toHaveCount(3);await expect(people.nth(2)).toHaveText(/^지연\s*보정 완료$/);
+ // a2: everyone has their own character (host lilac, then mint, peach as in Figma 527:3097).
+ expect(new Set(await people.locator('img').evaluateAll(imgs=>imgs.map(img=>(img as HTMLImageElement).src.split('/').pop())))).toEqual(new Set(['lilac.png','mint.png','peach.png']));
+ for(const viewport of [{width:390,height:844},{width:320,height:568}]){
+  await page.setViewportSize(viewport);
+  const cards=await people.evaluateAll(items=>items.map(item=>{const box=item.getBoundingClientRect(),status=item.querySelector('span')!;return {left:box.left,right:box.right,top:box.top,clipped:status.scrollWidth>status.clientWidth||status.getBoundingClientRect().right>box.right};}));
+  for(const card of cards){expect(card.left).toBeGreaterThanOrEqual(0);expect(card.right).toBeLessThanOrEqual(viewport.width);expect(card.clipped).toBeFalsy();expect(card.top).toBe(cards[0].top);}
+  await page.screenshot({path:`private/retouch-e2e/room-roster-3-${viewport.width}.png`});
+ }
+});
+
 test('editor back and cancel return to one room history entry',async({page})=>{
  const png=await sharp({create:{width:400,height:400,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  await backend(page,initial('global'),png,400,400);
@@ -141,7 +267,8 @@ test('editor back and cancel return to one room history entry',async({page})=>{
  await page.goBack();await expect(open).toBeVisible();
  await open.click();await expect(page.getByRole('button',{name:'전체 사진 편집 완료',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'뒤로 가기',exact:true}).click();await expect(open).toBeVisible();
- await page.goBack();await expect(page).toHaveURL(/\/retouch$/);
+ // Editors leave no extra entries; the next back is a leave attempt, which asks first (B-034).
+ await page.goBack();await expect(page.getByRole('dialog',{name:'보정방에서 나갈까요?'})).toBeVisible();await expect(page).toHaveURL(new RegExp(`/sessions/${roomId}/collaboration$`));
 });
 
 
@@ -190,12 +317,21 @@ test('lobby starts recognition and personal completion waits for everyone', asyn
  await expect(page.getByRole('button',{name:'완료',exact:true})).toHaveCount(0);
 });
 
+test('my own unexpired lease after closing the editor does not ask me to wait', async ({page}) => {
+ const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ await backend(page,{...initial('global'),editorId:'owner',leaseUntil:new Date(Date.now()+90000).toISOString()},png,40,40);
+ await page.goto(`/retouch/rooms/${roomId}`);
+ await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true})).toBeEnabled();
+ await expect(page.getByText('잠시 기다려 주세요')).toHaveCount(0);
+});
+
 test('other editor blocks global entry and review blocks every new edit', async ({page}) => {
  const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  const server=await backend(page,{...initial('global'),editorId:'friend',leaseUntil:new Date(Date.now()+90000).toISOString()},png,40,40);
  await page.goto(`/retouch/rooms/${roomId}`);
  await expect(page.getByRole('heading',{name:'예솔님이 전체 사진을 보정하고 있어요'})).toBeVisible();
  await expect(page.getByRole('button',{name:'보정 대기 중',exact:true})).toBeDisabled();
+ await expect(page.getByText('편집이 끝나면 터치 보정하거나 건너뛸 수 있어요.',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'터치 보정 건너뛰기'})).toHaveCount(0);
  server.update({editorId:null,leaseUntil:null,latestAssetId:'friend-saved'});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await expect(page.getByRole('button',{name:'터치 보정으로 전체 다듬기',exact:true})).toBeEnabled();
@@ -211,6 +347,51 @@ test('other editor blocks global entry and review blocks every new edit', async 
  await expect(page.getByRole('button',{name:'완료',exact:true})).toHaveCount(0);
 });
 
+test('lobby and start confirm list the host first even when the server sorts by id', async ({page,context}) => {
+ const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ // By id the host ('owner') lands between 'friend' and 'third', which is what put the host in the middle.
+ const state={...initial('lobby'),rosterIds:[],completedIds:[],byId:true} as ReturnType<typeof initial>;
+ const friend=await context.newPage();await backend(friend,{...state,rosterIds:['owner','friend','third']},png,40,40,undefined,'friend');
+ await friend.goto(`/retouch/rooms/${roomId}`);
+ const friendList=friend.getByRole('region',{name:'친구 보정 현황'}).getByRole('listitem');
+ await expect(friendList).toHaveCount(3);await expect(friendList.first()).toContainText('민선');await expect(friendList.nth(1)).toContainText('예솔 (나)');
+ await friend.close();
+ await backend(page,{...state,rosterIds:['owner','friend','third']},png,40,40);
+ await page.goto(`/retouch/rooms/${roomId}`);
+ const list=page.getByRole('region',{name:'친구 보정 현황'}).getByRole('listitem');
+ await expect(list).toHaveCount(3);await expect(list.first()).toContainText('민선 (나)');
+ await page.getByRole('button',{name:'시작하기',exact:true}).click();
+ await expect(list.first()).toContainText('민선');await expect(list.nth(1)).toContainText('예솔');
+});
+
+test('lobby shows short join and copy notices, and leaving asks first', async ({page,context}) => {
+ await context.grantPermissions(['clipboard-read','clipboard-write']);
+ const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ const server=await backend(page,initial('lobby'),png,40,40);
+ await page.goto(`/retouch/rooms/${roomId}`);
+ await expect(page.getByRole('heading',{name:'함께할 친구를 초대해요'})).toBeVisible();
+ await expect(page.getByText('님이 들어왔어요')).toHaveCount(0);
+ await page.getByRole('button',{name:'도움말',exact:true}).click(); // help only informs: one button (N-26)
+ const help=page.getByRole('dialog');await expect(help.getByRole('button')).toHaveCount(1);await help.getByRole('button',{name:'확인',exact:true}).click();await expect(help).toHaveCount(0);
+ server.update({rosterIds:['owner','friend','third']});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await expect(page.getByRole('status').filter({hasText:'지연님이 들어왔어요'})).toBeVisible();
+ await expect(page.getByText('지연님이 들어왔어요')).toHaveCount(0,{timeout:6000});
+ await page.getByRole('button',{name:'초대 링크 복사'}).click();
+ await expect(page.getByRole('status').filter({hasText:'초대 링크를 복사했어요'})).toBeVisible();
+ await expect(page.getByText('초대 링크를 복사했어요')).toHaveCount(0,{timeout:6000});
+ await page.goBack();
+ await expect(page.getByRole('dialog',{name:'보정방에서 나갈까요?'})).toBeVisible();
+ await page.getByRole('button',{name:'계속 기다리기',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'함께할 친구를 초대해요'})).toBeVisible();
+ const friend=await context.newPage();await backend(friend,initial('lobby'),png,40,40,undefined,'friend');
+ await friend.goto(`/retouch/rooms/${roomId}`);
+ await friend.getByRole('button',{name:'보정방 나가기',exact:true}).click();
+ await expect(friend.getByRole('dialog',{name:'보정방에서 나갈까요?'})).toContainText('이어서 참여할 수 있어요');
+ await friend.getByRole('button',{name:'나가기',exact:true}).click();
+ await expect(friend).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+ await friend.close();
+});
+
 test('participant waits for owner finalization and retries the same final PNG', async ({page,context}) => {
  const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  const server=await backend(page,initial('review'),png,40,40,undefined,'friend');
@@ -218,9 +399,10 @@ test('participant waits for owner finalization and retries the same final PNG', 
  await expect(page.getByRole('heading',{name:'대표자의 최종 완료를 기다려요'})).toBeVisible();
  await expect(page.getByRole('button',{name:'최종 완료',exact:true})).toHaveCount(0);
  server.update({phase:'final'});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
- const save=page.getByRole('button',{name:'사진 저장',exact:true});await expect(save).toBeVisible();
+ await expect(page.getByRole('heading',{name:/최종 보정본을/})).toBeVisible(); // friends see the owner's saving screen for a moment
+ const save=page.getByRole('button',{name:'사진 저장하기',exact:true});await expect(save).toBeVisible();
  server.failNextDownload();await save.click();await expect(page.getByRole('status').filter({hasText:'사진 저장에 실패'})).toBeVisible();
- const getPNG=async(p:Page)=>{const download=p.waitForEvent('download');await p.getByRole('button',{name:'사진 저장',exact:true}).click();const file=await download;expect(file.suggestedFilename()).toBe('moira-final.png');return readFile((await file.path())!);};
+ const getPNG=async(p:Page)=>{const download=p.waitForEvent('download');await p.getByRole('button',{name:'사진 저장하기',exact:true}).click();const file=await download;expect(file.suggestedFilename()).toBe('moira-final.png');return readFile((await file.path())!);};
  expect((await getPNG(page)).equals(png)).toBeTruthy();
  const owner=await context.newPage();await backend(owner,initial('final'),png,40,40);await owner.goto(`/retouch/rooms/${roomId}`);
  expect((await getPNG(owner)).equals(png)).toBeTruthy();await owner.close();
@@ -292,11 +474,13 @@ test('unsaved global back can stay or discard, and lease loss blocks saving',asy
  const save=page.getByRole('button',{name:'전체 사진 편집 완료',exact:true});await expect(save).toBeEnabled();
  const box=(await page.locator('canvas[aria-label="보정 미리보기"]').boundingBox())!;
  await page.mouse.move(box.x+box.width*.3,box.y+box.height*.3);await page.mouse.down();await page.mouse.move(box.x+box.width*.4,box.y+box.height*.3,{steps:4});await page.mouse.up();
- page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('button',{name:'뒤로 가기',exact:true}).click();await expect(save).toBeEnabled();
+ const discard=page.getByRole('dialog',{name:'변경사항을 저장하지 않고 나갈까요?'});
+ await page.getByRole('button',{name:'뒤로 가기',exact:true}).click();await expect(discard).toBeVisible();await discard.getByRole('button',{name:'계속 보정하기',exact:true}).click();await expect(save).toBeEnabled();
+ await page.goBack();await expect(discard).toBeVisible();await discard.getByRole('button',{name:'계속 보정하기',exact:true}).click();await expect(save).toBeEnabled(); // phone back: app dialog, not the browser's (N-25)
  expect(server.actions).not.toContain('cancel');
  server.update({editorId:'friend',editToken:null,leaseUntil:new Date(Date.now()+90000).toISOString()});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await expect(page.getByRole('alert').filter({hasText:'편집권이 만료'})).toBeVisible();await expect(save).toBeDisabled();
- page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'뒤로 가기',exact:true}).click();
+ await page.getByRole('button',{name:'뒤로 가기',exact:true}).click();await discard.getByRole('button',{name:'나가기',exact:true}).click();
  await expect(page.getByRole('button',{name:'보정 대기 중',exact:true})).toBeVisible();
  expect(server.actions).not.toContain('save');
 });
@@ -369,12 +553,12 @@ test('latest global editor is shown and finalization failure preserves the same 
  await expect(page.locator('[data-loading-characters]')).toHaveCount(0);
  expect(server.state().phase).toBe('review');expect(server.state().latestAssetId).toBe('result');
  await page.getByRole('button',{name:'재시도',exact:true}).click();
- await expect(page.getByRole('button',{name:'사진 저장',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'사진 저장하기',exact:true})).toBeVisible();
  expect(server.state().latestAssetId).toBe('result');
- const download=page.waitForEvent('download');await page.getByRole('button',{name:'사진 저장',exact:true}).click();await download;
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'사진 저장하기',exact:true}).click();await download;
  await expect(page.getByRole('img',{name:'저장할 완성 사진'})).toHaveAttribute('src',`${base}/assets/result`);
  await page.getByRole('button',{name:'닫기',exact:true}).click();
- await expect(page.getByRole('button',{name:'사진 저장',exact:true})).toBeVisible();
+ await page.waitForURL(url=>new URL(url).pathname==='/');
 });
 
 test('recognition retries never expose selection actions before ready', async ({page}) => {
