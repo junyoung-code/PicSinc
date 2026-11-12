@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { regionLabelPosition, regionOwnerLabel, withRo } from "./region-labels";
+import { fitRegionLabel, regionLabelPosition, regionOwnerLabel, withRo } from "./region-labels";
 
 test("same nickname does not turn another participant's claimed region into mine", () => {
   const claims = [{ regionId: "face-a", participantId: "other", nickname: "준영" }];
@@ -37,4 +37,13 @@ test("participation copy picks 로 or 으로 from the last letter", () => {
   assert.equal(withRo("민선"), "으로");
   assert.equal(withRo("예솔"), "로");
   assert.equal(withRo("Jun"), "(으)로");
+});
+
+test("long names over the photo are shortened but keep (나)", () => {
+  const measure = (value: string) => [...value].length * 10;
+  assert.equal(fitRegionLabel("민재 (나)", 100, measure), "민재 (나)");
+  const fitted = fitRegionLabel("아주아주긴이름입니다정말 (나)", 100, measure);
+  assert.ok(fitted.endsWith("… (나)"));
+  assert.ok(measure(fitted) <= 100);
+  assert.equal(fitRegionLabel("아주아주긴이름입니다정말", 60, measure), "아주아주긴…");
 });

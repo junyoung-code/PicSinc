@@ -6,6 +6,7 @@ import styles from '@/features/retouch-room-flow/room.module.css';
 import { photoError, rememberRecovery, usePreview } from '@/features/mobile-flow/client';
 import { encodedSize, validateDimensions } from '@/features/face-retouch/image-io/headers';
 import { sendUpload } from '@/core/remote-client';
+import { NICKNAME_MAX_LENGTH } from "@/core/nickname";
 
 export default function NewRetouchRoom() {
   const [step, setStep] = useState<'name' | 'photo'>('name');
@@ -65,7 +66,7 @@ export default function NewRetouchRoom() {
     {step === 'name' ? <>
       <div className={styles.heading}><h1 className={styles.heroTitle}>다같이 찍은 사진<br/>다같이 보정하자</h1><p className="description">친구들과 실시간으로 모여서<br/>각자 얼굴만 보정해요.</p></div>
       <div className={styles.introArt} aria-hidden="true"><div className={styles.introPhoto}><img src="/images/figma-current/character-photo.png" alt="" /></div><strong>각자 보정<br/>같이 완성!</strong></div>
-      <form onSubmit={event => { event.preventDefault(); toPhoto(); }}><label className="name-field">내 이름<input ref={nameInput} value={nickname} onChange={event => setNickname(event.target.value)} maxLength={40} autoComplete="nickname" placeholder="친구들이 알아볼 이름" required /></label></form>
+      <form onSubmit={event => { event.preventDefault(); toPhoto(); }}><label className="name-field">내 이름<input ref={nameInput} value={nickname} onChange={event => setNickname(event.target.value)} maxLength={NICKNAME_MAX_LENGTH} autoComplete="nickname" placeholder="친구들이 알아볼 이름" required /></label></form>
       <div className={styles.steps}><span>01 방 준비</span><span>02 얼굴 선택</span><span>03 함께 보정</span><span>04 사진 완성</span></div>
     </> : <>
       <div className={styles.heading}><h1>모두가 보정할<br/>원본을 올려주세요</h1><p className="description">얼굴이 선명하게 나온 원본을 그대로 올려주세요.</p></div>
