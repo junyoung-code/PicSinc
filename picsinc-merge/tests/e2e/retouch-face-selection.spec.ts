@@ -152,6 +152,9 @@ test('personal overview filters 16 detections to my four faces and saves every f
     return route.fallback();
   });
   await saveButton(page).click();
+  await expect(page.getByRole('heading', { name: '내 보정 결과를 확인해주세요' })).toBeVisible();
+  expect(server.saved()).toBeUndefined();
+  await page.getByRole('button', { name: '내 보정 저장', exact: true }).click();
   await expect(page.getByRole('heading', { name: '내 보정을 저장하고 있어요' })).toBeVisible();
   await expect(page.getByRole('region', { name: '보정 저장 중' }).locator('[data-loading-characters]')).toBeVisible();
   releaseSave();
@@ -188,6 +191,9 @@ test('personal detection scans selected ROIs directly and preserves original coo
   await page.locator('#retouch-strength').fill('30');
   await expect(saveButton(page)).toBeEnabled();
   await saveButton(page).click();
+  await expect(page.getByRole('heading', { name: '내 보정 결과를 확인해주세요' })).toBeVisible();
+  expect(server.saved()).toBeUndefined();
+  await page.getByRole('button', { name: '내 보정 저장', exact: true }).click();
   await expect(page.getByRole('heading', { name: '내 보정이 끝났어요', exact: true })).toBeVisible();
   const record = server.saved()!;
   expect(record.faces).toHaveLength(4);
@@ -219,4 +225,97 @@ for (const failure of [
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('moira:face-detection-failures')??'[]'))).toEqual(logs);
   fail=false;await open(page);await overview(page,4);
   await expect(saveButton(page)).toBeEnabled();expect(logs).toHaveLength(1);
+});
+
+
+test('cut cancel restores face and touch edits; apply and review preserve other cuts', async ({ page }) => {
+  const server = await backend(page, detected);
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await open(page);
+  const cancel = page.getByRole('button', { name: '현재 컷 보정 취소', exact: true });
+  const apply = page.getByRole('button', { name: '현재 컷 보정 적용', exact: true });
+  const canvas = page.locator('canvas[aria-label="보정 미리보기"]');
+  const pixels = () => canvas.evaluate((c: HTMLCanvasElement) => c.toDataURL());
+  const stroke = async () => {
+    const box = (await canvas.locator('..').locator('..').boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 16, box.y + box.height / 2, { steps: 4 });
+    await page.mouse.up(); await expect(saveButton(page)).toBeEnabled();
+  };
+  const original = await pixels();
+  await expect(cancel).toHaveCount(0);
+  await faceButton(page, 1).click();
+  for (const group of ['얼굴형', '눈', '입술', '코', '눈썹']) {
+    await page.getByRole('navigation', { name: '보정 부위' }).getByRole('button', { name: group, exact: true }).click();
+    await expect(cancel).toBeVisible(); await expect(apply).toBeVisible();
+  }
+  await page.getByRole('navigation', { name: '보정 부위' }).getByRole('button', { name: '얼굴형', exact: true }).click();
+  await page.locator('#retouch-strength').fill('25'); await expect(apply).toBeEnabled();
+  // Tapping the enlarged photo must not replace this visit's cancel baseline.
+  await canvas.locator('..').locator('..').click({ position: { x: 150, y: 150 } });
+  await page.getByRole('button', { name: '터치 보정', exact: true }).click();
+  await stroke();
+  await page.getByRole('button', { name: '복원', exact: true }).click(); await stroke();
+  expect(await pixels()).not.toBe(original);
+  await cancel.click(); await overview(page, 4); await expect(saveButton(page)).toBeEnabled();
+  expect(await pixels()).toBe(original);
+
+  await faceButton(page, 1).click(); await expect(page.locator('#retouch-strength')).toHaveValue('0');
+  await page.locator('#retouch-strength').fill('65'); await expect(apply).toBeEnabled();
+  await page.getByRole('button', { name: '터치 보정', exact: true }).click(); await stroke();
+  const accepted = await pixels();
+  await apply.click(); await overview(page, 4);
+  await faceButton(page, 1).click(); await page.locator('#retouch-strength').fill('-25');
+  await page.getByRole('button', { name: '터치 보정', exact: true }).click(); await stroke();
+  await page.getByRole('button', { name: '복원', exact: true }).click(); await stroke();
+  await cancel.click(); await overview(page, 4); await expect(saveButton(page)).toBeEnabled();
+  expect(await pixels()).toBe(accepted);
+
+  await faceButton(page, 2).click(); await page.locator('#retouch-strength').fill('-40'); await expect(apply).toBeEnabled();
+  const panel = (await page.getByRole('region', { name: '보정 도구' }).boundingBox())!;
+  const left = (await cancel.boundingBox())!, right = (await apply.boundingBox())!;
+  expect(left.width).toBe(44); expect(right.height).toBe(44); expect(left.y).toBe(right.y);
+  expect(left.x).toBeLessThan(right.x); expect(right.y + right.height).toBeLessThanOrEqual(panel.y + panel.height);
+  await page.screenshot({ path: 'private/retouch-e2e/cut-actions.png', fullPage: true });
+  for (const width of [320, 390]) {
+    await page.setViewportSize({width, height:874});
+    const button = (await apply.boundingBox())!;
+    expect(button.x + button.width).toBeLessThanOrEqual(width);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  }
+  await page.setViewportSize({width:402, height:874});
+  await apply.click(); await overview(page, 4);
+  await faceButton(page, 1).click(); await expect(page.locator('#retouch-strength')).toHaveValue('65');
+  await cancel.click(); await overview(page, 4);
+  await faceButton(page, 2).click(); await expect(page.locator('#retouch-strength')).toHaveValue('-40');
+  await page.locator('#retouch-strength').fill('30'); await expect(saveButton(page)).toBeEnabled();
+  const finalPixels = await pixels();
+  await saveButton(page).click();
+  await expect(page.getByRole('heading', { name: '내 보정 결과를 확인해주세요' })).toBeVisible();
+  await expect(page.getByRole('region', { name: '보정 도구' })).toHaveCount(0);
+  expect(server.saved()).toBeUndefined(); expect(server.actions).not.toContain('personal-save');
+  expect(await pixels()).toBe(finalPixels);
+  await page.screenshot({ path: 'private/retouch-e2e/personal-review.png', fullPage: true });
+  await page.locator('h1').click(); await page.keyboard.down('Space');
+  expect(await pixels()).toBe(finalPixels); await page.keyboard.up('Space');
+  for (const width of [320, 390]) {
+    await page.setViewportSize({width, height:874});
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    await expect(page.getByRole('button', {name:'내 보정 저장', exact:true})).toBeEnabled();
+  }
+  await page.setViewportSize({width:402, height:874});
+  await page.getByRole('button', { name: '이어서 보정하기', exact: true }).click(); await overview(page, 4);
+  await faceButton(page, 2).click(); await expect(page.locator('#retouch-strength')).toHaveValue('30');
+  await saveButton(page).click(); await page.goBack(); await overview(page, 4);
+  expect(server.actions).not.toContain('personal-cancel');
+  await saveButton(page).click();
+  await page.getByRole('button', { name: '내 보정 저장', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '내 보정이 끝났어요', exact: true })).toBeVisible();
+  const record = server.saved()!;
+  const values = Object.entries(record.edit.settings).filter(([id]) => id !== '__touch').map(([, value]) => value.faceWidth).sort((a, b) => a - b);
+  expect(values).toEqual([0, 0, 30, 65]);
+  expect(record.edit.strokes.length).toBeGreaterThan(0); expect(record.edit.restores).toEqual([]);
+  expect(server.actions.filter(action => action === 'personal-save')).toHaveLength(1);
+  expect(errors).toEqual([]);
 });

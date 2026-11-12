@@ -1,5 +1,11 @@
 # 현재 상태
 
+## 개인 보정 컷별 취소·적용과 결과 확인 — 2026-11-12
+
+- `JunYoung`에서 `RetouchEditor.tsx`·`retouch.module.css`의 기존 상태·캔버스를 재사용해 공통 컷 동작과 Figma 결과 확인 화면을 연결했다. 새 의존성·엔진·API·저장 형식 변경은 없다. 제품 동작은 [협업 보정방](MASTER_SPEC.md#협업-보정방--별도-경로에-보존)을 따른다.
+- 타입·diff 검사, 기존 보정 Node 테스트 125개, Chrome 브라우저 9개 통과(중복 실행 제외). 얼굴·터치·복원 취소 후 픽셀 복원, 이전 적용분·다른 컷 유지, 현재 변경을 포함한 결과 확인·재편집·뒤로 가기·저장, 저장 실패 재시도, 독립/전체 보정 회귀와 320·390·402px 배치를 확인했다. 관련 검사는 `retouch-face-selection.spec.ts`·`retouch-room.spec.ts`에 반영했다.
+- 실제 WebGL을 사용했고 새 컷 검사는 합성 이미지·기준점 및 방 응답 대체로 수행했다. 실제 DB/Storage 저장·휴대폰 실기·운영 배포는 미실시다. 확인 캡처는 Git 제외 `private/retouch-e2e/cut-actions.png`·`personal-review.png`에 보관했다. 구현·테스트를 마친 뒤 사용자가 `JunYoung` 커밋·푸시와 `main` 병합을 요청했다.
+
 ## 얼굴 선택 하단 진행 버튼 — 2026-11-11
 
 - `CollaborativeRoom.tsx`·`MobileRegionEditor.tsx`·`mobile-editor.module.css`에 Figma `527:6972`의 하단 `이대로 진행하기`를 추가했다. 상단 완료와 같은 저장 함수·잠금 조건을 공유하고, 기존 병합 화면 동작을 유지한다. 제품 규칙은 [분석·오류 상태 정합](MASTER_SPEC.md#분석오류-상태-정합-보완--2026-11-07)을 따른다.

@@ -126,3 +126,17 @@
 @media (hover:hover) { .faceTarget:not(:disabled):hover .faceCorners { color:#c4b5fd; background-color:#a78bfa1f; --face-scale:.96; } }
 @media (prefers-reduced-motion:no-preference) { .faceCorners { transform:scale(var(--face-scale,1)); transition:color 120ms ease-out,background-color 120ms ease-out,transform 120ms ease-out; } }
 .overviewHint { margin:12px 0 0; text-align:center; font-size:12px; color:var(--moira-muted); word-break:keep-all; text-wrap:balance; }
+
+/* Figma 838:25319: shared by all personal face and touch tools. */
+.cutActions { display:flex; align-items:center; justify-content:space-between; height:48px; margin-top:8px; }
+.editor .cutActions button { width:44px; height:44px; padding:0; border:0; background:transparent; font-size:24px; font-weight:700; line-height:28px; }
+.roomEditor:not(.globalEditor):not(.collapsed) .panel { padding-bottom:6px; }
+/* Figma 527:10099: reuse the mounted preview and only save after confirmation. */
+.editor.reviewing { background:linear-gradient(180deg,var(--moira-surface) 22%,var(--moira-accent) 50%,var(--moira-surface) 90%); }
+.reviewContents { display:flex; flex-direction:column; min-height:calc(100dvh - 34px); }
+.reviewContents>.header { flex-shrink:0; }
+.reviewHeading { margin:16px 8px 0; }
+.reviewHeading h1 { margin:0; font-size:24px; font-weight:900; line-height:32px; }
+.reviewHeading p { margin:8px 0 0; font-size:16px; line-height:24px; }
+.reviewing .viewport { width:calc(100% - 60px); height:459px; flex-shrink:0; aspect-ratio:auto; margin:24px auto; border:0; border-radius:0; box-shadow:none; background:transparent; touch-action:pan-y; }
+.editor .continueEditing { min-height:56px; flex-shrink:0; margin:auto 8px 0; border-width:2px; box-shadow:4px 4px var(--moira-ink); font-size:16px; font-weight:700; }
