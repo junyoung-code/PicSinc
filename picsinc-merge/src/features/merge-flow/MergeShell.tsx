@@ -7,12 +7,12 @@ export default function MergeShell(props: ComponentProps<typeof MobileShell>) {
   return <div className={`${styles.merge} ${props.progress === 100 ? styles.resultScreen : ""}`}><MobileShell {...props} /></div>;
 }
 
+// Figma 586:12591 (host) and 586:13341 (guest): no badge above the title, and both show the character four-cut.
 export function MergeWelcome({ inviter }: { inviter?: string }) {
   return <div className={styles.welcome}>
-    <p className={styles.tag}>{inviter ? `${inviter} 님의 초대` : "보정방 생성하기"}</p>
     <h1>{inviter ? <>{inviter}님의 보정방으로<br />입장하기</> : <>각자 마음에 들게,<br />한 장에 모이게.</>}</h1>
     <p>평소 쓰는 앱에서 보정하고,<br />MOIRA에서 한 장으로 합쳐요.</p>
-    <div className={styles.collage} aria-hidden="true"><img src={inviter ? "/images/home/four-cut.png" : "/images/figma-current/character-photo.png"} alt="" /><strong>각자 보정<br />같이 완성!</strong></div>
+    <div className={styles.collage} aria-hidden="true"><img src="/images/figma-current/character-photo.png" alt="" /><strong>각자 보정<br />같이 완성!</strong></div>
   </div>;
 }
 

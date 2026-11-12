@@ -31,3 +31,8 @@ export function allowedStep(requested: string | null, data: FlowSnapshot): Step 
   if (step === "review" && !data.assets.some(a => a.kind === "edited" && a.participantId === data.currentParticipantId)) return "upload";
   return step;
 }
+/** Status badge for someone who has not submitted yet (N-24): the host only counts as editing once they picked their faces. */
+export function mergeProgressLabel(data: Pick<FlowSnapshot, "session" | "originalSelections">, participantId: string) {
+  if (participantId !== data.session.ownerParticipantId) return "보정 중";
+  return data.originalSelections.some(s => s.participantId === participantId) ? "보정 중" : "준비 중";
+}
