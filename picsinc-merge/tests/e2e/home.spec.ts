@@ -40,9 +40,11 @@ for (const width of [402, 390, 320]) {
     await expect(page.getByLabel("내 이름", { exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "홈으로", exact: true })).toHaveAttribute("href", "/");
     await expect(page.getByLabel("MOIRA 시작 화면")).toHaveCount(0);
+    // Returning home replays the intro, same as coming back from 사진 합치기 (full page load).
     await page.goBack();
+    await expect(page.getByLabel("MOIRA 시작 화면")).toBeVisible();
+    await page.clock.runFor(5100);
     await expect(choices).toBeVisible();
-    await expect(page.getByLabel("MOIRA 시작 화면")).toHaveCount(0);
     await page.getByRole("link", { name: "사진 합치기", exact: true }).click();
     await expect(page).toHaveURL(/\/sessions\/new$/);
     await expect(page.getByRole("button", { name: "시작하기", exact: true })).toBeVisible();
