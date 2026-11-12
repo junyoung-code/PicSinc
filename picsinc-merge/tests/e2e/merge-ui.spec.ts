@@ -61,6 +61,10 @@ for (const width of [402, 390, 320]) test(`merge flow and PNG saving at ${width}
   // The fixture detects no people, so the owner takes the manual path (3237cc9).
   await page.getByRole('button', { name: '직접 영역 선택하기' }).click();
   await expect(page.getByRole('dialog', { name: '내 영역 선택' })).toBeVisible();
+  // B-051: the page's own back/help buttons under the full-screen editor are inert while it is open.
+  const behind = () => page.evaluate(() => [...document.querySelectorAll('button')].filter(b => ['도움말', '이전 화면'].includes(b.getAttribute('aria-label') ?? '')).map(b => !!b.closest('[inert]')));
+  expect((await behind()).length).toBeGreaterThan(0);
+  expect((await behind()).every(Boolean)).toBeTruthy();
   await page.getByRole('button', { name: '브러시', exact: true }).click();
   const canvas = page.locator('canvas');
   const box = (await canvas.boundingBox())!;
@@ -68,6 +72,7 @@ for (const width of [402, 390, 320]) test(`merge flow and PNG saving at ${width}
   await page.mouse.down(); await page.mouse.move(box.x+box.width/2+15,box.y+box.height/2+20,{ steps: 4 }); await page.mouse.up();
   await capture('detail');
   await page.getByRole('button', { name: '완료', exact: true }).click();
+  expect((await behind()).some(Boolean)).toBeFalsy();
   await page.getByRole('button', { name: '이대로 진행하기' }).click();
   await expect(page.getByRole('heading', { name: '보정이 끝난 사진을 올려주세요' })).toBeVisible();
   await page.getByLabel('보정한 사진 선택', { exact: true }).setInputFiles({ name: 'edited.png', mimeType: 'image/png', buffer: photo });
@@ -89,9 +94,10 @@ for (const width of [402, 390, 320]) test(`merge flow and PNG saving at ${width}
   await page.getByRole('link', { name: '사진 저장하기' }).evaluate(link => link.setAttribute('href', '/images/home/four-cut.png'));
   const download = page.waitForEvent('download');
   await page.getByRole('link', { name: '사진 저장하기' }).click();
+  // The notice lives 2.6s; check it before waiting for the file to finish writing.
+  await expect(page.getByRole('status').filter({ hasText: '✓ 사진을 저장했어요' })).toBeVisible();
   const saved = await download;
   expect(await readFile((await saved.path())!)).toEqual(photo);
-  await expect(page.getByRole('status').filter({ hasText: '✓ 사진을 저장했어요' })).toBeVisible();
   await expect(page.getByRole('status').filter({ hasText: '✓ 사진을 저장했어요' })).toHaveCount(0, { timeout: 5000 });
   joined = false; owner = false; submitted = false; result = false; selected = false;
   await page.goto('/sessions/merge-ui');
@@ -268,4 +274,26 @@ for (const owner of [true, false]) test(`merge result preview recovery and owner
     await page.getByRole('button', { name: '제출 현황으로 돌아가기' }).click();
     await expect(page.getByRole('button', { name: '사진 합치기', exact: true })).toBeEnabled();
   }
+});
+
+test('the host lobby shows which friends already submitted (B-036)', async ({ page }) => {
+  const photo = await readFile('public/images/figma-current/character-photo.png');
+  const snapshot = {
+    session: { id: 'room', inviteToken: 'merge-lobby', originalAssetId: 'original', ownerParticipantId: 'owner', version: 1, expiresAt: new Date(Date.now() + 86400000).toISOString() },
+    currentParticipantId: 'owner',
+    participants: [{ id: 'owner', nickname: '민선', submitted: false }, { id: 'friend', nickname: '예솔', submitted: true }, { id: 'third', nickname: '지연', submitted: false }],
+    assets: [{ id: 'original', kind: 'original', width: 104, height: 155 }], originalSelections: [], selections: [], result: null,
+  };
+  await page.route('**/api/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/sessions/merge-lobby') return route.fulfill({ json: snapshot });
+    if (path.includes('/assets/')) return route.fulfill({ contentType: 'image/png', body: photo });
+    return route.fulfill({ json: {} });
+  });
+  await page.goto('/sessions/merge-lobby?step=invite');
+  await expect(page.getByRole('heading', { name: '보정방이 만들어졌어요' })).toBeVisible();
+  const row = (name: string) => page.locator('.participant-list li').filter({ hasText: name });
+  await expect(row('민선').locator('.badge')).toHaveText('대표자');
+  await expect(row('예솔').locator('.badge')).toHaveText('제출 완료');
+  await expect(row('지연').locator('.badge')).toHaveCount(0);
 });

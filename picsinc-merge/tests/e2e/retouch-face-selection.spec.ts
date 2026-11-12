@@ -319,3 +319,25 @@ test('cut cancel restores face and touch edits; apply and review preserve other 
   expect(server.actions.filter(action => action === 'personal-save')).toHaveLength(1);
   expect(errors).toEqual([]);
 });
+
+test('on a 320x568 phone the face stays in view while the slider and cut buttons are used (B-020)', async ({ page }) => {
+  await backend(page, detected);
+  await page.setViewportSize({ width: 320, height: 568 });
+  await open(page);
+  await faceButton(page, 1).click();
+  await expect(page.locator('#retouch-strength')).toBeVisible();
+  // The panel is taller than this screen; scroll to its end as a person would.
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const boxes = await page.evaluate(() => {
+    const rect = (el: Element | null) => el ? (({ top, bottom }) => ({ top, bottom }))(el.getBoundingClientRect()) : null;
+    const viewport = document.querySelector('canvas[aria-label="보정 미리보기"]')!.closest('[class*="viewport"]');
+    return { slider: rect(document.querySelector('#retouch-strength')), apply: rect(document.querySelector('[aria-label="현재 컷 보정 적용"]')), photo: rect(viewport) };
+  });
+  await page.screenshot({ path: 'private/retouch-e2e/b020-320x568.png' });
+  expect(boxes.photo!.top).toBeGreaterThanOrEqual(0);
+  expect(boxes.photo!.bottom).toBeLessThanOrEqual(boxes.slider!.top);
+  expect(boxes.slider!.bottom).toBeLessThanOrEqual(568);
+  expect(boxes.apply!.bottom).toBeLessThanOrEqual(568);
+  await page.locator('#retouch-strength').fill('30');
+  await expect(page.getByRole('button', { name: '현재 컷 보정 적용', exact: true })).toBeEnabled();
+});

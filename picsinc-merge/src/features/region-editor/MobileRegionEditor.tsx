@@ -7,7 +7,7 @@ import { paintBrush, type Point } from "./mask-geometry";
 import { editableContours, visibleContours, smoothedDisplayContour, findContourHandle, finishContourGesture, spacedHandleIndices, viewportToImage, type PendingContour, type ViewTransform } from "./contour-geometry";
 import styles from "./mobile-editor.module.css";
 import { FlowProgress } from "@/components/FlowProgress";
-import { regionLabelPosition, regionOwnerLabel, type RegionClaim } from "./region-labels";
+import { fitRegionLabel, regionLabelPosition, regionOwnerLabel, type RegionClaim } from "./region-labels";
 import { animatePhotoView, boundPhotoView, photoScaleLimit, zoomPhotoAt as zoomAround } from "@/core/photo-viewport";
 
 export interface MobileRegionEditorProps {
@@ -29,6 +29,9 @@ export interface MobileRegionEditorProps {
   saveActionTargetId?: string;
   onDirtyChange?: (dirty: boolean) => void;
   onRetryDetection?: () => void;
+  /** When the photo has no people at all, retrying cannot help: offer a way out instead (B-030). */
+  noPeopleHint?: string;
+  noPeopleAction?: React.ReactNode;
   detectionError?: string;
   onDetailOpen: (onBrowserBack: () => boolean) => void;
   regionClaims?: RegionClaim[];
@@ -59,7 +62,7 @@ async function encodeMask(mask: Uint8Array, width: number, height: number) {
   return new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("영역 PNG를 만들지 못했습니다.")), "image/png"));
 }
 
-export default function MobileRegionEditor({ appearance, imageUrl, width, height, detection, initialMaskUrl, initialSelectedIds = [], busy = false, detecting = false, onSave, saveLabel, participantNickname, saveActionLabel, saveActionTargetId, onDirtyChange, onRetryDetection, detectionError, onDetailOpen, regionClaims = [], currentParticipantId, onRegionToggle }: MobileRegionEditorProps) {
+export default function MobileRegionEditor({ appearance, imageUrl, width, height, detection, initialMaskUrl, initialSelectedIds = [], busy = false, detecting = false, onSave, saveLabel, participantNickname, saveActionLabel, saveActionTargetId, onDirtyChange, onRetryDetection, noPeopleHint, noPeopleAction, detectionError, onDetailOpen, regionClaims = [], currentParticipantId, onRegionToggle }: MobileRegionEditorProps) {
   const rootRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -96,6 +99,7 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
   const hasSelection = maskRef.current.some(Boolean);
   const needsRecovery = !processing && (!!resourceError || !!(analysisError || emptyDetection || !detection) && !(appearance === "merge" && hasSelection));
   const allowManual = appearance === "merge" && !resourceError;
+  const noPeople = emptyDetection && !resourceError && !analysisError;
 
   const dirtyRef = useRef(false);
   const expandedRef = useRef(false);
@@ -118,6 +122,18 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  // The full-screen editor covers the page, but its header buttons ("이전 화면", "도움말") stayed
+  // reachable for screen readers and taps through the cover. Make everything outside it inert (B-051).
+  useEffect(() => {
+    if (!expanded || !rootRef.current) return;
+    const changed: HTMLElement[] = [];
+    for (let node: HTMLElement | null = rootRef.current; node && node !== document.body; node = node.parentElement) {
+      for (const sibling of Array.from(node.parentElement?.children ?? [])) {
+        if (sibling !== node && sibling instanceof HTMLElement && !sibling.inert) { sibling.inert = true; changed.push(sibling); }
+      }
+    }
+    return () => changed.forEach(element => { element.inert = false; });
+  }, [expanded]);
   const [tool, setTool] = useState<Tool>("select");
   const [brushSize, setBrushSize] = useState(18);
   const [revision, setRevision] = useState(0);
@@ -332,12 +348,14 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
     for (const region of regionRef.current) {
       const owner = regionOwnerLabel(region.id, regionClaims, selectedIds, currentParticipantId, participantNickname);
       if (!owner) continue;
-      const labelWidth = Math.min(rect.width - 8, context.measureText(owner.text).width + 16);
+      // A long name used to run across the photo and cover the next person (B-018).
+      const text = fitRegionLabel(owner.text, Math.min(rect.width - 8, 132) - 16, value => context.measureText(value).width);
+      const labelWidth = Math.min(rect.width - 8, context.measureText(text).width + 16);
       const position = regionLabelPosition(region.box, view, rect, labelWidth);
       if (!position) continue;
       context.fillStyle = owner.own ? "#6558e8" : "#344054";
       context.beginPath(); context.roundRect(position.x, position.y, labelWidth, 24, 6); context.fill();
-      context.fillStyle = "#fff"; context.fillText(owner.text, position.x + 8, position.y + 12, Math.max(1, labelWidth - 16));
+      context.fillStyle = "#fff"; context.fillText(text, position.x + 8, position.y + 12, Math.max(1, labelWidth - 16));
     }
   }
   redraw.current = draw;
@@ -483,10 +501,11 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
       {showActions && <button type="button" className={styles.refine} disabled={locked || !hasSelection} onClick={openEditor}>영역 편집하기</button>}
       {expanded && (tool === "brush" || tool === "erase") && <label className={styles.brush}>브러시 크기 <input aria-label="브러시 크기" type="range" min="3" max="45" value={brushSize} onChange={event => setBrushSize(Number(event.target.value))} /></label>}
       {!expanded && needsRecovery && <div className={styles.recovery} role="alert">
-        <div className={styles.recoveryCopy}><strong>{resourceError ? "사진과 영역을 불러오지 못했어요" : analysisError ? "얼굴 영역을 찾지 못했어요" : "찾은 얼굴 영역이 없어요"}</strong><p>{resourceError || analysisError || "사진에서 선택할 수 있는 사람 영역을 찾지 못했어요."}</p><p>원본 사진과 편집한 영역은 그대로 유지돼요.</p></div>
+        <div className={styles.recoveryCopy}><strong>{resourceError ? "사진과 영역을 불러오지 못했어요" : analysisError ? "얼굴 영역을 찾지 못했어요" : "찾은 얼굴 영역이 없어요"}</strong><p>{resourceError || analysisError || "사진에서 선택할 수 있는 사람 영역을 찾지 못했어요."}</p><p>{noPeople && noPeopleHint ? noPeopleHint : "원본 사진과 편집한 영역은 그대로 유지돼요."}</p></div>
         <div className={styles.recoveryActions}>
           {(resourceError || decodeError || onRetryDetection) && <button type="button" disabled={busy || saving} onClick={() => { if (resourceError) setResourceReload(v => v + 1); else if (decodeError) setDetectionReload(v => v + 1); else onRetryDetection?.(); }}>{resourceError || decodeError ? "다시 불러오기" : "다시 찾기"}</button>}
           {allowManual && <button type="button" disabled={locked} onClick={openEditor}>직접 영역 선택하기</button>}
+          {noPeople && noPeopleAction}
         </div>
       </div>}
       {error && <p role="alert" className={styles.error}>{error}</p>}
