@@ -7,7 +7,7 @@
 .editor button:focus-visible { outline:3px solid #25232b; outline-offset:3px; }
 .hint { color:#706b79; font-size:12px; line-height:1.6; margin:12px 0; }
 .canvasFrame { position:relative; background:white; overflow:hidden; min-height:100px; }
-.canvas { display:block; width:100%; height:auto; min-height:100px; max-height:none; touch-action:pan-y pinch-zoom; }
+.canvas { display:block; width:100%; height:auto; min-height:100px; max-height:none; touch-action:none; }
 .tools { display:flex; gap:8px; margin:0; font-size:13px; }
 .tools button { flex:1; min-width:0; height:42px; min-height:42px; padding:6px; font-weight:700; }
 .brush { display:flex; align-items:center; gap:12px; font-size:12px; margin-top:8px; }
