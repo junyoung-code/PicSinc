@@ -25,16 +25,16 @@ try {
   window.Worker=class extends NativeWorker {
    constructor(...args){super(...args);this.addEventListener('message',e=>{
     const sample=m.active;
-    if(sample?.worker===this&&sample.workerId===e.data.id){if(e.data.error)sample.error=e.data.error;else if(e.data.result)sample.computed=true;}
+    if(sample?.worker===this&&sample.workerId===e.data.id){if(e.data.error)sample.error=e.data.error;else if(e.data.result){sample.computed=true;sample.receivedAt=performance.now();}}
    });}
    postMessage(data,...args){
-    if(data.plan){m.lastPlan=data.plan;if(m.active){m.active.workerId=data.id;m.active.worker=this;}}
+    if(data.plan){m.lastPlan=data.plan;if(m.active){m.active.workerId=data.id;m.active.worker=this;m.active.postedAt=performance.now();}}
     return super.postMessage(data,...args);
    }
   };
   WebGL2RenderingContext.prototype.drawArrays=function(...args){
    const result=draw.apply(this,args),sample=m.active;
-   if(sample?.computed){m.records.push({kind:sample.kind,ms:performance.now()-sample.start});m.active=null;}
+   if(sample?.computed){const end=performance.now();m.records.push({kind:sample.kind,ms:end-sample.start,inputToWorkerMs:sample.postedAt-sample.start,workerRoundTripMs:sample.receivedAt-sample.postedAt,resultToDrawMs:end-sample.receivedAt});m.active=null;}
    return result;
   };
   document.addEventListener('pointermove',e=>{if(m.touch&&e.buttons)m.active={kind:'touch',start:performance.now()};},true);
@@ -93,11 +93,13 @@ try {
  }
  const {records,strokeCount}=await page.evaluate(()=>({records:window.retouchMeasure.records,strokeCount:window.retouchMeasure.lastPlan.state.strokes.length}));
  function stats(values){const sorted=[...values].sort((a,b)=>a-b);return{samples:sorted.length,p50:sorted[Math.ceil(sorted.length*.5)-1],p95:sorted[Math.ceil(sorted.length*.95)-1],max:sorted.at(-1),ms:values};}
+ function stages(kind){const samples=records.filter(r=>r.kind===kind).slice(warmup);return Object.fromEntries(['inputToWorkerMs','workerRoundTripMs','resultToDrawMs'].map(stage=>[stage,stats(samples.map(r=>r[stage]))]));}
  const bytes=await readFile(fixture),meta=await sharp(bytes).metadata();
  const report={at:new Date().toISOString(),browser:browserName,browserVersion:browser.version(),os:`${platform()} ${release()}`,cpu:cpus()[0]?.model,viewport,
   fixture:{sha256:createHash('sha256').update(bytes).digest('hex'),width:meta.width,height:meta.height,editableFaces:faces},warmup,settings:{sliderValues:[35,65],otherCombinedControls:50,touchBrush:8,touchStrength:6,strokeCount},
-  method:'Sequential input event to matching Worker result + WebGL draw submission; not physical presentation or continuous-drag throughput. PNG includes Playwright click and completed download. Touch strokes accumulate.',
+  method:'Sequential input event to matching Worker result + WebGL draw submission; not physical presentation or continuous-drag throughput. Worker round trip includes message copies, queueing and computation. PNG includes Playwright click and completed download. Touch strokes accumulate.',
+  stages:{single:stages('single'),combination:stages('combination'),touch:stages('touch')},
   single:stats(records.filter(r=>r.kind==='single').slice(warmup).map(r=>r.ms)),combination:stats(records.filter(r=>r.kind==='combination').slice(warmup).map(r=>r.ms)),touch:stats(records.filter(r=>r.kind==='touch').slice(warmup).map(r=>r.ms)),png:stats(png)};
  await mkdir(dirname(output),{recursive:true});await writeFile(output,JSON.stringify(report,null,2));
- console.log(JSON.stringify({...report,single:{...report.single,ms:undefined},combination:{...report.combination,ms:undefined},touch:{...report.touch,ms:undefined},png:{...report.png,ms:undefined}},null,2));
+ console.log(JSON.stringify({...report,stages:Object.fromEntries(Object.entries(report.stages).map(([kind,stages])=>[kind,Object.fromEntries(Object.entries(stages).map(([stage,result])=>[stage,{...result,ms:undefined}]))])),single:{...report.single,ms:undefined},combination:{...report.combination,ms:undefined},touch:{...report.touch,ms:undefined},png:{...report.png,ms:undefined}},null,2));
 }finally{await browser.close();}

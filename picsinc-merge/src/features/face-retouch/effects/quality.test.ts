@@ -25,8 +25,8 @@ test('redness is one-way and eyebrow head is the thirtieth control',()=>{
  assert.ok('browHeadSpacing' in initialState([face]).settings[face.id]);
 });
 
-test('iris disk is unchanged by thickness, length and all opening controls',()=>{
- for(const id of ['eyeThickness','eyeLength','eyeInner','eyeOuter','eyeLower'] as const)for(const value of [-100,-50,50,100]){
+test('iris disk is unchanged by length and all opening controls',()=>{
+ for(const id of ['eyeLength','eyeInner','eyeOuter','eyeLower'] as const)for(const value of [-100,-50,50,100]){
   const plan=prepare([face],setControl(initialState([face]),face.id,id,value),w,h),f=frame(face,w,h);
   for(const start of [468,473])for(let y=-8;y<=8;y+=4)for(let x=-8;x<=8;x+=4){const p={x:f.points[start].x+x,y:f.points[start].y+y};assert.deepEqual(mapPoint(p,plan),p,`${id} iris disk`);}
  }

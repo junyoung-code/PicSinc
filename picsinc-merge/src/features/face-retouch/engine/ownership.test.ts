@@ -1,6 +1,8 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {fixture} from "../effects/fixture";
+import {bounds,browLoops,frame,insidePolygon} from "../effects/geometry";
+import {lipOuterLoop} from "../effects/lips";
 import {controls,initialState,setControl,type Point} from "../state/model";
 import {buildField,faceArea,mapPoint,prepare,regionDistance,type Field} from "./field";
 
@@ -14,6 +16,68 @@ function sample(field:Field,p:Point,width:number,height:number):Point {
  }
  return{x:p.x+dx,y:p.y+dy};
 }
+
+const noseOutline=[168,193,196,49,48,64,98,240,2,460,327,294,278,279,419,417];
+const featureLocks=[
+ {control:"noseLength",loops:[lipOuterLoop],target:2},
+ {control:"lipSize",loops:[noseOutline],target:0},
+ {control:"lipWidth",loops:[noseOutline],target:61},
+ {control:"eyeHeight",loops:browLoops,target:468},
+ {control:"faceWidth",loops:browLoops,target:234},
+] as const;
+
+for(const {control,loops,target} of featureLocks)test(`${control} protects the neighboring feature after grid interpolation`,async()=>{
+ const size=1000;
+ for(const [scale,angle] of [[1,0],[.55,.3]])for(const value of [-100,100]){
+  const face=fixture("a",.5,scale,angle),f=frame(face,size,size);
+  const plan=prepare([face],setControl(initialState([face]),face.id,control,value),size,size);
+  const field=await buildField(plan);assert.ok(field);
+  assert.notDeepEqual(sample(field,f.points[target],size,size),f.points[target],"the selected feature still moves");
+  for(const loop of loops){
+   const polygon=loop.map(id=>f.points[id]),b=bounds(polygon);
+   const check=(p:Point)=>assert.deepEqual(sample(field,p,size,size),p,`${control} moved a protected point at ${value}`);
+   for(const p of polygon)check(p);
+   for(let y=Math.floor(b.y)+.5;y<b.y+b.height;y+=1)for(let x=Math.floor(b.x)+.5;x<b.x+b.width;x+=1){
+    const p={x,y};
+    if(insidePolygon(p,polygon))check(p);
+   }
+  }
+ }
+});
+
+test("eye height feathers the eyeliner wing and translates the nearby skin patch without scaling",async()=>{
+ const size=1000,face=fixture("a",.5,1,.2),f=frame(face,size,size);
+ for(const value of [-100,100]){
+  const plan=prepare([face],setControl(initialState([face]),face.id,"eyeHeight",value),size,size);
+  const field=await buildField(plan);assert.ok(field);
+  for(const [side,op] of plan.operations.entries()){
+   const area=op.eyeHeight!;
+   const center=f.local(op.center);
+   const at=(outward:number,y:number)=>f.world({x:center.x+outward*area.width*area.outerSign,y:center.y+y});
+   const movement=(p:Point)=>{
+    const q=sample(field,p,size,size);
+    return Math.hypot(q.x-p.x,q.y-p.y);
+   };
+   const eyeShift=op.dy*(field.strengths?.[`${op.owner}:${op.control}`]??1);
+   const corner=f.lm[side===0?33:263];
+   const alongWing=(outward:number)=>f.world({x:corner.x+outward*area.width*area.outerSign,y:corner.y});
+   const base=movement(f.world({x:corner.x,y:corner.y+eyeShift}));
+   const start=movement(alongWing(.10)),middle=movement(alongWing(.24)),tip=movement(alongWing(.40));
+   assert.ok(base>Math.abs(eyeShift)*.97,'the outer corner follows the eyelid');
+   assert.ok(base>start&&start>middle&&middle>tip,'the eyeliner tapers from the outer corner to the tip');
+   assert.ok(tip>base*.20&&tip<base*.30,'the estimated tip still follows the eye slightly');
+   assert.ok(movement(alongWing(.57))<base*.02,'movement fades back to zero beyond the wing');
+
+   const dy=eyeShift*.60;
+   const patchY=area.halfHeight+area.width*.26;
+   for(const offset of [-3,0,3]){
+    const source=at(.52,patchY+offset),target=at(.52,patchY+offset+dy);
+    const mapped=sample(field,target,size,size);
+    assert.ok(Math.hypot(mapped.x-source.x,mapped.y-source.y)<.001);
+   }
+  }
+ }
+});
 
 for(const center of [.66,.82])test(`final settings are independent of slider history, neighbor at ${center}`,async()=>{
  const faces=[fixture("a",.4,.8),fixture("b",center,.8)],base=initialState(faces);

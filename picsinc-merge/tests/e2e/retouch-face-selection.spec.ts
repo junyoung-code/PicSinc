@@ -100,6 +100,32 @@ async function overview(page: Page, count: number) {
   await expect(previewStage(page)).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
 }
 
+test('personal brush matches the reference proportion after selecting and zooming into a face', async ({ page }) => {
+  await backend(page, detected);
+  await open(page);
+  await faceButton(page, 1).click();
+  await page.getByRole('button', { name: '터치 보정', exact: true }).click();
+  await expect(page.locator('#brush-size')).toHaveValue('4');
+  const stage = previewStage(page);
+  const viewport = stage.locator('..');
+  await viewport.scrollIntoViewIfNeeded();
+  const box = (await viewport.boundingBox())!;
+  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const zoom = () => stage.evaluate(el => new DOMMatrix(getComputedStyle(el).transform).a);
+  await expect.poll(zoom).toBeGreaterThan(2);
+  const measure = () => page.getByTestId('touch-guide').locator(':scope > circle').evaluate((circle: SVGCircleElement) => {
+    const guide = circle.ownerSVGElement!;
+    const strokeWidth = parseFloat(getComputedStyle(circle).strokeWidth);
+    return (circle.getBoundingClientRect().width + strokeWidth) / guide.parentElement!.clientWidth;
+  });
+  await page.mouse.move(point.x, point.y);
+  expect(await measure()).toBeCloseTo(.071, 3);
+  const before = await zoom();
+  await page.mouse.wheel(0, -100);
+  await expect.poll(zoom).toBeGreaterThan(before * 1.5);
+  expect(await measure()).toBeCloseTo(.071, 3);
+});
+
 test('personal overview filters 16 detections to my four faces and saves every face setting', async ({ page }) => {
   const server = await backend(page, detected);
   await open(page); await overview(page, 4);
@@ -230,32 +256,6 @@ for (const failure of [
   expect(logs).toHaveLength(1);
 });
 
-
-test('cut cancel restores face and touch edits; apply and review preserve other cuts', async ({ page }) => {
-  const server = await backend(page, detected);
-  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
-  await open(page);
-  const cancel = page.getByRole('button', { name: '현재 컷 보정 취소', exact: true });
-  const apply = page.getByRole('button', { name: '현재 컷 보정 적용', exact: true });
-  const canvas = page.locator('canvas[aria-label="보정 미리보기"]');
-  const pixels = () => canvas.evaluate((c: HTMLCanvasElement) => c.toDataURL());
-  const stroke = async () => {
-    const box = (await canvas.locator('..').locator('..').boundingBox())!;
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width / 2 + 16, box.y + box.height / 2, { steps: 4 });
-    await page.mouse.up(); await expect(saveButton(page)).toBeEnabled();
-  };
-  const original = await pixels();
-  await expect(cancel).toHaveCount(0);
-  await faceButton(page, 1).click();
-  for (const group of ['얼굴형', '눈', '입술', '코', '눈썹']) {
-    await page.getByRole('navigation', { name: '보정 부위' }).getByRole('button', { name: group, exact: true }).click();
-    await expect(cancel).toBeVisible(); await expect(apply).toBeVisible();
-  }
-  await page.getByRole('navigation', { name: '보정 부위' }).getByRole('button', { name: '얼굴형', exact: true }).click();
-  await page.locator('#retouch-strength').fill('25'); await expect(apply).toBeEnabled();
-  // Tapping the enlarged photo must not replace this visit's cancel baseline.
 for (const failure of ['empty', 'outside-mask', 'error'] as const) {
   test(`personal detection retries ${failure} once and lets me save with touch tools`, async ({page}) => {
     const server = await backend(page, detected, 4, true);
@@ -313,6 +313,32 @@ for (const failure of ['empty', 'outside-mask', 'error'] as const) {
   });
 }
 
+
+test('cut cancel restores face and touch edits; apply and review preserve other cuts', async ({ page }) => {
+  const server = await backend(page, detected);
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await open(page);
+  const cancel = page.getByRole('button', { name: '현재 컷 보정 취소', exact: true });
+  const apply = page.getByRole('button', { name: '현재 컷 보정 적용', exact: true });
+  const canvas = page.locator('canvas[aria-label="보정 미리보기"]');
+  const pixels = () => canvas.evaluate((c: HTMLCanvasElement) => c.toDataURL());
+  const stroke = async () => {
+    const box = (await canvas.locator('..').locator('..').boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 16, box.y + box.height / 2, { steps: 4 });
+    await page.mouse.up(); await expect(saveButton(page)).toBeEnabled();
+  };
+  const original = await pixels();
+  await expect(cancel).toHaveCount(0);
+  await faceButton(page, 1).click();
+  for (const group of ['얼굴형', '눈', '입술', '코', '눈썹']) {
+    await page.getByRole('navigation', { name: '보정 부위' }).getByRole('button', { name: group, exact: true }).click();
+    await expect(cancel).toBeVisible(); await expect(apply).toBeVisible();
+  }
+  await page.getByRole('navigation', { name: '보정 부위' }).getByRole('button', { name: '얼굴형', exact: true }).click();
+  await page.locator('#retouch-strength').fill('25'); await expect(apply).toBeEnabled();
+  // Tapping the enlarged photo must not replace this visit's cancel baseline.
   await canvas.locator('..').locator('..').click({ position: { x: 150, y: 150 } });
   await page.getByRole('button', { name: '터치 보정', exact: true }).click();
   await stroke();

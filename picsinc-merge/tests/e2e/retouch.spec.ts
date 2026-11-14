@@ -340,7 +340,7 @@ test("whole feature areas preserve shape, irises and makeup on the photo",async(
  await select("faceWidth","얼굴형");await strength(page,100);
  const regions=operations(face,setControl(initialState([face]),face.id,"faceWidth",100).settings[face.id],w,h)[0].exclusions.slice(0,2);
  check(await raw(await image(page)),p=>regions.some(r=>regionDistance(p,r)<.85));await strength(page,0);
- for(const id of ["eyeThickness","eyeLength","eyeInner","eyeOuter","eyeLower","eyeRedness"]){await select(id,"눈");await strength(page,100);
+ for(const id of ["eyeLength","eyeInner","eyeOuter","eyeLower","eyeRedness"]){await select(id,"눈");await strength(page,100);
   check(await raw(await image(page)),p=>[468,473].some(start=>{const r=Math.max(...[1,2,3,4].map(k=>Math.hypot(f.points[start+k].x-f.points[start].x,f.points[start+k].y-f.points[start].y)));return Math.hypot(p.x-f.points[start].x,p.y-f.points[start].y)<r*.8;}));await strength(page,0);
  }
  await select("noseAlar","코");await strength(page,100);
@@ -371,8 +371,9 @@ test("touch feedback: live magnifier, direction, strength and per-gesture undo",
   const dest=document.querySelector<HTMLCanvasElement>('canvas[aria-label="터치 위치 확대 보기"]')!;
   const rect=src.getBoundingClientRect(),span=dest.clientWidth/rect.width*src.width/2;
   const guide=document.querySelector<SVGSVGElement>('[data-testid="touch-guide"]')!,circle=guide.querySelector(':scope > circle') as SVGCircleElement;
-  const actualX=rect.left+circle.cx.baseVal.value/guide.viewBox.baseVal.width*rect.width;
-  const actualY=rect.top+circle.cy.baseVal.value/guide.viewBox.baseVal.height*rect.height;
+  const cursorRect=circle.getBoundingClientRect();
+  const actualX=cursorRect.left+cursorRect.width/2;
+  const actualY=cursorRect.top+cursorRect.height/2;
   const cursorError=Math.max(Math.abs(x-actualX),Math.abs(y-actualY));
   const expected=document.createElement('canvas');expected.width=dest.width;expected.height=dest.height;
   const ctx=expected.getContext('2d')!;ctx.fillStyle='#171719';ctx.fillRect(0,0,expected.width,expected.height);

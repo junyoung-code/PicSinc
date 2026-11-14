@@ -11,7 +11,7 @@ import { detectFaces } from "../detection/client";
 import { decodePhoto, download, png } from "../image-io/images";
 import { imagePoint, TOUCH_SUPPORT } from "../touch/coordinates";
 import { TouchGesture } from "../touch/gesture";
-import { TouchGuide, TouchMagnifier } from "./TouchFeedback";
+import { BRUSH_GUIDE_STROKE_RATIO, TouchGuide, TouchMagnifier } from "./TouchFeedback";
 import { loadRoomMask } from "../image-io/room-mask";
 import type { DetectedRegions } from "@/features/region-editor/detected-regions";
 import styles from "./retouch.module.css";
@@ -25,6 +25,8 @@ import { animatePhotoView, boundPhotoView, photoPreviewScale, photoScaleLimit, z
 type Photo = { id:number; bitmap:ImageBitmap; url:string; name:string; region?:HTMLCanvasElement; outline?:string };
 type Mode = "face" | "touch" | "restore" | "move";
 const empty=initialState([]);
+const outsideTouchArea = "터치 보정은 획을 시작한 얼굴 주변에서만 적용돼요.";
+const rangeKeys = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"]);
 export type RoomEditRecord = { schemaVersion: 1; scope: "personal" | "global"; faces: Face[]; edit: EditState };
 export type RoomEditorProps = { imageUrl: string; maskUrl?: string; regions?: DetectedRegions["regions"]; scope: "personal" | "global"; nickname: string; disabled?: boolean; onSave: (blob: Blob, state: RoomEditRecord) => Promise<void>; onCancel: () => void; onDirtyChange?: (dirty: boolean) => void; onBackHandlerChange?: (handler: (() => boolean) | null) => void };
 export default function RetouchEditor({ room, participants }: { room?: RoomEditorProps; participants?: ReactNode } = {}) {
@@ -35,14 +37,16 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
   const [detectedFaces,setDetectedFaces]=useState<Face[]>([]);
   const [edit,setEdit]=useState<EditState>(empty),[group,setGroup]=useState<typeof groups[number]>("얼굴형"),[control,setSelectedControl]=useState<ControlId>("faceWidth");
   const [mode,setMode]=useState<Mode>("face"),[brush,setBrush]=useState(4),[compare,setCompare]=useState(false);
+  const [adjustingLipScale, setAdjustingLipScale] = useState(false);
+  const lipScalePointer = useRef<number | null>(null);
   const [saveError,setSaveError]=useState("");
   const [loading,setLoading]=useState(!!room),[rendering,setRendering]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
+  const [waitingForFaceRetry,setWaitingForFaceRetry]=useState(false);
   const [engineError,setEngineError]=useState(""),[calculationError,setCalculationError]=useState(""),[limited,setLimited]=useState(false),[strained,setStrained]=useState(false),[zoom,setZoom]=useState(1),[pan,setPan]=useState({x:0,y:0});
   const touchStrength=6;
   const [touchStart,setTouchStart]=useState<Point|null>(null);
   const touch=useRef(new TouchGesture()),refreshLens=useRef<()=>void>(()=>{});
-  const [waitingForFaceRetry,setWaitingForFaceRetry]=useState(false);
-  const [fit,setFit]=useState({width:1,height:1}),[cursor,setCursor]=useState<Point|null>(null);
+  const [fit,setFit]=useState({width:1,height:1,viewportWidth:0}),[cursor,setCursor]=useState<Point|null>(null);
   const canvas=useRef<HTMLCanvasElement>(null),stage=useRef<HTMLDivElement>(null),viewport=useRef<HTMLDivElement>(null);
   const computer=useRef<FieldComputer|null>(null),renderer=useRef<Renderer|null>(null),field=useRef<Field|null>(null),mask=useRef<HTMLCanvasElement|null>(null);
   const preview=useRef<PreviewQueue|null>(null),maskKey=useRef("");
@@ -54,6 +58,7 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
   const gesture=useRef<{snapshot:EditState;last:Point;start:Point;clientY:number;pan:Point;changed:boolean;navigation?:boolean;faceId?:string}|null>(null);
   const pointers=useRef(new Map<number,Point>()),pinch=useRef<{distance:number;zoom:number;anchor:Point}|null>(null);
   const controlDefinition=controlDefinitions[control];
+  const isLipScale = control === "lipSize" || control === "lipWidth";
   const value=edit.settings[selected]?.[control]??0;
   const update=(next:EditState)=>{if(next===editRef.current)return;generation.current++;setRendering(true);editRef.current=next;setEdit(next);};
   const selectable=!!photo && !loading && !engineError && !saving && !room?.disabled;
@@ -147,7 +152,13 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
   },[photo]);
   useEffect(()=>{
     if(!viewport.current || !photo) return;
-    const resize=()=>{const el=viewport.current;if(!el)return;const scale=Math.min(el.clientWidth/photo.bitmap.width,el.clientHeight/photo.bitmap.height);setFit({width:photo.bitmap.width*scale,height:photo.bitmap.height*scale});};
+    const resize = () => {
+      const el = viewport.current;
+      if (!el) return;
+      const viewportWidth = el.clientWidth;
+      const scale = Math.min(viewportWidth / photo.bitmap.width, el.clientHeight / photo.bitmap.height);
+      setFit({ width: photo.bitmap.width * scale, height: photo.bitmap.height * scale, viewportWidth });
+    };
     const observer=new ResizeObserver(resize);observer.observe(viewport.current);resize();return ()=>observer.disconnect();
   },[photo]);
   useEffect(()=>{changeView(view.current.zoom,view.current.pan);},[fit.width,fit.height]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -260,8 +271,30 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
     }catch(e){if(upload.current===current)setError((e as Error).message);}finally{if(upload.current===current){detection.current=null;setLoading(false);}}
   }
   function point(e:ReactPointerEvent):Point {const rect=stage.current!.getBoundingClientRect();return imagePoint({x:e.clientX,y:e.clientY},rect,photo!.bitmap.width,photo!.bitmap.height);}
-  const radius=photo ? room ? Math.min(photo.bitmap.width,photo.bitmap.height)*brush/200 : selected ? faceArea(faces.find(f=>f.id===selected)!,photo.bitmap.width,photo.bitmap.height).rx*brush/100 : 1 : 1;
-  const touchOwner=room?"__touch":selected;
+  // At size 4, the outer edge of the guide spans 7.1% of the viewport.
+  const classicDiameter = fit.viewportWidth * .071 * (brush / 4) / (1 + BRUSH_GUIDE_STROKE_RATIO);
+  const displayScale = photo ? fit.width * zoom / photo.bitmap.width : 1;
+  const radius = classicDiameter / (2 * TOUCH_SUPPORT * displayScale);
+  function guidePoint(point: Point): Point {
+    const frame = viewport.current!;
+    return {
+      x: frame.clientWidth / 2 + pan.x + (point.x - photo!.bitmap.width / 2) * displayScale,
+      y: frame.clientHeight / 2 + pan.y + (point.y - photo!.bitmap.height / 2) * displayScale,
+    };
+  }
+  function touchOwnerAt(point: Point, photo: Photo): string {
+    if (room) return "__touch";
+    let owner = selected;
+    let closest = 1;
+    for (const face of faces) {
+      const distance = regionDistance(point, faceArea(face, photo.bitmap.width, photo.bitmap.height));
+      if (distance < closest) {
+        closest = distance;
+        owner = face.id;
+      }
+    }
+    return owner;
+  }
   function startPointer(e:ReactPointerEvent<HTMLDivElement>){
     const button=(e.target as HTMLElement).closest("button");
     if(!photo||reviewing||room?.disabled||saving||loading||engineError||(button&&!button.dataset.faceId))return;
@@ -275,10 +308,12 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
       pinch.current={distance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),zoom:view.current.zoom,anchor:{x:(center.x-rect.left-rect.width/2-view.current.pan.x)/view.current.zoom,y:(center.y-rect.top-rect.height/2-view.current.pan.y)/view.current.zoom}};return;
     }
     if(pointers.current.size>2)return;
-    gesture.current={snapshot:editRef.current,last:point(e),start:{x:e.clientX,y:e.clientY},clientY:e.clientY,pan:{...view.current.pan},changed:false,faceId:button?.dataset.faceId};
-    setCursor(point(e));
+    const p = point(e);
+    gesture.current={snapshot:editRef.current,last:p,start:{x:e.clientX,y:e.clientY},clientY:e.clientY,pan:{...view.current.pan},changed:false,faceId:button?.dataset.faceId};
+    setCursor(p);
     if((mode==="touch"||mode==="restore")&&active){
-      const p=point(e);touch.current.begin(editRef.current,touchOwner,mode,p,radius,touchStrength/100);setTouchStart(p);
+      touch.current.begin(editRef.current, touchOwnerAt(p, photo), mode, p, radius, touchStrength / 100);
+      setTouchStart(p);
       if(mode==="restore")applyTouch(p);
     }
   }
@@ -302,21 +337,24 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
     if((mode==="touch"||mode==="restore")&&active)applyTouch(next);
   }
   function applyTouch(next:Point){
-    const area=room?null:faceArea(faces.find(f=>f.id===selected)!,photo!.bitmap.width,photo!.bitmap.height);
-    const allowed=!area||regionDistance(next,area)<=1.35;
-    if(!allowed)setNotice("터치 보정은 선택한 얼굴 주변에서만 적용돼요.");
-    const result=touch.current.move(editRef.current,next,allowed);
-    // Rooms have no undo/reset buttons, so point to the step that starts a fresh budget.
-    if(result.full)setNotice(room?.scope==="global"?"한 번에 다듬을 수 있는 만큼 다 썼어요. 위의 '저장'을 누르고 다시 열면 이어서 다듬을 수 있어요.":room?"한 번에 다듬을 수 있는 만큼 다 썼어요. 남은 부분은 다음 단계인 전체 사진 터치 보정에서 다듬어 주세요.":"터치·복원은 각각 600구간까지 지원해요. 마지막 터치를 취소하거나 초기화해주세요.");
-    update(result.state);
+    const stroke = touch.current.current;
+    if (!stroke || !photo) return;
+    const face = faces.find(f => f.id === stroke.owner);
+    const area = face ? faceArea(face, photo.bitmap.width, photo.bitmap.height) : null;
+    const allowed = !!room || (!!area && regionDistance(next, area) <= 1.35);
+    if (!allowed) setNotice(outsideTouchArea);
+    else if (notice === outsideTouchArea) setNotice("");
+    update(touch.current.move(editRef.current,next,allowed));
   }
   function endPointer(e:ReactPointerEvent<HTMLDivElement>,cancel=false){
     if(!pointers.current.has(e.pointerId))return;
     const g=gesture.current;
     // Include a final position even if the browser did not send a last move.
-    if(!cancel&&touch.current.current&&active){
-      const p=point(e),last=touch.current.current.last;
+    const stroke = touch.current.current;
+    if(!cancel&&stroke&&active){
+      const p=point(e),last=stroke.last;
       if(Math.hypot(p.x-last.x,p.y-last.y)>.1)applyTouch(p);
+      if (!room && stroke.changed) setSelected(stroke.owner);
     }
     update(touch.current.finish(editRef.current,cancel));setTouchStart(null);
     pointers.current.delete(e.pointerId);
@@ -346,12 +384,25 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
     stopZoom.current();lastTap.current=null;
     update(touch.current.finish(editRef.current,true));setTouchStart(null);setCursor(null);
     pointers.current.clear();gesture.current=null;pinch.current=null;
+    lipScalePointer.current = null;
+    setAdjustingLipScale(false);
   };
   useEffect(()=>{
     const cancel=()=>cancelInteraction.current();
     const hidden=()=>{if(document.hidden)cancel();};
+    const finishLipScale = (event: PointerEvent) => {
+      if (lipScalePointer.current !== event.pointerId) return;
+      lipScalePointer.current = null;
+      setAdjustingLipScale(false);
+    };
+    window.addEventListener("pointerup", finishLipScale, true);
+    window.addEventListener("pointercancel", finishLipScale, true);
     window.addEventListener("blur",cancel);document.addEventListener("visibilitychange",hidden);
-    return()=>{window.removeEventListener("blur",cancel);document.removeEventListener("visibilitychange",hidden);};
+    return()=>{
+      window.removeEventListener("pointerup", finishLipScale, true);
+      window.removeEventListener("pointercancel", finishLipScale, true);
+      window.removeEventListener("blur",cancel);document.removeEventListener("visibilitychange",hidden);
+    };
   },[]);
   useEffect(()=>{if(room?.disabled)cancelInteraction.current();},[room?.disabled]);
 
@@ -388,9 +439,17 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
         <img className={styles.original} src={photo.url} alt="업로드한 원본" draggable={false}/>
         <canvas key={photo.id} ref={canvas} className={styles.canvas} aria-label="보정 미리보기" style={{visibility:engineError||calculationError?"hidden":"visible"}}/>
         {photo.outline&&!reviewing&&!compare&&!(room?.scope==="personal"&&collapsed)&&<img src={photo.outline} alt="내 편집 영역" className={styles.canvas}/> }
-        {!reviewing&&mode==="face"&&!compare&&(!room||collapsed)&&faces.map((f,i)=>{const b=bounds(oval.map(n=>f.landmarks[n]));const position={left:`${b.x*100}%`,top:`${b.y*100}%`,width:`${b.width*100}%`,height:`${b.height*100}%`};return room?.scope==="personal"?<button key={f.id} className={styles.faceTarget} style={position} data-face-id={f.id} aria-label={`얼굴 ${i+1} 보정`} disabled={!selectable} onClick={event=>{if(event.detail===0)selectFace(f.id);}}><span className={styles.faceCorners} aria-hidden="true">{[0,1,2,3].map(corner=><svg key={corner} viewBox="0 0 24 24"><path d="M3 21V11Q3 3 11 3H21"/></svg>)}</span></button>:<div key={f.id} className={`${styles.faceBox} ${selected===f.id?styles.selectedFace:""}`} style={position}><span>{`얼굴 ${i+1}`}</span></div>;})}
-        {cursor&&active&&!compare&&!engineError&&!calculationError&&(mode==="touch"||mode==="restore")&&<TouchGuide point={cursor} start={mode==="touch"?touchStart:null} radius={radius*(mode==="touch"?TOUCH_SUPPORT:1)} width={photo.bitmap.width} height={photo.bitmap.height}/>}
+        {!reviewing&&mode==="face"&&!compare&&(!room||collapsed)&&faces.map((f,i)=>{
+          if (f.id === selected && isLipScale && adjustingLipScale) return null;
+          const b=bounds(oval.map(n=>f.landmarks[n]));const position={left:`${b.x*100}%`,top:`${b.y*100}%`,width:`${b.width*100}%`,height:`${b.height*100}%`};return room?.scope==="personal"?<button key={f.id} className={styles.faceTarget} style={position} data-face-id={f.id} aria-label={`얼굴 ${i+1} 보정`} disabled={!selectable} onClick={event=>{if(event.detail===0)selectFace(f.id);}}><span className={styles.faceCorners} aria-hidden="true">{[0,1,2,3].map(corner=><svg key={corner} viewBox="0 0 24 24"><path d="M3 21V11Q3 3 11 3H21"/></svg>)}</span></button>:<div key={f.id} className={`${styles.faceBox} ${selected===f.id?styles.selectedFace:""} ${selected===f.id&&!collapsed&&control==="jawAngle"?styles.jawPreview:""}`} style={position}><span>{`얼굴 ${i+1}`}</span></div>;
+        })}
       </div>:room?<div className={styles.empty}><h2>{loading?"사진을 불러오고 있어요":"사진을 불러오지 못했어요"}</h2><p>{loading?"잠시만 기다려 주세요.":"연결을 확인하고 다시 시도해 주세요."}</p></div>:<div className={styles.empty}><div className={styles.friends}><img src="/images/home/lilac.png" width="72" height="72" alt=""/><img src="/images/home/pink.png" width="70" height="70" alt=""/></div><h2>내 사진으로 보정하기</h2><p>사진을 열고 얼굴을 선택하세요.<br/>사진과 보정은 이 탭 안에서 처리해요.</p><small>JPEG·PNG / 20MB / 3,000만 픽셀</small></div>}
+      {photo && cursor && active && !compare && !engineError && !calculationError && (mode === "touch" || mode === "restore") &&
+        <TouchGuide
+          point={guidePoint(cursor)}
+          start={mode === "touch" && touchStart ? guidePoint(touchStart) : null}
+          radius={(touch.current.current?.radius ?? radius) * displayScale * (mode === "touch" ? TOUCH_SUPPORT : 1)}
+        />}
       {photo&&cursor&&touchStart&&active&&!compare&&!calculationError&&!engineError&&(mode==="touch"||mode==="restore")&&<TouchMagnifier source={canvas} refresh={refreshLens} point={cursor} imageWidth={photo.bitmap.width} imageHeight={photo.bitmap.height} displayScale={fit.width/photo.bitmap.width*zoom} right={!!viewport.current&&!!stage.current&&stage.current.getBoundingClientRect().left+cursor.x/photo.bitmap.width*stage.current.getBoundingClientRect().width<viewport.current.getBoundingClientRect().left+viewport.current.clientWidth/2}/>}
       {loading&&<div className={styles.progress} role="status"><span className={styles.spinner} aria-hidden="true"/><strong>{photo?"얼굴 기준점을 찾고 있어요…":"사진을 불러오고 있어요…"}</strong><span>{waitingForFaceRetry?"5초 뒤 얼굴 분석을 한 번 더 시도해요.":"잠시만 기다려 주세요."}</span></div>}
       {photo&&!reviewing&&<button className={styles.compare} aria-label="누르고 원본 비교" title="누르고 원본 비교" disabled={saving} onPointerDown={e=>{e.stopPropagation();setCompare(true);}} onPointerUp={()=>setCompare(false)} onPointerCancel={()=>setCompare(false)} onPointerLeave={()=>setCompare(false)} onKeyDown={e=>{if(e.code==="Space"||e.code==="Enter")setCompare(true);}} onKeyUp={()=>setCompare(false)}><img src="/images/figma-current/editor/eye.svg" alt="" /></button>}
@@ -413,7 +472,16 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
         {mode==="face"?<>
           <nav className={styles.tabs} aria-label="보정 부위">{groups.map(g=><button key={g} aria-pressed={group===g} onClick={()=>{setGroup(g);setSelectedControl(controls.find(c=>c[2]===g)![0]);}}>{g}</button>)}</nav>
           <div className={styles.sliderTitle}><label htmlFor="retouch-strength">{displayLabel(control)} · <output>{value>0?"+":""}{value}</output></label></div>
-          <input id="retouch-strength" className={styles.slider} aria-valuetext={`${controlDefinition.left} ${controlDefinition.min}부터 ${controlDefinition.right} ${controlDefinition.max}, 현재 ${value}`} type="range" min={controlDefinition.min} max={controlDefinition.max} step="1" value={value} disabled={!active} onChange={e=>update(setControl(editRef.current,selected,control,Number(e.target.value)))}/>
+          <input id="retouch-strength" className={styles.slider} aria-valuetext={`${controlDefinition.left} ${controlDefinition.min}부터 ${controlDefinition.right} ${controlDefinition.max}, 현재 ${value}`} type="range" min={controlDefinition.min} max={controlDefinition.max} step="1" value={value} disabled={!active}
+            onPointerDown={event=>{
+              if (!isLipScale || !event.isPrimary || event.button !== 0) return;
+              lipScalePointer.current = event.pointerId;
+              setAdjustingLipScale(true);
+            }}
+            onKeyDown={event=>{if (isLipScale && rangeKeys.has(event.key)) setAdjustingLipScale(true);}}
+            onKeyUp={event=>{if (rangeKeys.has(event.key) && lipScalePointer.current === null) setAdjustingLipScale(false);}}
+            onBlur={()=>{if (lipScalePointer.current === null) setAdjustingLipScale(false);}}
+            onChange={e=>update(setControl(editRef.current,selected,control,Number(e.target.value)))}/>
           <div className={styles.features} aria-label="세부 보정 항목">{controls.filter(c=>c[2]===group).slice().sort((a,b)=>a[0]==="browHeadSpacing"?1:b[0]==="browHeadSpacing"?-1:0).map(([id,label])=><button key={id} aria-label={label} aria-pressed={control===id} data-control={id} onClick={()=>setSelectedControl(id)}><FeatureIcon id={id}/><span>{displayLabel(id)}</span>{!!edit.settings[selected]?.[id]&&<i/>}</button>)}</div>
         </>:<div className={styles.touchPanel}>
           <label htmlFor="brush-size">브러시 크기 · <output>{brush}</output></label><input id="brush-size" className={styles.slider} type="range" min="1" max="20" step="0.1" value={brush} disabled={!active} onChange={e=>setBrush(Number(e.target.value))}/>

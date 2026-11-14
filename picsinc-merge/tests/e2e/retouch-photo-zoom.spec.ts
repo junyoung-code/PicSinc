@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 import sharp from 'sharp';
 import { fixture } from '../../src/features/face-retouch/effects/fixture';
+import { TOUCH_SUPPORT } from '../../src/features/face-retouch/touch/coordinates';
+import type { EditState } from '../../src/features/face-retouch/state/model';
 
 // Photos/landmarks/HTTP are fixtures; rendering is real. Chrome uses native CDP
 // touch. WebKit only exposes native taps, so multi-touch uses synthetic pointers
@@ -103,6 +105,227 @@ test('photo pinch keeps its anchor, reveals original detail and bounds panning',
   await expect(stage).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
   await expect(page.locator('#retouch-strength')).toHaveValue('0');
   expect(errors).toEqual([]);
+});
+
+test('brush size 2 keeps its viewport ratio after zoom and resize', async ({ page }) => {
+  type BrushWindow = Window & { brushEdit?: EditState };
+  await page.addInitScript(() => {
+    const post = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function (message: { plan?: { state: EditState } }, options?: StructuredSerializeOptions | Transferable[]) {
+      if (message.plan) (window as BrushWindow).brushEdit = message.plan.state;
+      const send = post.bind(this);
+      return Array.isArray(options) ? send(message, options) : send(message, options);
+    };
+  });
+  await page.route('**/api/**', route => route.fulfill({ status: 204, body: '' }));
+  const size = 1600;
+  const photo = await sharp({ create: { width: size, height: size, channels: 3, background: '#b8a0cc' } }).png().toBuffer();
+  const face = fixture('brush');
+  await page.route('**/retouch/detect.worker.js', route => route.fulfill({ contentType: 'application/javascript',
+    body: `self.onmessage=({data:{bitmap}})=>{bitmap.close();self.postMessage({landmarks:${JSON.stringify([face.landmarks])}});};`,
+  }));
+  await page.goto('/retouch');
+  await page.getByLabel('사진 열기', { exact: true }).setInputFiles({ name: 'brush.png', mimeType: 'image/png', buffer: photo });
+  const save = page.getByRole('button', { name: 'PNG 저장', exact: true });
+  await expect(save).toBeEnabled();
+  const canvas = page.locator('canvas[aria-label="보정 미리보기"]');
+  const stage = canvas.locator('..'), viewport = stage.locator('..');
+  await page.getByRole('button', { name: '터치 보정', exact: true }).click();
+  const slider = page.locator('#brush-size');
+  await slider.fill('2');
+  await viewport.scrollIntoViewIfNeeded();
+  async function viewportCenter() {
+    const bounds = (await viewport.boundingBox())!;
+    return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  }
+  const latest = () => page.evaluate(() => (window as BrushWindow).brushEdit!);
+  async function measure(mode: '클래식' | '복원') {
+    await page.getByRole('button', { name: mode, exact: true }).click();
+    await viewport.scrollIntoViewIfNeeded();
+    const { x, y } = await viewportCenter();
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    const before = await latest();
+    await page.mouse.move(x + 6, y, { steps: 3 });
+    const guide = page.getByTestId('touch-guide');
+    const outline = guide.locator(':scope > circle');
+    const { diameter, outerDiameter, centerX, centerY, fill, stroke } = await outline.evaluate((el: SVGCircleElement) => {
+      const rect = el.getBoundingClientRect(), style = getComputedStyle(el);
+      return { diameter: rect.width, outerDiameter: rect.width + parseFloat(style.strokeWidth), centerX: rect.x + rect.width / 2, centerY: rect.y + rect.height / 2, fill: style.fill, stroke: style.stroke };
+    });
+    expect(fill).toBe('none');
+    expect(stroke).toBe('rgb(255, 255, 255)');
+    await expect(guide.locator(':scope > path:not([data-testid])')).toHaveCSS('stroke', 'rgb(255, 255, 255)');
+    expect(Math.abs(centerX - x - 6)).toBeLessThan(1.5);
+    expect(Math.abs(centerY - y)).toBeLessThan(1.5);
+    await page.mouse.up();
+    await expect(save).toBeEnabled();
+    const edit = await latest();
+    if (mode === '클래식') expect(edit.strokes.length).toBeGreaterThan(before.strokes.length);
+    const record = mode === '클래식' ? edit.strokes.at(-1)! : edit.restores.at(-1)!;
+    const photoScale = (await stage.boundingBox())!.width / size;
+    expect(record.radius * photoScale * (mode === '클래식' ? TOUCH_SUPPORT : 1) * 2).toBeCloseTo(diameter, 2);
+    const frameWidth = await viewport.evaluate(el => el.clientWidth);
+    return { diameter, ratio: outerDiameter / frameWidth, radius: record.radius };
+  }
+  const fittedTouch = await measure('클래식');
+  expect(fittedTouch.ratio).toBeCloseTo(.0355, 4);
+  const fittedRestore = await measure('복원');
+  const earlier = await latest();
+  const { x, y } = await viewportCenter();
+  await pinch(page, x, y, 37.5);
+  await expect.poll(() => stage.evaluate(el => new DOMMatrix(getComputedStyle(el).transform).a)).toBeCloseTo(1.5, 2);
+  expect(await latest()).toEqual(earlier);
+  const zoomedTouch = await measure('클래식');
+  const zoomedRestore = await measure('복원');
+  await expect(slider).toHaveValue('2');
+  for (const [fitted, zoomed] of [[fittedTouch, zoomedTouch], [fittedRestore, zoomedRestore]]) {
+    expect(fitted.diameter).toBeGreaterThan(0);
+    expect(zoomed.diameter).toBeCloseTo(fitted.diameter, 2);
+    expect(zoomed.ratio).toBeCloseTo(fitted.ratio, 4);
+    expect(zoomed.radius).toBeCloseTo(fitted.radius / 1.5, 3);
+  }
+  const edit = await latest();
+  expect(edit.strokes.slice(0, earlier.strokes.length)).toEqual(earlier.strokes);
+  expect(edit.restores.slice(0, earlier.restores.length)).toEqual(earlier.restores);
+  const sizeBeforeResize = page.viewportSize()!;
+  await page.setViewportSize({ width: 320, height: sizeBeforeResize.height });
+  await expect.poll(() => viewport.evaluate(el => el.clientWidth)).toBe(292);
+  for (const [mode, fitted] of [['클래식', fittedTouch], ['복원', fittedRestore]] as const) {
+    const narrow = await measure(mode);
+    expect(narrow.diameter).toBeLessThan(fitted.diameter);
+    expect(narrow.ratio).toBeCloseTo(fitted.ratio, 4);
+  }
+});
+
+test('a classic stroke retouches the visible face even when another face was selected', async ({ page }) => {
+  await page.route('**/api/**', route => route.fulfill({ status: 204, body: '' }));
+  const size = 1200;
+  const pattern = Buffer.from(`<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse"><path d="M0 0h16v16H0z" fill="#bc8f80"/><path d="M0 0h8v8H0zm8 8h8v8H8z" fill="#523059"/></pattern></defs><rect width="100%" height="100%" fill="url(#grid)"/></svg>`);
+  const photo = await sharp(pattern).png().toBuffer();
+  const faces = [fixture('first', .22, .42), fixture('second', .78, .42)];
+  await page.route('**/retouch/detect.worker.js', route => route.fulfill({ contentType: 'application/javascript',
+    body: `self.onmessage=({data:{bitmap}})=>{bitmap.close();self.postMessage({landmarks:${JSON.stringify(faces.map(face => face.landmarks))}});};`,
+  }));
+  await page.goto('/retouch');
+  await page.getByLabel('사진 열기', { exact: true }).setInputFiles({ name: 'two-faces.png', mimeType: 'image/png', buffer: photo });
+  const save = page.getByRole('button', { name: 'PNG 저장', exact: true });
+  await expect(save).toBeEnabled();
+  const strength = page.locator('#retouch-strength');
+  await strength.fill('60');
+  await expect(save).toBeEnabled();
+  const canvas = page.locator('canvas[aria-label="보정 미리보기"]');
+  const stage = canvas.locator('..'), viewport = stage.locator('..');
+  await page.getByRole('button', { name: '터치 보정', exact: true }).click();
+  await viewport.scrollIntoViewIfNeeded();
+  const frame = (await viewport.boundingBox())!;
+  const fit = (await stage.boundingBox())!;
+  await pinch(page, fit.x + fit.width * .78, fit.y + fit.height * .45, 100);
+  await expect.poll(() => stage.evaluate(el => new DOMMatrix(getComputedStyle(el).transform).a)).toBeCloseTo(4, 1);
+  await page.getByRole('button', { name: '얼굴 보정', exact: true }).click();
+  await expect(strength).toHaveValue('60');
+  await page.getByRole('button', { name: '터치 보정', exact: true }).click();
+  await viewport.scrollIntoViewIfNeeded();
+  const zoomed = (await stage.boundingBox())!;
+  expect(zoomed.x + zoomed.width * .22).toBeLessThan(frame.x);
+  const x = zoomed.x + zoomed.width * .78, y = zoomed.y + zoomed.height * .45;
+  const pixels = (right: boolean) => canvas.evaluate((source: HTMLCanvasElement, right) => {
+    const crop = document.createElement('canvas');
+    crop.width = source.width / 2; crop.height = source.height;
+    crop.getContext('2d')!.drawImage(source, right ? crop.width : 0, 0, crop.width, crop.height, 0, 0, crop.width, crop.height);
+    return crop.toDataURL();
+  }, right);
+  // Wait for the zoomed preview to settle before comparing edits at that scale.
+  await expect.poll(() => canvas.evaluate((c: HTMLCanvasElement) => c.width)).toBe(size);
+  await expect(save).toBeEnabled();
+  const [leftBefore, rightBefore] = await Promise.all([pixels(false), pixels(true)]);
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 24, y, { steps: 4 });
+  await page.mouse.up();
+  await expect(save).toBeEnabled();
+  expect((await pixels(true)) === rightBefore, 'the visible face changes after dragging').toBe(false);
+  expect((await pixels(false)) === leftBefore, 'the first face retains its existing edit').toBe(true);
+
+  await page.getByRole('button', { name: '복원', exact: true }).click();
+  // Cover the whole stroke, including its falloff around the path.
+  await page.locator('#brush-size').fill('16');
+  await viewport.scrollIntoViewIfNeeded();
+  const view = (await stage.boundingBox())!;
+  const restoreX = view.x + view.width * .78, restoreY = view.y + view.height * .45;
+  await page.mouse.move(restoreX - 20, restoreY);
+  await page.mouse.down();
+  await page.mouse.move(restoreX + 44, restoreY, { steps: 12 });
+  await page.mouse.up();
+  await expect(save).toBeEnabled();
+  expect((await pixels(true)) === rightBefore, 'restore clears the second face’s stroke').toBe(true);
+  expect((await pixels(false)) === leftBefore, 'restore preserves the first face’s edit').toBe(true);
+});
+
+test('partial restore changes touch pixels without jumping the facial preview', async ({ page }) => {
+  await page.route('**/api/**', route => route.fulfill({ status: 204, body: '' }));
+  const size = 640;
+  const grid = Buffer.alloc(size * size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) grid[y * size + x] = (Math.floor(x / 4) + Math.floor(y / 4)) % 2 ? 230 : 60;
+  }
+  const photo = await sharp(grid, { raw: { width: size, height: size, channels: 1 } }).png().toBuffer();
+  await page.route('**/retouch/detect.worker.js', route => route.fulfill({ contentType: 'application/javascript',
+    body: `self.onmessage=({data:{bitmap}})=>{bitmap.close();self.postMessage({landmarks:${JSON.stringify([fixture().landmarks])}});};`,
+  }));
+  await page.goto('/retouch');
+  await page.getByLabel('사진 열기', { exact: true }).setInputFiles({ name: 'restore.png', mimeType: 'image/png', buffer: photo });
+  const save = page.getByRole('button', { name: 'PNG 저장', exact: true }), strength = page.locator('#retouch-strength');
+  await expect(save).toBeEnabled();
+  await strength.fill('85');
+  await page.getByRole('navigation', { name: '보정 부위' }).getByRole('button', { name: '눈', exact: true }).click();
+  await page.locator('[data-control="eyeSize"]').click();
+  await strength.fill('85');
+  await expect(save).toBeEnabled();
+
+  const canvas = page.locator('canvas[aria-label="보정 미리보기"]');
+  const viewport = canvas.locator('../..');
+  const crop = (x: number, y: number, width: number, height: number) =>
+    canvas.evaluate((source: HTMLCanvasElement, {x, y, width, height}) => {
+      const region = document.createElement('canvas');
+      region.width = width; region.height = height;
+      region.getContext('2d')!.drawImage(source, x, y, width, height, 0, 0, width, height);
+      return region.toDataURL();
+    }, {x, y, width, height});
+  const eyePixels = () => crop(250, 211, 64, 44);
+  const erasedCenter = () => crop(215, 284, 6, 6);
+  const facialEye = await eyePixels(), facialCenter = await erasedCenter();
+  const point = async (x: number, y: number) => {
+    const box = (await canvas.boundingBox())!;
+    return {x: box.x + box.width * x, y: box.y + box.height * y};
+  };
+  const drag = async () => {
+    const a = await point(.34, .45), b = await point(.387, .456);
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move(b.x, b.y);
+    await page.mouse.up();
+    await expect(save).toBeEnabled();
+  };
+  await page.getByRole('button', { name: '터치 보정', exact: true }).click();
+  await page.locator('#brush-size').fill('4.4');
+  await viewport.scrollIntoViewIfNeeded();
+  for (let i = 0; i < 4; i++) await drag();
+  expect(await erasedCenter() === facialCenter).toBe(false);
+  expect(await eyePixels() === facialEye).toBe(true);
+
+  await page.getByRole('button', { name: '복원', exact: true }).click();
+  await viewport.scrollIntoViewIfNeeded();
+  const a = await point(.34, .45), b = await point(.387, .456);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await expect(save).toBeEnabled();
+  expect(await eyePixels() === facialEye, 'eye pixels stay fixed while the restore button is held').toBe(true);
+  expect(await erasedCenter() === facialCenter, 'the brushed pixels return to the facial preview').toBe(true);
+  await page.mouse.move(b.x, b.y);
+  await expect(save).toBeEnabled();
+  expect(await eyePixels() === facialEye).toBe(true);
+  await page.mouse.up();
 });
 
 test('region selection zoom stays inside the photo without claiming on pinch or double tap', async ({ page }) => {

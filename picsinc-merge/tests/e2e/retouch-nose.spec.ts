@@ -16,7 +16,7 @@ async function ready(page:Page){await expect(page.getByRole('button',{name:'PNG 
 async function snapshot(page:Page){return Buffer.from(await page.locator('canvas[aria-label="보정 미리보기"]').evaluate((c:HTMLCanvasElement)=>c.toDataURL('image/png').split(',')[1]),'base64');}
 async function value(page:Page,id:string,amount:number){await page.locator(`[data-control="${id}"]`).click();await page.locator('#retouch-strength').fill(String(amount));await ready(page);}
 
-test('real-photo nose controls protect nostrils, lips and neighbors, reset and save the preview',async({page})=>{
+test('real-photo nose controls protect lips and neighbors, move nostril edges, reset and save the preview',async({page})=>{
  test.skip(!existsSync(fixture),'Local private fixture required.');await mkdir(output,{recursive:true});
  const original=await readFile(fixture),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{
@@ -36,7 +36,7 @@ test('real-photo nose controls protect nostrils, lips and neighbors, reset and s
  for(const id of ['noseSize','noseAlar','noseBridge','noseDorsum','noseTip']){
   for(const amount of [-100,100]){
    await value(page,id,amount);const png=await snapshot(page),pixels=await sharp(png).ensureAlpha().raw().toBuffer();expect(pixels.equals(raw),`${id} changes actual pixels`).toBeFalsy();
-   const plan=await page.evaluate(()=>(window as unknown as AuditWindow).nosePlan),neighbors=Object.entries(plan.areas).filter(([id])=>id!==face.id).map(([,r])=>r),polygons=id==='noseAlar'?[...mouthAndEyes,...holes]:mouthAndEyes;
+   const plan=await page.evaluate(()=>(window as unknown as AuditWindow).nosePlan),neighbors=Object.entries(plan.areas).filter(([id])=>id!==face.id).map(([,r])=>r),polygons=mouthAndEyes;
    let checked=0,changed=0;const locations:{x:number;y:number;polygons:number[]}[]=[];
    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
     const p={x:x+.5,y:y+.5};if(!polygons.some(poly=>insidePolygon(p,poly))&&!neighbors.some(r=>regionDistance(p,r)<.9))continue;
@@ -55,7 +55,7 @@ test('real-photo nose controls protect nostrils, lips and neighbors, reset and s
    const p=mapPoint({x:x+.5,y:y+.5},basePlan);if(!holes.some(poly=>insidePolygon(p,poly)))continue;
    checked++;const i=(y*w+x)*4;if(!pixels.subarray(i,i+4).equals(movedRaw.subarray(i,i+4)))changed++;
   }
-  expect(checked).toBeGreaterThan(10);expect(changed,'alar adjustment adds no nostril motion after other nose edits').toBe(0);
+  expect(checked).toBeGreaterThan(10);expect(changed,'nostril edges follow the alar adjustment after other nose edits').toBeGreaterThan(0);
   await writeFile(`${output}/combined-${amount}.png`,png);
  }
  const final=await snapshot(page),downloading=page.waitForEvent('download');await page.getByRole('button',{name:'PNG 저장',exact:true}).click();await(await downloading).saveAs(`${output}/saved.png`);

@@ -52,14 +52,28 @@ test('lower face preserves nose-to-mouth/chin proportions and translates the ent
  }
 });
 
-test('jaw softening moves the jaw corners inward without moving the chin tip',()=>{
- const face=fixture(),f=frame(face,1000,1000);
- for(const value of [-100,100]){
-  const plan=prepare([face],setControl(initialState([face]),face.id,'jawAngle',value),1000,1000);
-  assert.deepEqual(mapPoint(f.points[152],plan),f.points[152]);
-  for(const i of [172,397]){
-   const q=f.local(destination(f.points[i],plan));
-   assert.ok((Math.abs(q.x)-Math.abs(f.lm[i].x))*value<0);
+test('jaw angle moves both corners diagonally with a gentler midpoint and a fixed chin',()=>{
+ for(const [scale,angle] of [[1,0],[.45,.35]]){
+  const face=fixture('face',.5,scale,angle),f=frame(face,1000,1000);
+  const state=initialState([face]);
+  const planAt=(value:number)=>prepare([face],setControl(state,face.id,'jawAngle',value),1000,1000);
+  for(const direction of [-1,1]){
+   const half=planAt(direction*50),full=planAt(direction*100);
+   for(const i of [176,148,152,377,400,2,...lipLoop])assert.deepEqual(mapPoint(f.points[i],full),f.points[i]);
+   for(const [i,side] of [[172,-1],[397,1]]){
+    const p=f.lm[i],mid=f.local(destination(f.points[i],half)),end=f.local(destination(f.points[i],full));
+    assert.deepEqual(mapPoint(f.points[i],planAt(0)),f.points[i]);
+    assert.ok((end.x-p.x)*side*direction < -f.width*.004,'jaw corner moves visibly inward or outward');
+    assert.ok((end.y-p.y)*direction < -f.width*.005,'jaw corner moves visibly up or down');
+    const ratio=Math.hypot(mid.x-p.x,mid.y-p.y)/Math.hypot(end.x-p.x,end.y-p.y);
+    assert.ok(ratio>.2&&ratio<.45,`half-strength displacement ratio: ${ratio}`);
+   }
+   for(const [corner,lowerJaw] of [[172,136],[397,365]]){
+    const cornerShift=f.lm[corner].y-f.local(destination(f.points[corner],full)).y;
+    const lowerShift=f.lm[lowerJaw].y-f.local(destination(f.points[lowerJaw],full)).y;
+    assert.ok(lowerShift/cornerShift>.5,'the lower jaw should follow the corner');
+    assert.ok(lowerShift/cornerShift<1,'the movement should taper toward the chin');
+   }
   }
  }
 });
