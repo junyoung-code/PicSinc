@@ -362,3 +362,15 @@ test('when face landmarks cannot be found the personal editor offers touch tools
   await expect(page.getByRole('button', { name: '클래식', exact: true })).toBeVisible();
   await expect(page.getByText('얼굴 기준점을 찾지 못해 터치 보정(클래식·복원)만 사용할 수 있어요.')).toBeVisible();
 });
+
+test('holding the original-compare eye never opens the phone image menu (11/13 phone test)', async ({ page }) => {
+  await backend(page, detected);
+  await open(page);
+  const eye = page.getByRole('button', { name: '누르고 원본 비교', exact: true });
+  await expect(eye).toBeVisible();
+  const style = await eye.evaluate(button => { const img = button.querySelector('img')!, b = getComputedStyle(button), i = getComputedStyle(img); return { callout: (b as any).webkitTouchCallout ?? b.getPropertyValue('-webkit-touch-callout'), imgEvents: i.pointerEvents, draggable: img.draggable }; });
+  expect(style.imgEvents).toBe('none');
+  expect(style.draggable).toBe(false);
+  const prevented = await eye.evaluate(button => !button.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })));
+  expect(prevented).toBe(true);
+});

@@ -22,6 +22,9 @@
 .faceBox span { position:absolute; top:-22px; left:0; background:var(--moira-surface); color:var(--moira-ink); border:1px solid var(--moira-ink); border-radius:4px; padding:2px 5px; font-size:10px; white-space:nowrap; }
 .selectedFace span { background:var(--moira-mint); }
 .editor .compare { position:absolute; right:12px; bottom:12px; display:grid; place-items:center; width:36px; height:32px; padding:3px 5px; border-width:3px; touch-action:none; }
+/* Holding the eye showed the phone's "save image" menu (11/13 phone test): the icon takes no touches, no callout. */
+.editor .compare,.editor .compare img { -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
+.editor .compare img { pointer-events:none; }
 .originalBadge { position:absolute; right:10px; top:10px; background:var(--moira-surface); border:2px solid var(--moira-ink); border-radius:4px; padding:4px 8px; font-size:11px; }
 .progress { position:absolute; inset:0; background:#fbf9ffd9; display:grid; place-items:center; font-size:14px; }
 .panel { margin-top:24px; padding:10px 16px 24px; background:var(--moira-surface); border:3px solid var(--moira-ink); border-radius:4px; box-shadow:5px 5px 0 var(--moira-ink); }
