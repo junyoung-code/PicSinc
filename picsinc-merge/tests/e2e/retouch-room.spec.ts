@@ -196,6 +196,23 @@ for (const actionLabel of ['완료', '이대로 진행하기']) test(`selected r
  await next.click();await expect(page.getByRole('button',{name:'내 얼굴 보정 완료',exact:true})).toBeEnabled({timeout:100000});
 });
 
+test('after region edit the selection view outlines my edited area, not the original detection (11/13 phone test)',async({page})=>{
+ const width=400,height=400,png=await sharp({create:{width,height,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ const mask=await sharp({create:{width,height,channels:3,background:'#ffffff'}}).png().toBuffer();
+ const server=await backend(page,initial('personal'),png,width,height,mask);server.claim();
+ await page.goto(`/sessions/${roomId}/collaboration`);await expect(page.getByRole('button',{name:'이대로 진행하기',exact:true})).toBeEnabled();
+ // Purple outline pixels along the middle row, away from the photo edges.
+ const outline=()=>page.locator('canvas').first().evaluate((c:HTMLCanvasElement)=>{const x=c.getContext('2d')!,y=Math.round(c.height/2),row=x.getImageData(0,y,c.width,1).data;let n=0;for(let i=Math.round(c.width*.15);i<c.width*.85;i++){const r=row[i*4],g=row[i*4+1],b=row[i*4+2];if(Math.abs(r-101)<30&&Math.abs(g-88)<30&&Math.abs(b-232)<30)n++;}return n;});
+ expect(await outline()).toBe(0);
+ await page.getByRole('button',{name:'영역 편집하기',exact:true}).click();
+ await page.getByRole('button',{name:'지우기',exact:true}).click();
+ const box=(await page.locator('canvas').first().boundingBox())!;
+ await page.mouse.move(box.x+box.width*.35,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width*.65,box.y+box.height/2,{steps:8});await page.mouse.up();
+ await page.getByRole('button',{name:'완료',exact:true}).last().click();
+ await expect(page.getByRole('dialog',{name:'내 영역 선택'})).toHaveCount(0);
+ await expect.poll(outline).toBeGreaterThan(0);
+});
+
 test('leaving region edit with changes asks in the Figma layout: 나가기 on top, 계속 편집 below (a4)',async({page})=>{
  const width=400,height=400,png=await sharp({create:{width,height,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  const mask=await sharp({create:{width,height,channels:3,background:'#ffffff'}}).png().toBuffer();

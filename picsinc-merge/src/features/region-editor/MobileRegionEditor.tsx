@@ -319,7 +319,8 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
     const path = (ring: Point[]) => { context.beginPath(); ring.forEach((p, i) => i ? context.lineTo(p.x, p.y) : context.moveTo(p.x, p.y)); context.closePath(); };
     for (const [i, region] of regionRef.current.entries()) {
       const owner = regionOwnerLabel(region.id, regionClaims, selectedIds, currentParticipantId, participantNickname);
-      if (tool !== "select" && (!owner || owner.own)) continue;
+      // My own area is outlined from my edited mask below, not from the original detection (11/13 phone test).
+      if (owner?.own || (!owner && tool !== "select")) continue;
       const conflict = claimConflict?.regionId === region.id;
       context.save();
       context.strokeStyle = conflict ? "#df2638" : owner ? owner.own ? "#6558e8" : "#344054" : colors[i % colors.length]; context.lineWidth = (conflict || owner ? 2.5 : 1.5) / view.scale;
@@ -330,6 +331,11 @@ export default function MobileRegionEditor({ appearance, imageUrl, width, height
         context.fillStyle = "#df263866"; context.fill("evenodd");
       }
       for (const ring of visibleContours(region.contours)) { path(smoothedDisplayContour(ring)); context.stroke(); }
+      context.restore();
+    }
+    if (tool === "select" && contoursRef.current.length) {
+      context.save(); context.strokeStyle = "#6558e8"; context.lineWidth = 2.5 / view.scale;
+      for (const ring of visibleContours(contoursRef.current)) { path(smoothedDisplayContour(ring)); context.stroke(); }
       context.restore();
     }
     if (tool === "points") for (const ring of visibleContours(contoursRef.current)) {
