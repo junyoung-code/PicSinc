@@ -20,6 +20,7 @@ import LoadingCharacters from "@/components/LoadingCharacters";
 import theme from "@/features/home/theme.module.css";
 import { FlowProgress } from "@/components/FlowProgress";
 import Link from "next/link";
+import RoomDialog from "@/features/retouch-room-flow/RoomDialog";
 import { animatePhotoView, boundPhotoView, photoPreviewScale, photoScaleLimit, zoomPhotoAt } from "@/core/photo-viewport";
 
 type Photo = { id:number; bitmap:ImageBitmap; url:string; name:string; region?:HTMLCanvasElement; outline?:string };
@@ -36,6 +37,8 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
   const [edit,setEdit]=useState<EditState>(empty),[group,setGroup]=useState<typeof groups[number]>("얼굴형"),[control,setSelectedControl]=useState<ControlId>("faceWidth");
   const [mode,setMode]=useState<Mode>("face"),[brush,setBrush]=useState(4),[compare,setCompare]=useState(false);
   const [saveError,setSaveError]=useState("");
+  // Face landmark detection failed: personal room edits continue with touch tools; tell the person once (11/13 phone test).
+  const [touchOnly,setTouchOnly]=useState(false);
   const [loading,setLoading]=useState(!!room),[rendering,setRendering]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
   const [engineError,setEngineError]=useState(""),[calculationError,setCalculationError]=useState(""),[limited,setLimited]=useState(false),[strained,setStrained]=useState(false),[zoom,setZoom]=useState(1),[pan,setPan]=useState({x:0,y:0});
   const touchStrength=6;
@@ -237,7 +240,7 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
       if(!accepted.length&&room){cutSnapshot.current=editRef.current;setCollapsed(false);setMode("touch");setNotice("내 영역에서 편집 가능한 얼굴을 찾지 못했어요. 클래식·복원은 사용할 수 있어요.");}
       else if(!accepted.length)setError("편집 가능한 얼굴을 찾지 못했어요. 얼굴이 크고 밝은 정면 사진으로 다시 시도해주세요. 원본은 유지했어요.");
       else setNotice(`${accepted.length}개의 얼굴을 찾았어요.${detected.length>accepted.length?" 너무 작은 얼굴은 제외했어요.":""} 가림·옆얼굴·윤곽 주변 배경은 보정 후 확인해주세요.`);
-    }catch(e){if(upload.current===current)setError((e as Error).message);}finally{if(upload.current===current)setLoading(false);}
+    }catch(e){if(upload.current!==current)return;if(room?.scope==="personal"){setFaces([]);setDetectedFaces([]);setSelected("__touch");update(initialState([{id:"__touch",landmarks:[]}]));cutSnapshot.current=editRef.current;setCollapsed(false);setMode("touch");setNotice("얼굴 기준점을 찾지 못해 터치 보정(클래식·복원)만 사용할 수 있어요.");setTouchOnly(true);}else setError((e as Error).message);}finally{if(upload.current===current)setLoading(false);}
   }
   function point(e:ReactPointerEvent):Point {const rect=stage.current!.getBoundingClientRect();return imagePoint({x:e.clientX,y:e.clientY},rect,photo!.bitmap.width,photo!.bitmap.height);}
   const radius=photo ? room ? Math.min(photo.bitmap.width,photo.bitmap.height)*brush/200 : selected ? faceArea(faces.find(f=>f.id===selected)!,photo.bitmap.width,photo.bitmap.height).rx*brush/100 : 1 : 1;
@@ -419,6 +422,7 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
       <div className={styles.failureContent}><img src={saveFailedCharacter.src} width="96" height="96" alt=""/><div><h1>{room?.scope==="global"?"전체 사진 보정을":"사진 보정을"}<br/>저장하지 못했어요</h1><p>이번 변경을 유지하고 다시 저장할 수 있어요.</p></div><div className={styles.failureCard} role="alert"><strong>저장하지 못했어요</strong><p>이번 변경은 유지돼요. 다시 저장해 주세요.</p>{saveError&&<details><summary>오류 내용</summary><p>{saveError}</p></details>}</div></div>
       <button className={styles.returnToEditor} disabled={saving} onClick={()=>{setSaveError("");setReviewing(false);}}>편집으로 돌아가기</button>
     </section>}
+    {touchOnly&&<RoomDialog title="얼굴 기준점을 찾지 못했어요" confirmLabel="터치 보정하기" cancelLabel={null} onConfirm={()=>setTouchOnly(false)} onCancel={()=>setTouchOnly(false)}><p>이 사진에서는 얼굴 보정을 쓸 수 없어요.</p><p>터치 보정(클래식·복원)으로 내 영역을 다듬을 수 있어요.</p></RoomDialog>}
   </main>;
 }
 function displayLabel(id:ControlId){

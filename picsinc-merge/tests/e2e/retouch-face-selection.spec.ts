@@ -215,8 +215,10 @@ for (const failure of [
   await page.goto(`/retouch/rooms/${roomId}`);
   await page.getByRole('button',{name:'내 영역 보정 이어가기',exact:true}).click();
   expect((await delivery).status()).toBe(204);
-  await expect(page.getByRole('alert').filter({hasText:'얼굴 기준점을 찾지 못했어요'})).toBeVisible();
-  await expect(saveButton(page)).toBeDisabled();
+  // 11/13: a landmark failure now explains itself and continues with touch tools instead of stopping on an error.
+  await expect(page.getByRole('dialog',{name:'얼굴 기준점을 찾지 못했어요'})).toBeVisible();
+  await page.getByRole('button',{name:'터치 보정하기',exact:true}).click();
+  await expect(saveButton(page)).toBeEnabled(); // the person can still finish without face tools;
   await expect(page.getByRole('button',{name:/^얼굴 \d+ 보정$/})).toHaveCount(0);
   await expect(page.getByRole('img',{name:'업로드한 원본',exact:true})).toBeVisible();
   await expect.poll(()=>logs.length).toBe(1);
@@ -340,4 +342,23 @@ test('on a 320x568 phone the face stays in view while the slider and cut buttons
   expect(boxes.apply!.bottom).toBeLessThanOrEqual(568);
   await page.locator('#retouch-strength').fill('30');
   await expect(page.getByRole('button', { name: '현재 컷 보정 적용', exact: true })).toBeEnabled();
+});
+
+test('when face landmarks cannot be found the personal editor offers touch tools with a notice (11/13 phone test)', async ({ page }) => {
+  await backend(page, detected);
+  // Registered later, so it wins over the fixture worker: the landmark model fails.
+  await page.route('**/retouch/detect.worker.js', route => route.fulfill({
+    contentType: 'application/javascript',
+    body: `self.onmessage=({data:{bitmap}})=>{bitmap.close();self.postMessage({error:'얼굴 기준점을 찾지 못했어요. 원본은 유지했어요.'});};`,
+  }));
+  await page.goto(`/retouch/rooms/${roomId}`);
+  await page.getByRole('button', { name: '내 영역 보정 이어가기', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '얼굴 기준점을 찾지 못했어요' });
+  await expect(dialog).toBeVisible({ timeout: 100000 });
+  await expect(dialog.getByRole('button')).toHaveCount(1);
+  await dialog.getByRole('button', { name: '터치 보정하기', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '터치 보정', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: '클래식', exact: true })).toBeVisible();
+  await expect(page.getByText('얼굴 기준점을 찾지 못해 터치 보정(클래식·복원)만 사용할 수 있어요.')).toBeVisible();
 });
