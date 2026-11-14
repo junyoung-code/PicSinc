@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "demo": "node src/features/editing/demo/demoServer.js",
-    "test": "node --test"
+    "test": "node --test 'src/**/*.test.js' 'tests/**/*.test.js'"
   },
   "engines": {
     "node": ">=22"
