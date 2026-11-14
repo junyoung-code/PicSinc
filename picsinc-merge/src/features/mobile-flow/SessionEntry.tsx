@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { StatusMessage } from "@/components/mobile-shell";
 import MobileShell from "@/features/retouch-room-flow/RetouchShell";
@@ -11,6 +11,12 @@ import CollaborativeRoom from "./CollaborativeRoom";
 import { DeletedRoomScreen } from './room-deletion';
 import styles from '@/features/retouch-room-flow/room.module.css';
 import { NICKNAME_MAX_LENGTH } from "@/core/nickname";
+import SplashScreen from "@/components/splash-screen";
+
+// A friend opening an invite for the first time sees the MOIRA intro once, like the home screen (11/13 phone test).
+// Joined people reloading the room skip it. Storage can be unavailable; then the intro may show again.
+const splashKey = (token: string) => `moira-invite-splash:${token}`;
+const splashSeen = (token: string) => { try { return sessionStorage.getItem(splashKey(token)) === "1"; } catch { return false; } };
 
 export default function SessionEntry({ inviteToken }: { inviteToken: string }) {
   const retouchRoom = usePathname().startsWith("/retouch/rooms/");
@@ -18,6 +24,8 @@ export default function SessionEntry({ inviteToken }: { inviteToken: string }) {
   const [expired, setExpired] = useState(false);
   const [deleted, setDeleted] = useState(false), [closed, setClosed] = useState(false);
   const [joined, setJoined] = useState(false);
+  const [splash, setSplash] = useState(false);
+  const endSplash = useCallback(() => { try { sessionStorage.setItem(splashKey(inviteToken), "1"); } catch { /* optional */ } setSplash(false); }, [inviteToken]);
   const [join, setJoin] = useState(false), [nickname, setNickname] = useState(""), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const base = `/api/sessions/${encodeURIComponent(inviteToken)}`;
   async function load() {
@@ -29,7 +37,7 @@ export default function SessionEntry({ inviteToken }: { inviteToken: string }) {
     if (e instanceof RequestError && e.code === 'SESSION_DELETED') { setDeleted(true); setJoin(false); }
     else if (e instanceof RequestError && e.status === 409) { setClosed(true); setJoin(false); }
     else if (e instanceof RequestError && e.status === 410) { setExpired(true); setJoin(false); }
-    else if (e instanceof RequestError && e.status === 403) { setJoin(true); setError(''); return; }
+    else if (e instanceof RequestError && e.status === 403) { setJoin(true); setError(''); if (!splashSeen(inviteToken)) setSplash(true); return; }
     setError((e as Error).message);
   }
   useEffect(() => { setLoaded(null); setJoin(false); setJoined(false); setExpired(false); setDeleted(false); setClosed(false); setError(""); void load().catch(report); }, [base]);
@@ -45,6 +53,7 @@ export default function SessionEntry({ inviteToken }: { inviteToken: string }) {
     } catch (e) { report(e); } finally { setBusy(false); }
   }
   if (deleted) return <DeletedRoomScreen/>;
+  if (splash) return <SplashScreen onComplete={endSplash}/>;
   if (closed) return <MobileShell title="초대가 마감됐어요" hideBack footer={<a className="primary-button" href="/retouch/rooms/new">새 보정방 만들기</a>}><div className={styles.heading}><h1>이 보정방은<br/>이미 시작됐어요.</h1><p className="description">참여 인원이 확정되어<br/>새로운 친구는 입장할 수 없어요.</p></div><div className={styles.infoCard}><strong>이미 참여한 친구인가요?</strong><p>처음 참여했던 브라우저와 기기에서<br/>기존 링크로 다시 접속해 주세요.</p></div></MobileShell>;
   if (expired) return <MobileShell title="보정방 만료" hideBack footer={<a className="primary-button" href="/retouch/rooms/new">새 보정방 만들기</a>}><div className={styles.heading}><h1>보정방이 만료됐어요</h1><p className="description">방 생성 후 24시간이 지났어요.</p></div></MobileShell>;
   if (loaded && !loaded.room.enabled && retouchRoom) return <MobileShell title="MOIRA 보정방"><h1>공동 보정방 주소를 확인해주세요</h1><p className="description">이 주소의 방은 공동 보정방이 아니에요. 초대받은 주소를 확인하거나 새 공동 보정방을 만들어주세요.</p><a href="/retouch/rooms/new">새 보정방 만들기</a></MobileShell>;

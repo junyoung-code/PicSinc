@@ -76,7 +76,10 @@ for (const path of ["/sessions/home-invite", "/retouch/rooms/home-invite", "/ses
     await page.route("**/api/sessions/home-invite", route => route.fulfill({ status: 403, json: { error: "참여 후 이용해주세요." } }));
     await page.route("**/api/sessions/home-invite/invitation", route => route.fulfill({ json: { ownerNickname: "민선" } }));
     await page.goto(path);
-    await expect(nameField(page, path)).toBeVisible();
+    // 함께 보정 invites show the MOIRA intro once to a friend who has not joined yet (11/13 phone test).
+    const intro = path !== "/sessions/home-invite";
+    if (intro) await expect(page.getByLabel("MOIRA 시작 화면")).toBeVisible();
+    await expect(nameField(page, path)).toBeVisible({ timeout: 10000 });
     await expect(joinButton(page, path)).toBeDisabled();
     await nameField(page, path).fill("친구");
     await expect(joinButton(page, path)).toBeEnabled();
@@ -85,6 +88,8 @@ for (const path of ["/sessions/home-invite", "/retouch/rooms/home-invite", "/ses
     expect([...new Set(navigations)]).toEqual([path]);
     await expect(page.getByLabel("MOIRA 시작 화면")).toHaveCount(0);
     await expect(page.getByRole("navigation", { name: "사진 기능 선택" })).toHaveCount(0);
+    // Only once per invite in this tab: reloading goes straight to the join form.
+    if (intro) { await page.reload(); await expect(nameField(page, path)).toBeVisible(); await expect(page.getByLabel("MOIRA 시작 화면")).toHaveCount(0); }
   });
 }
 
