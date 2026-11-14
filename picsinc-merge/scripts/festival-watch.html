@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PicSync 원본 동시 업로드 시험</title>
+  <style>
+    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; background: #f4f6f8; color: #17212c; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 30px 18px 70px; }
+    main { max-width: 1080px; margin: auto; }
+    h1 { font-size: 27px; margin: 0 0 6px; }
+    h2 { font-size: 18px; margin: 0 0 16px; }
+    p { line-height: 1.55; }
+    .muted { color: #5a6876; font-size: 14px; }
+    .panel { background: white; border: 1px solid #dde4ea; border-radius: 15px; padding: 22px; margin-top: 17px; box-shadow: 0 2px 9px #2132440a; }
+    .controls, .cards { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+    label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; color: #415163; }
+    input, select, button { font: inherit; border-radius: 9px; min-height: 39px; }
+    input, select { border: 1px solid #b9c5cf; background: white; padding: 7px 9px; }
+    input[type=number] { width: 135px; }
+    button { border: 0; padding: 8px 14px; background: #1961cb; color: white; font-weight: 700; cursor: pointer; }
+    button.secondary { background: #e7edf5; color: #244058; }
+    button:disabled { opacity: .45; cursor: default; }
+    .card { flex: 1 1 130px; min-width: 130px; background: #f8fafc; border: 1px solid #e1e8ed; border-radius: 12px; padding: 14px; }
+    .card span { display: block; color: #596a7b; font-size: 13px; }
+    .card strong { display: block; font-size: 25px; margin-top: 6px; }
+    .card.alert { background: #fff3eb; border-color: #ffd3b5; }
+    .summary { font-size: 17px; font-weight: 700; margin: 0 0 17px; }
+    .ok { color: #16714b; } .bad { color: #ad3a19; }
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid #e7ecf0; text-align: left; white-space: nowrap; }
+    th { color: #566779; font-size: 12px; }
+    .bar { height: 115px; width: 100%; border-radius: 9px; background: #f8fafc; border: 1px solid #e1e8ed; }
+    .usage td input { width: 100%; min-width: 110px; }
+    details summary { cursor: pointer; font-weight: 700; }
+    #message { min-height: 23px; }
+  </style>
+</head>
+<body><main>
+  <h1>원본 동시 업로드 시험</h1>
+  <p class="muted">이 Mac에서만 열리는 읽기 전용 관찰 화면입니다. 시험할 방의 대표자 이름을 같은 접두어로 시작하세요. 예: <strong>BTEST-01</strong>, <strong>BTEST-02</strong>. 실제 이름은 화면과 저장 보고서에 표시되지 않습니다.</p>
+  <section class="panel">
+    <div class="controls">
+      <label>시험 접두어<input id="prefix" value="BTEST" maxlength="20" spellcheck="false"></label>
+      <label>목표 팀 수<select id="target"><option>1</option><option selected>5</option><option>10</option></select></label>
+      <button id="start">기록 시작</button><button id="stop" class="secondary" disabled>기록 종료·저장</button>
+    </div>
+    <p id="message" class="muted">먼저 기록을 시작한 뒤 각 방에서 원본을 올리세요.</p>
+    <p class="muted">시험 링크: 공개 앱의 <code>/sessions/new?festivalTest=BTEST</code>처럼 접두어를 넣어 여세요. 각 브라우저에서 ‘시험 기록 내려받기’를 누른 뒤 아래로 가져오면 전송·검증 시간을 나눠 볼 수 있습니다.</p>
+    <label>브라우저 측정 파일 가져오기<input id="imports" type="file" accept="application/json,.json" multiple></label>
+  </section>
+  <section class="panel">
+    <h2>지금 상태</h2>
+    <p id="summary" class="summary">시험 대기 중</p>
+    <div class="cards">
+      <div class="card"><span>원본 접수</span><strong id="uploaded">—</strong></div>
+      <div class="card"><span>YOLO 완료</span><strong id="completed">—</strong></div>
+      <div class="card"><span>대기 / 처리 중</span><strong id="pending">—</strong></div>
+      <div class="card alert"><span>실패</span><strong id="failed">—</strong></div>
+    </div>
+  </section>
+  <section class="panel">
+    <h2>어디서 오래 걸렸나</h2>
+    <div class="cards">
+      <div class="card"><span>원본 접수 p95<br>전송 + 서버 검증</span><strong id="uploadP95">—</strong></div>
+      <div class="card"><span>Storage 전송 p95<br>브라우저 기록</span><strong id="storageP95">—</strong></div>
+      <div class="card"><span>서버 완료 확인 p95<br>브라우저 기록</span><strong id="verifyP95">—</strong></div>
+      <div class="card"><span>YOLO 대기 p95<br>약 2초 오차</span><strong id="queueP95">—</strong></div>
+      <div class="card"><span>YOLO 전체 p95<br>접수 → 완료</span><strong id="jobP95">—</strong></div>
+      <div class="card"><span>가장 긴 구간</span><strong id="bottleneck" style="font-size:18px">—</strong></div>
+    </div>
+    <p class="muted">p95는 적은 표본에서는 참고용입니다. 브라우저 기록이 없는 팀은 전송·서버 완료 확인을 분리할 수 없습니다. 완료 확인에는 네트워크 왕복도 포함됩니다.</p>
+    <p class="muted">대기열 최고 <strong id="peak">0</strong>건 · 원본 업로드 합계 <strong id="bytes">0 B</strong></p>
+    <svg id="queueChart" class="bar" viewBox="0 0 640 115" preserveAspectRatio="none" aria-label="시간에 따른 대기 작업 수"></svg>
+    <p class="muted">워커 단계별 기록 <strong id="workerCount">0</strong>건 · 다운로드 p95 <strong id="workerDownload">—</strong> · YOLO p95 <strong id="workerProcess">—</strong> · 결과 업로드 p95 <strong id="workerUpload">—</strong></p>
+  </section>
+  <section class="panel">
+    <h2>팀별 진행</h2>
+    <div class="table-wrap"><table><thead><tr><th>팀</th><th>원본</th><th>접수 시간</th><th>YOLO</th><th>대기</th><th>처리·전송</th><th>전체</th><th>시도</th></tr></thead><tbody id="teams"><tr><td colspan="8">아직 시험 팀이 없습니다.</td></tr></tbody></table></div>
+  </section>
+  <section class="panel">
+    <h2>사용량 변화</h2>
+    <div class="cards">
+      <div class="card"><span>Vercel 함수 호출</span><strong id="usageInvocations">—</strong></div>
+      <div class="card"><span>Vercel 오류·429</span><strong id="usageErrors">—</strong></div>
+      <div class="card"><span>Supabase egress</span><strong id="usageEgress">—</strong></div>
+      <div class="card"><span>Supabase Storage</span><strong id="usageStorage">—</strong></div>
+    </div>
+    <p class="muted">아래에 제공업체 Usage의 시험 전후 값을 입력하면 차이를 표시합니다. 집계가 늦거나 다른 트래픽이 섞일 수 있습니다.</p>
+  </section>
+  <section class="panel">
+    <details><summary>제공업체 사용량 기록 (비용·한도 판단)</summary>
+      <p class="muted">Vercel·Supabase Usage 화면의 시험 전후 값을 직접 옮기세요. 조직의 다른 트래픽과 대시보드 지연이 섞일 수 있으므로, 차이는 이 시험의 정확한 청구액이 아닙니다.</p>
+      <div class="table-wrap"><table class="usage"><thead><tr><th>항목</th><th>시험 전</th><th>시험 후</th><th>차이</th></tr></thead><tbody id="usage"></tbody></table></div>
+      <p class="muted">서버 경로별 오류·429와 실제 전송량은 Vercel Observability·Supabase Usage에서 별도 확인해야 합니다. 빈 값은 측정되지 않은 값입니다.</p>
+    </details>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const metrics = [
+  ["vercelInvocations", "Vercel 함수 호출", "건"],
+  ["vercelCpuSeconds", "Vercel Active CPU", "초"],
+  ["vercelErrors", "Vercel 오류·429", "건"],
+  ["supabaseEgressBytes", "Supabase egress", "바이트"],
+  ["supabaseStorageBytes", "Supabase Storage", "바이트"],
+];
+const duration = ms => ms == null ? "—" : ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}초`;
+const bytes = n => n >= 1048576 ? `${(n / 1048576).toFixed(1)} MiB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KiB` : `${n} B`;
+const status = value => ({ ready: "완료", queued: "대기", running: "처리 중", failed: "실패", uploading: "전송 중", verifying: "검증 중", not_queued: "접수 대기", waiting_upload: "원본 대기" })[value] || value;
+async function request(route, options) {
+  const response = await fetch(route, { ...options, headers: options ? { "Content-Type": "application/json" } : undefined });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "요청 실패");
+  return data;
+}
+function setText(id, value) { $(id).textContent = value; }
+function renderTeams(teams) {
+  const tbody = $("teams"); tbody.replaceChildren();
+  if (!teams.length) { const tr = tbody.insertRow(); const td = tr.insertCell(); td.colSpan = 8; td.textContent = "아직 시험 팀이 없습니다."; return; }
+  for (const team of teams) {
+    const tr = tbody.insertRow();
+    [String(team.number), status(team.uploadStatus), duration(team.uploadMs), status(team.jobStatus), duration(team.queueMs), duration(team.processingMs), duration(team.totalJobMs ?? team.elapsedMs), String(team.attempts)].forEach(value => { tr.insertCell().textContent = value; });
+  }
+}
+function renderChart(history) {
+  const svg = $("queueChart"); svg.replaceChildren();
+  if (!history.length) return;
+  const max = Math.max(1, ...history.map(point => point.queued));
+  const coordinates = history.map((point, index) => `${history.length === 1 ? 0 : index * 640 / (history.length - 1)},${105 - point.queued * 90 / max}`).join(" ");
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+  line.setAttribute("points", coordinates); line.setAttribute("fill", "none"); line.setAttribute("stroke", "#1961cb"); line.setAttribute("stroke-width", "3");
+  svg.appendChild(line);
+}
+function usageRows(usage) {
+  const tbody = $("usage");
+  if (!tbody.children.length) for (const [metric, label, unit] of metrics) {
+    const row = tbody.insertRow(); row.insertCell().textContent = label;
+    for (const when of ["before", "after"]) {
+      const input = document.createElement("input"); input.type = "number"; input.min = "0"; input.step = "any"; input.dataset.metric = metric; input.dataset.when = when;
+      input.addEventListener("change", async () => {
+        if (input.value === "") return;
+        try { await request("/api/usage", { method: "POST", body: JSON.stringify({ metric, when, value: Number(input.value) }) }); refresh(); }
+        catch (error) { setText("message", error.message); }
+      });
+      row.insertCell().appendChild(input);
+    }
+    row.insertCell().id = `delta-${metric}`;
+    row.lastChild.dataset.unit = unit;
+  }
+  for (const [metric, , unit] of metrics) {
+    const before = usage.before?.[metric], after = usage.after?.[metric];
+    setText(`delta-${metric}`, before == null || after == null ? "—" : `${(after - before).toLocaleString()} ${unit}`);
+    for (const when of ["before", "after"]) {
+      const input = tbody.querySelector(`input[data-metric="${metric}"][data-when="${when}"]`);
+      if (document.activeElement !== input) input.value = usage[when]?.[metric] ?? "";
+    }
+  }
+  const difference = metric => usage.before?.[metric] == null || usage.after?.[metric] == null ? null : usage.after[metric] - usage.before[metric];
+  const invocations = difference("vercelInvocations"), errors = difference("vercelErrors");
+  const egress = difference("supabaseEgressBytes"), storage = difference("supabaseStorageBytes");
+  setText("usageInvocations", invocations == null ? "—" : invocations.toLocaleString());
+  setText("usageErrors", errors == null ? "—" : errors.toLocaleString());
+  setText("usageEgress", egress == null ? "—" : bytes(egress));
+  setText("usageStorage", storage == null ? "—" : bytes(storage));
+}
+let refreshing = false;
+async function refresh() {
+  if (refreshing) return; refreshing = true;
+  try {
+    const data = await request("/api/state");
+    $("start").disabled = data.active; $("stop").disabled = !data.active;
+    if (data.error) setText("message", `측정 오류: ${data.error}`);
+    const value = data.summary;
+    if (!value) { usageRows(data.usage); return; }
+    setText("summary", `${value.observedTeams}/${value.targetTeams}팀 관찰 · 원본 ${value.uploadedTeams}개 접수 · YOLO ${value.completedJobs}개 완료`);
+    setText("uploaded", `${value.uploadedTeams}/${value.targetTeams}`);
+    setText("completed", `${value.completedJobs}/${value.targetTeams}`);
+    setText("pending", `${value.queuedJobs} / ${value.runningJobs}`);
+    setText("failed", String(value.failedJobs));
+    setText("uploadP95", duration(value.p95UploadMs)); setText("queueP95", duration(value.p95QueueMs));
+    setText("storageP95", duration(value.p95StorageMs)); setText("verifyP95", duration(value.p95VerificationMs));
+    setText("jobP95", duration(value.p95JobMs)); setText("bottleneck", value.bottleneck);
+    setText("peak", String(value.peakQueued)); setText("bytes", bytes(value.totalOriginalBytes));
+    setText("workerCount", String(data.worker?.count ?? 0));
+    setText("workerDownload", duration(data.worker?.p95DownloadMs));
+    setText("workerProcess", duration(data.worker?.p95ProcessingMs));
+    setText("workerUpload", duration(data.worker?.p95UploadMs));
+    renderTeams(value.teams); renderChart(data.history); usageRows(data.usage);
+  } catch (error) { setText("message", `연결 오류: ${error.message}`); }
+  finally { refreshing = false; }
+}
+$("start").addEventListener("click", async () => {
+  try {
+    const data = await request("/api/start", { method: "POST", body: JSON.stringify({ prefix: $("prefix").value.trim(), targetTeams: Number($("target").value) }) });
+    setText("message", `기록 시작: ${new Date(data.startedAt).toLocaleString()}. 이제 원본을 올리세요.`); refresh();
+  } catch (error) { setText("message", error.message); }
+});
+$("stop").addEventListener("click", async () => {
+  try {
+    const data = await request("/api/stop", { method: "POST", body: "{}" });
+    setText("message", `기록 저장: ${data.report}`); refresh();
+  } catch (error) { setText("message", error.message); }
+});
+$("imports").addEventListener("change", async event => {
+  try {
+    let total = 0;
+    for (const file of event.target.files) {
+      const parsed = JSON.parse(await file.text());
+      const result = await request("/api/import", { method: "POST", body: JSON.stringify({ events: parsed.events }) });
+      total += result.matched;
+    }
+    setText("message", `${total}개 원본의 브라우저 측정값을 연결했습니다.`); refresh();
+  } catch (error) { setText("message", `가져오기 실패: ${error.message}`); }
+  event.target.value = "";
+});
+refresh(); setInterval(refresh, 2000);
+</script>
+</body></html>
