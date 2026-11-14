@@ -143,5 +143,5 @@
 .reviewHeading { margin:16px 8px 0; }
 .reviewHeading h1 { margin:0; font-size:24px; font-weight:900; line-height:32px; }
 .reviewHeading p { margin:8px 0 0; font-size:16px; line-height:24px; }
-.reviewing .viewport { width:calc(100% - 60px); height:459px; flex-shrink:0; aspect-ratio:auto; margin:24px auto; border:0; border-radius:0; box-shadow:none; background:transparent; touch-action:pan-y; }
+.reviewing .viewport { width:calc(100% - 60px); height:459px; flex-shrink:0; aspect-ratio:auto; margin:24px auto; border:0; border-radius:0; box-shadow:none; background:transparent; touch-action:pan-x pan-y pinch-zoom; /* view only: allow two-finger zoom (11/13 phone test) */ }
 .editor .continueEditing { min-height:56px; flex-shrink:0; margin:auto 8px 0; border-width:2px; box-shadow:4px 4px var(--moira-ink); font-size:16px; font-weight:700; }
