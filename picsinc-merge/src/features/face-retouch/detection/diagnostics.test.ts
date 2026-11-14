@@ -63,6 +63,17 @@ test('server logs only validated metadata and rejects cross-origin, malformed an
   assert.equal(written.length,1);
 });
 
+test('keeps legacy entries and accepts only fixed labels in extended diagnostics', () => {
+  const entry = log();
+  const updated = {
+    ...diagnostic, stage: 'canvas-create', reason: 'offscreen-unavailable',
+    errorName: 'NotSupportedError', wasmVariant: 'scalar',
+  };
+  assert.deepEqual(parseFailureLog(entry), entry);
+  assert.deepEqual(parseFailureLog({...entry, diagnostic: updated})?.diagnostic, updated);
+  assert.deepEqual(parseFailureLog({...entry, diagnostic: {...diagnostic, wasmVariant: 'https://private.example'}})?.diagnostic, diagnostic);
+});
+
 test('server accepts the actual HTTP origin when Next reconstructs an internal hostname', async t => {
   t.mock.method(console,'error',()=>{});
   const request=new Request('http://localhost:3148/api/retouch/diagnostics',{method:'POST',headers:{host:'127.0.0.1:3148',origin:'http://127.0.0.1:3148','content-type':'application/json'},body:JSON.stringify(log())});

@@ -41,11 +41,12 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
   const touchStrength=6;
   const [touchStart,setTouchStart]=useState<Point|null>(null);
   const touch=useRef(new TouchGesture()),refreshLens=useRef<()=>void>(()=>{});
+  const [waitingForFaceRetry,setWaitingForFaceRetry]=useState(false);
   const [fit,setFit]=useState({width:1,height:1}),[cursor,setCursor]=useState<Point|null>(null);
   const canvas=useRef<HTMLCanvasElement>(null),stage=useRef<HTMLDivElement>(null),viewport=useRef<HTMLDivElement>(null);
   const computer=useRef<FieldComputer|null>(null),renderer=useRef<Renderer|null>(null),field=useRef<Field|null>(null),mask=useRef<HTMLCanvasElement|null>(null);
   const preview=useRef<PreviewQueue|null>(null),maskKey=useRef("");
-  const generation=useRef(0),upload=useRef(0),detection=useRef<ReturnType<typeof detectFaces>|null>(null),editRef=useRef(edit);
+  const generation=useRef(0),upload=useRef(0),detection=useRef<{cancel:()=>void}|null>(null),editRef=useRef(edit);
   const view=useRef({zoom,pan});view.current={zoom,pan};
   const fitRef=useRef(fit);fitRef.current=fit;
   const stopZoom=useRef(()=>{});
@@ -78,7 +79,7 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
     changeView(z,{x:next.x,y:next.y},smooth);
   }
   function overview(){
-    cancelInteraction.current();cutSnapshot.current=null;setCompare(false);setCollapsed(true);setMode("face");setSelected("__touch");setZoom(1);setPan({x:0,y:0});
+    cancelInteraction.current();cutSnapshot.current=null;setCompare(false);setCollapsed(true);setMode(faces.length?"face":"touch");setSelected("__touch");setZoom(1);setPan({x:0,y:0});
   }
   function selectFace(id:string){
     if(!selectable||reviewing||(room?.scope==="personal"&&!collapsed))return;
@@ -210,7 +211,7 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
   async function openPhoto(file:File){
     if(hasEdits(editRef.current)&&!window.confirm("사진을 바꾸면 현재 보정이 사라져요. 새 사진을 열까요?"))return;
     setSaveError("");setReviewing(false);cutSnapshot.current=null;
-    const current=++upload.current;detection.current?.cancel();setLoading(true);setError("");setNotice("");
+    const current=++upload.current;detection.current?.cancel();setLoading(true);setWaitingForFaceRetry(false);setError("");setNotice("");
     let bitmap:ImageBitmap;
     try{bitmap=await decodePhoto(file);}catch(e){if(upload.current===current){setError((e as Error).message);setLoading(false);}return;}
     if(upload.current!==current){bitmap.close();return;}
@@ -222,22 +223,41 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
         if(!room.maskUrl)throw new Error("내 영역을 먼저 저장해주세요.");
         region=await loadRoomMask(room.maskUrl,bitmap.width,bitmap.height,room.regions);
       }
-    }catch(e){bitmap.close();setError((e as Error).message);setLoading(false);return;}
+    }catch(e){bitmap.close();if(upload.current===current){setError((e as Error).message);setLoading(false);}return;}
+    if(upload.current!==current){bitmap.close();return;}
     const next={id:current,bitmap,url:URL.createObjectURL(file),name:file.name,region:region?.canvas,outline:region?.outline};setPhoto(next);
     if(room?.scope==="global") {
       setMode("touch");setSelected("__touch");update(initialState([{id:"__touch",landmarks:[]}]));setLoading(false);return;
     }
     try{
-      const copy=await createImageBitmap(bitmap);if(upload.current!==current){copy.close();return;}
-      const job=detectFaces(copy,region?.detectionRegions);detection.current=job;
-      const detected=await job.result;if(upload.current!==current)return;
-      const accepted=detected.filter(f=>{const a=faceArea(f,bitmap.width,bitmap.height);return a.rx>=72&&a.ry>=96&&(!region||region.owns(f));});
-      if(detected.length>=20){setError("얼굴 검출 한도 20개에 도달했어요. 누락된 얼굴은 보호할 수 없으니 더 적은 인원이 담긴 사진을 선택해주세요. 원본은 유지했어요.");return;}
+      let detected:Face[]=[],accepted:Face[]=[];
+      for(let attempt=0;attempt<(region?2:1);attempt++){
+        try{
+          const copy=await createImageBitmap(bitmap);
+          if(upload.current!==current){copy.close();return;}
+          const job=detectFaces(copy,region?.detectionRegions);detection.current=job;
+          detected=await job.result;
+          if(upload.current!==current)return;
+          if(detected.length>=20){setError("얼굴 검출 한도 20개에 도달했어요. 누락된 얼굴은 보호할 수 없으니 더 적은 인원이 담긴 사진을 선택해주세요. 원본은 유지했어요.");return;}
+          accepted=detected.filter(f=>{const a=faceArea(f,bitmap.width,bitmap.height);return a.rx>=72&&a.ry>=96&&(!region||region.owns(f));});
+        }catch(e){
+          if(upload.current!==current)return;
+          if(!region)throw e;
+        }
+        if(accepted.length||!region||attempt===1)break;
+        setWaitingForFaceRetry(true);
+        await new Promise<void>(resolve=>{
+          const timer=window.setTimeout(resolve,5000);
+          detection.current={cancel:()=>{window.clearTimeout(timer);resolve();}};
+        });
+        if(upload.current!==current)return;
+        setWaitingForFaceRetry(false);
+      }
       setDetectedFaces(detected);setFaces(accepted);setSelected(room?"__touch":accepted[0]?.id??"");update(initialState(room?[...accepted,{id:"__touch",landmarks:[]}]:accepted));
       if(!accepted.length&&room){cutSnapshot.current=editRef.current;setCollapsed(false);setMode("touch");setNotice("내 영역에서 편집 가능한 얼굴을 찾지 못했어요. 클래식·복원은 사용할 수 있어요.");}
       else if(!accepted.length)setError("편집 가능한 얼굴을 찾지 못했어요. 얼굴이 크고 밝은 정면 사진으로 다시 시도해주세요. 원본은 유지했어요.");
       else setNotice(`${accepted.length}개의 얼굴을 찾았어요.${detected.length>accepted.length?" 너무 작은 얼굴은 제외했어요.":""} 가림·옆얼굴·윤곽 주변 배경은 보정 후 확인해주세요.`);
-    }catch(e){if(upload.current===current)setError((e as Error).message);}finally{if(upload.current===current)setLoading(false);}
+    }catch(e){if(upload.current===current)setError((e as Error).message);}finally{if(upload.current===current){detection.current=null;setLoading(false);}}
   }
   function point(e:ReactPointerEvent):Point {const rect=stage.current!.getBoundingClientRect();return imagePoint({x:e.clientX,y:e.clientY},rect,photo!.bitmap.width,photo!.bitmap.height);}
   const radius=photo ? room ? Math.min(photo.bitmap.width,photo.bitmap.height)*brush/200 : selected ? faceArea(faces.find(f=>f.id===selected)!,photo.bitmap.width,photo.bitmap.height).rx*brush/100 : 1 : 1;
@@ -372,7 +392,7 @@ export default function RetouchEditor({ room, participants }: { room?: RoomEdito
         {cursor&&active&&!compare&&!engineError&&!calculationError&&(mode==="touch"||mode==="restore")&&<TouchGuide point={cursor} start={mode==="touch"?touchStart:null} radius={radius*(mode==="touch"?TOUCH_SUPPORT:1)} width={photo.bitmap.width} height={photo.bitmap.height}/>}
       </div>:room?<div className={styles.empty}><h2>{loading?"사진을 불러오고 있어요":"사진을 불러오지 못했어요"}</h2><p>{loading?"잠시만 기다려 주세요.":"연결을 확인하고 다시 시도해 주세요."}</p></div>:<div className={styles.empty}><div className={styles.friends}><img src="/images/home/lilac.png" width="72" height="72" alt=""/><img src="/images/home/pink.png" width="70" height="70" alt=""/></div><h2>내 사진으로 보정하기</h2><p>사진을 열고 얼굴을 선택하세요.<br/>사진과 보정은 이 탭 안에서 처리해요.</p><small>JPEG·PNG / 20MB / 3,000만 픽셀</small></div>}
       {photo&&cursor&&touchStart&&active&&!compare&&!calculationError&&!engineError&&(mode==="touch"||mode==="restore")&&<TouchMagnifier source={canvas} refresh={refreshLens} point={cursor} imageWidth={photo.bitmap.width} imageHeight={photo.bitmap.height} displayScale={fit.width/photo.bitmap.width*zoom} right={!!viewport.current&&!!stage.current&&stage.current.getBoundingClientRect().left+cursor.x/photo.bitmap.width*stage.current.getBoundingClientRect().width<viewport.current.getBoundingClientRect().left+viewport.current.clientWidth/2}/>}
-      {loading&&<div className={styles.progress} role="status"><span className={styles.spinner} aria-hidden="true"/><strong>{photo?"얼굴 기준점을 찾고 있어요…":"사진을 불러오고 있어요…"}</strong><span>잠시만 기다려 주세요.</span></div>}
+      {loading&&<div className={styles.progress} role="status"><span className={styles.spinner} aria-hidden="true"/><strong>{photo?"얼굴 기준점을 찾고 있어요…":"사진을 불러오고 있어요…"}</strong><span>{waitingForFaceRetry?"5초 뒤 얼굴 분석을 한 번 더 시도해요.":"잠시만 기다려 주세요."}</span></div>}
       {photo&&!reviewing&&<button className={styles.compare} aria-label="누르고 원본 비교" title="누르고 원본 비교" disabled={saving} onPointerDown={e=>{e.stopPropagation();setCompare(true);}} onPointerUp={()=>setCompare(false)} onPointerCancel={()=>setCompare(false)} onPointerLeave={()=>setCompare(false)} onKeyDown={e=>{if(e.code==="Space"||e.code==="Enter")setCompare(true);}} onKeyUp={()=>setCompare(false)}><img src="/images/figma-current/editor/eye.svg" alt="" /></button>}
       {compare&&<span className={styles.originalBadge}>원본</span>}
     </div>

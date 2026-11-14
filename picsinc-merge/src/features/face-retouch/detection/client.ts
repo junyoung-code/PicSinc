@@ -1,11 +1,11 @@
 import type { Face, Landmark } from "../state/model";
 import { classifyDetectionError, parseDiagnostic, recordDetectionFailure, type DetectionDiagnostic } from './diagnostics';
-export type DetectionRegion = { x: number; y: number; width: number; height: number; mask: Uint8Array };
+export type DetectionRegion = { x: number; y: number; width: number; height: number };
 export function detectFaces(bitmap:ImageBitmap,regions?:DetectionRegion[]): {result:Promise<Face[]>;cancel:()=>void} {
   const started=Date.now(),width=bitmap.width,height=bitmap.height,regionCount=regions?.length??0;
   const diagnostic=(stage:DetectionDiagnostic['stage'],error?:unknown):DetectionDiagnostic=>({stage,...classifyDetectionError(error),width,height,regionCount,regionIndex:-1,cropWidth:0,cropHeight:0,elapsedMs:Math.max(0,Math.min(86400000,Date.now()-started))});
   let worker:Worker;
-  try{worker=new Worker("/retouch/detect.worker.js");}catch(error){recordDetectionFailure(diagnostic('worker-create',error));throw error;}
+  try{worker=new Worker("/retouch/detect.worker.js");}catch(error){bitmap.close();recordDetectionFailure(diagnostic('worker-create',error));throw error;}
   let settled=false;
   let timeout:ReturnType<typeof setTimeout>;
   let rejectJob:(e:Error)=>void=()=>{};
@@ -21,7 +21,8 @@ export function detectFaces(bitmap:ImageBitmap,regions?:DetectionRegion[]): {res
       faces.sort((a,b)=>a[1].x-b[1].x);
       resolve(faces.map((landmarks,i)=>({id:`face-${i+1}`,landmarks})));
     };
-    worker.postMessage({bitmap,regions},[bitmap,...(regions??[]).map(region=>region.mask.buffer)]);
+    try { worker.postMessage({bitmap,regions},[bitmap]); }
+    catch(error) { finish();bitmap.close();recordDetectionFailure(diagnostic('worker-error',error));reject(error); }
   });
   return {result,cancel:()=>{if(!settled){settled=true;clearTimeout(timeout);worker.terminate();rejectJob(new Error("사진 선택이 변경됐어요."));}}};
 }

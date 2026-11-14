@@ -6,18 +6,26 @@ import type { DetectionRegion } from './client';
 
 const source = readFileSync(new URL('../../../../public/retouch/detect.worker.js', import.meta.url), 'utf8');
 const face = (x = .5, y = .5) => Array.from({ length: 478 }, () => ({ x, y, z: .1 }));
-const roi = (x = 700, y = 1100, width = 300, height = 400): DetectionRegion => ({ x, y, width, height, mask: new Uint8Array(width * height).fill(1) });
-async function run(replies: Array<unknown[] | Error>, regions?: DetectionRegion[], failure?: { stage: string; error: Error }) {
+const roi = (x = 700, y = 1100, width = 300, height = 400): DetectionRegion => ({ x, y, width, height });
+async function run(replies: Array<unknown[] | Error>, regions?: DetectionRegion[], failure?: { stage: string; error: Error }, offscreen = true) {
   const crops: number[][] = [], closed: string[] = [], inputs: string[] = [];
   let calls = 0, models = 0, output: any;
+  class Canvas { constructor(readonly width: number, readonly height: number) {} }
   const self: any = { postMessage: (value: unknown) => { output = value; }, MediaPipe: {
-    FilesetResolver: { forVisionTasks: async () => { if (failure?.stage === 'wasm-setup') throw failure.error; return {}; } },
-    FaceLandmarker: { createFromOptions: async () => { if (failure?.stage === 'model-init') throw failure.error; models++; return {
+    FilesetResolver: { forVisionTasks: async () => {
+      if (failure?.stage === 'wasm-setup') throw failure.error;
+      return { wasmBinaryPath: '/retouch/vendor/wasm/vision_wasm_internal.wasm' };
+    } },
+    FaceLandmarker: { createFromOptions: async (_: unknown, options: { canvas?: Canvas }) => {
+      assert.ok(options.canvas instanceof Canvas);
+      assert.equal(options.canvas.width, 1);
+      assert.equal(options.canvas.height, 1);
+      if (failure?.stage === 'model-init') throw failure.error; models++; return {
       detect: (image: { id: string }) => { inputs.push(image.id); const result = replies[calls++]; if (result instanceof Error) throw result; return { faceLandmarks: result }; },
       close: () => closed.push('detector'),
     }; } },
   } };
-  runInNewContext(source, { self, importScripts: () => { if (failure?.stage === 'runtime-import') throw failure.error; }, createImageBitmap: async (_: unknown, ...box: number[]) => {
+  runInNewContext(source, { self, DOMException, OffscreenCanvas: offscreen ? Canvas : undefined, importScripts: () => { if (failure?.stage === 'runtime-import') throw failure.error; }, createImageBitmap: async (_: unknown, ...box: number[]) => {
     if (failure?.stage === 'roi-crop') throw failure.error;
     crops.push(box); const id = `crop-${crops.length}`; return { id, close: () => closed.push(id) };
   } });
@@ -58,7 +66,7 @@ test('empty selected regions never fall back to scanning the whole image', async
 });
 
 test('padding and mask-hole faces remain available for protection; UI owns face eligibility', async () => {
-  const region = roi(); region.mask.fill(0);
+  const region = roi();
   const result = await run([[face(.01, .01), face()]], [region]);
   assert.equal(result.output.landmarks.length, 2);
   assert.equal(result.output.landmarks[0][1].x, (640 + .01 * 420) / 1375);
@@ -107,4 +115,30 @@ test('successful detection does not emit failure diagnostics', async () => {
   const result = await run([[face()]], [roi()]);
   assert.equal(result.output.diagnostic, undefined);
   assert.equal(result.output.landmarks.length, 1);
+});
+
+test('reports missing Worker canvas support before initializing the model', async () => {
+  const { output, models, closed } = await run([], [roi()], undefined, false);
+  assert.equal(output.diagnostic.stage, 'canvas-create');
+  assert.equal(output.diagnostic.reason, 'offscreen-unavailable');
+  assert.equal(output.diagnostic.errorName, 'NotSupportedError');
+  assert.equal(models, 0);
+  assert.deepEqual(closed, ['source']);
+});
+
+test('separates Worker DOM access, WASM, model download, WebGL and graph failures', async () => {
+  for (const [error, reason, errorName] of [
+    [new ReferenceError("Can't find variable: document"), 'worker-dom', 'ReferenceError'],
+    [new ReferenceError('document is not defined'), 'worker-dom', 'ReferenceError'],
+    [new WebAssembly.CompileError('invalid module'), 'wasm', 'CompileError'],
+    [new Error('Failed to fetch model: /retouch/vendor/face_landmarker.task (404)'), 'model-download', 'Error'],
+    [new Error('StartGraph failed: kGpuService: emscripten_webgl_create_context() returned error 0'), 'webgl', 'Error'],
+    [new Error('StartGraph failed: CalculatorGraph configuration failed'), 'graph', 'Error'],
+  ] as const) {
+    const { output } = await run([], [roi()], { stage: 'model-init', error });
+    assert.equal(output.diagnostic.reason, reason);
+    assert.equal(output.diagnostic.errorName, errorName);
+    assert.equal(output.diagnostic.wasmVariant, 'simd');
+    assert.doesNotMatch(JSON.stringify(output.diagnostic), /face_landmarker|StartGraph|document/);
+  }
 });

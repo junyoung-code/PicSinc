@@ -1,6 +1,7 @@
-const stages = ['worker-create', 'worker-error', 'worker-timeout', 'runtime-import', 'wasm-setup', 'model-init', 'full-detect', 'roi-crop', 'roi-detect', 'roi-map'] as const;
-const reasons = ['network', 'memory', 'webgl', 'wasm', 'unsupported', 'timeout', 'unknown'] as const;
-const errorNames = ['Error', 'TypeError', 'RangeError', 'RuntimeError', 'NetworkError', 'SecurityError', 'NotSupportedError', 'InvalidStateError', 'DataCloneError', 'AbortError', 'UnknownError'] as const;
+const stages = ['worker-create', 'worker-error', 'worker-timeout', 'runtime-import', 'wasm-setup', 'canvas-create', 'model-init', 'full-detect', 'roi-crop', 'roi-detect', 'roi-map'] as const;
+const reasons = ['network', 'memory', 'webgl', 'wasm', 'unsupported', 'timeout', 'worker-dom', 'offscreen-unavailable', 'model-download', 'graph', 'unknown'] as const;
+const errorNames = ['Error', 'TypeError', 'ReferenceError', 'RangeError', 'RuntimeError', 'CompileError', 'LinkError', 'NetworkError', 'SecurityError', 'NotSupportedError', 'InvalidStateError', 'DataCloneError', 'AbortError', 'UnknownError'] as const;
+const wasmVariants = ['simd', 'scalar'] as const;
 const browsers = ['chrome', 'chrome-ios', 'edge', 'firefox', 'safari', 'unknown'] as const;
 const platforms = ['ios', 'android', 'macos', 'windows', 'linux', 'unknown'] as const;
 export const detectionLogKey = 'moira:face-detection-failures';
@@ -8,6 +9,7 @@ export type DetectionDiagnostic = {
   stage: typeof stages[number]; reason: typeof reasons[number]; errorName: typeof errorNames[number];
   width: number; height: number; regionCount: number; regionIndex: number;
   cropWidth: number; cropHeight: number; elapsedMs: number;
+  wasmVariant?: typeof wasmVariants[number];
 };
 type FailureLog = {
   schemaVersion: 1; recordedAt: number; browser: typeof browsers[number]; browserMajor: number;
@@ -24,7 +26,9 @@ export function parseDiagnostic(value: unknown): DetectionDiagnostic | null {
     || !integer(d.width,0,8192) || !integer(d.height,0,8192) || !integer(d.regionCount,0,10000)
     || !integer(d.regionIndex,-1,10000) || !integer(d.cropWidth,0,8192) || !integer(d.cropHeight,0,8192)
     || !integer(d.elapsedMs,0,86400000)) return null;
-  return {stage:d.stage,reason:d.reason,errorName:d.errorName,width:d.width,height:d.height,regionCount:d.regionCount,regionIndex:d.regionIndex,cropWidth:d.cropWidth,cropHeight:d.cropHeight,elapsedMs:d.elapsedMs};
+  const diagnostic: DetectionDiagnostic = {stage:d.stage,reason:d.reason,errorName:d.errorName,width:d.width,height:d.height,regionCount:d.regionCount,regionIndex:d.regionIndex,cropWidth:d.cropWidth,cropHeight:d.cropHeight,elapsedMs:d.elapsedMs};
+  if (member(wasmVariants,d.wasmVariant)) diagnostic.wasmVariant = d.wasmVariant;
+  return diagnostic;
 }
 export function parseFailureLog(value: unknown): FailureLog | null {
   if (!value || typeof value !== 'object') return null;

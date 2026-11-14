@@ -26,9 +26,14 @@ export async function loadRoomMask(url: string, width: number, height: number, r
     const crop = document.createElement("canvas"); crop.width = w; crop.height = h;
     const ctx = crop.getContext("2d", { willReadFrequently: true })!;
     ctx.drawImage(source, x, y, w, h, 0, 0, w, h);
-    const rgba = ctx.getImageData(0, 0, w, h).data, mask = new Uint8Array(w * h);
-    for (let i = 0; i < mask.length; i++) mask[i] = Number(rgba[i * 4] >= 128 && rgba[i * 4 + 3] > 0 && contains(x + i % w, y + Math.floor(i / w)));
-    if (mask.some(Boolean)) detectionRegions.push({ x, y, width: w, height: h, mask });
+    const rgba = ctx.getImageData(0, 0, w, h).data;
+    // The Worker needs only the rectangle. The frozen mask stays in this editor.
+    for (let i = 0; i < w * h; i++) {
+      if (rgba[i * 4] >= 128 && rgba[i * 4 + 3] > 0 && contains(x + i % w, y + Math.floor(i / w))) {
+        detectionRegions.push({ x, y, width: w, height: h });
+        break;
+      }
+    }
     crop.width = crop.height = 0; source.src = "";
   }
   return { canvas, detectionRegions, outline: outline.toDataURL(), owns: (face: Face) => contains(face.landmarks[1].x * width, face.landmarks[1].y * height) };

@@ -9,8 +9,19 @@ self.onmessage=async ({data:{bitmap,regions}})=>{
     const {FilesetResolver,FaceLandmarker}=self.MediaPipe;
     diagnostic.stage="wasm-setup";
     const vision=await FilesetResolver.forVisionTasks("/retouch/vendor/wasm");
+    if(vision.wasmBinaryPath?.endsWith("/vision_wasm_internal.wasm"))diagnostic.wasmVariant="simd";
+    if(vision.wasmBinaryPath?.endsWith("/vision_wasm_nosimd_internal.wasm"))diagnostic.wasmVariant="scalar";
+    // MediaPipe can fall back to document.createElement based on the user agent.
+    // A Worker has no document, so give it a canvas explicitly.
+    diagnostic.stage="canvas-create";
+    if(typeof OffscreenCanvas!=="function"){
+      diagnostic.reason="offscreen-unavailable";
+      throw new DOMException("Worker OffscreenCanvas is unavailable","NotSupportedError");
+    }
+    const canvas=new OffscreenCanvas(1,1);
     diagnostic.stage="model-init";
     detector=await FaceLandmarker.createFromOptions(vision,{
+      canvas,
       baseOptions:{modelAssetPath:"/retouch/vendor/face_landmarker.task",delegate:"CPU"},
       runningMode:"IMAGE",numFaces:20,minFaceDetectionConfidence:.5,minFacePresenceConfidence:.5,
       outputFaceBlendshapes:false,outputFacialTransformationMatrixes:false
@@ -47,11 +58,23 @@ self.onmessage=async ({data:{bitmap,regions}})=>{
     }
     self.postMessage({landmarks});
   } catch (error) {
-    // Classify locally; raw messages may contain URLs and are never forwarded.
-    const message=typeof error?.message==="string"?error.message.toLowerCase():"";
-    diagnostic.reason=/memory|allocation|out of bounds|out of memory/.test(message)?"memory":/webgl|context lost|texture|gpu/.test(message)?"webgl":/fetch|network|load failed|failed to load|importscripts/.test(message)?"network":/wasm|webassembly/.test(message)?"wasm":/not supported|unsupported|not defined/.test(message)?"unsupported":"unknown";
-    if(["Error","TypeError","RangeError","RuntimeError","NetworkError","SecurityError","NotSupportedError","InvalidStateError","DataCloneError","AbortError"].includes(error?.name))diagnostic.errorName=error.name;
+    // Only fixed categories leave the Worker, even when WASM throws a string.
+    if(diagnostic.reason==="unknown")diagnostic.reason=classifyFailure(error);
+    if(["Error","TypeError","ReferenceError","RangeError","RuntimeError","CompileError","LinkError","NetworkError","SecurityError","NotSupportedError","InvalidStateError","DataCloneError","AbortError"].includes(error?.name))diagnostic.errorName=error.name;
     diagnostic.elapsedMs=Math.max(0,Math.min(86400000,Date.now()-started));
     self.postMessage({error:"얼굴 기준점을 찾지 못했어요. 모델을 준비했는지 확인하고 밝고 가림이 적은 사진으로 다시 시도해주세요. 원본은 유지했어요.",diagnostic});
   } finally {bitmap.close();detector?.close();}
 };
+
+function classifyFailure(error){
+  const message=(typeof error==="string"?error:typeof error?.message==="string"?error.message:"").toLowerCase();
+  if(/can't find variable: document\b|\bdocument is not defined\b/.test(message))return "worker-dom";
+  if(/memory|allocation|out of bounds/.test(message))return "memory";
+  if(/webgl|opengl|context lost|texture|gpu/.test(message))return "webgl";
+  if(/failed to fetch model/.test(message))return "model-download";
+  if(error?.name==="CompileError"||error?.name==="LinkError"||/wasm|webassembly|modulefactory/.test(message))return "wasm";
+  if(/startgraph|startrun|calculatorgraph|graph initialization/.test(message))return "graph";
+  if(error?.name==="NetworkError"||/fetch|network|load failed|failed to load|importscripts/.test(message))return "network";
+  if(error?.name==="NotSupportedError"||/not supported|unsupported|not defined/.test(message))return "unsupported";
+  return "unknown";
+}
