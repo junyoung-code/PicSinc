@@ -12,6 +12,7 @@ import { uploadAsset, detectRemote } from "@/core/remote-client";
 import type { FlowSnapshot } from "./flow-state";
 import { jsonRequest, request, RequestError } from "./client";
 import { saveEditorSelection } from "./save-editor-selection";
+import { savePhoto } from "./save-photo";
 import { visiblePolling } from "./polling";
 import { originalDetectionMonitor } from "./original-detection-monitor";
 import type { OriginalDetectionState } from "@/features/photo-session/original-detection-state";
@@ -44,6 +45,7 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
   const seenPhase = useRef(initialRoom.phase);
   const [roomReadError, setRoomReadError] = useState('');
   const [saveView, setSaveView] = useState(false), saveViewOpen = useRef(false);
+  const prefetched = useRef<{ id: string; blob: Blob } | null>(null);
   // Figma 859:25318: a short "saved" notice rises above the buttons, then leaves.
   const [savedNotice, setSavedNotice] = useState(0);
   useEffect(() => {
@@ -264,17 +266,30 @@ export default function CollaborativeRoom({ inviteToken, initialSnapshot, initia
       closeEditor(); await refresh().catch(report);
     } finally { saving.current = false; }
   }
+  async function finalBlob(id: string) {
+    const response = await fetch(assetUrl(id)); if (!response.ok) throw new Error("사진 저장에 실패했어요. 다시 눌러주세요.");
+    return response.blob();
+  }
   async function downloadFinal() {
     if (!room.latestAssetId) return;
     setBusy(true); setError("");
     try {
-      const response = await fetch(assetUrl(room.latestAssetId)); if (!response.ok) throw new Error("사진 저장에 실패했어요. 다시 눌러주세요.");
-      const url = URL.createObjectURL(await response.blob()), a = document.createElement("a"); a.href=url;a.download="moira-final.png";a.click();setTimeout(()=>URL.revokeObjectURL(url),60_000);
+      // Use the photo fetched in advance, so the phone's share sheet opens while the tap still counts.
+      const ready = prefetched.current?.id === room.latestAssetId ? prefetched.current.blob : null;
+      const result = await savePhoto(ready ?? await finalBlob(room.latestAssetId), "moira-final.png");
+      if (result === "cancelled") return;
       // The save screen gets its own history entry so phone back returns to the result (B-037).
       if (!saveViewOpen.current) { history.pushState({roomSave:true}, "", location.href); saveViewOpen.current = true; }
       setSaveView(true); setSavedNotice(n => n + 1);
     } catch (e) { report(e); } finally { setBusy(false); }
   }
+  useEffect(() => {
+    const id = room.phase === 'final' ? room.latestAssetId : null;
+    if (!id || prefetched.current?.id === id) return;
+    let active = true;
+    void finalBlob(id).then(blob => { if (active) prefetched.current = { id, blob }; }).catch(() => { /* the tap fetches again */ });
+    return () => { active = false; };
+  }, [room.phase, room.latestAssetId]);
   useEffect(() => {
     const known = knownPeople.current;
     const joined = snapshot.participants.filter(p => !known.has(p.id));

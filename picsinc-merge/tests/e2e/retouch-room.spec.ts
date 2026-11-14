@@ -9,7 +9,7 @@ const base=`/api/sessions/${roomId}`;
 const initial=(phase:CollaborationView['phase']):CollaborationView=>({enabled:true,phase,rosterIds:['owner','friend'],completedIds:phase==='personal'?['friend']:['owner','friend'],personalToken:null,personalMaskAssetId:null,personalState:null,editorId:null,editToken:null,leaseUntil:null,latestAssetId:phase==='personal'?null:'result',version:0,history:[]});
 async function pixels(page:Page){return sharp(Buffer.from(await page.locator('canvas[aria-label="보정 미리보기"]').evaluate((c:HTMLCanvasElement)=>c.toDataURL('image/png').split(',')[1]),'base64')).ensureAlpha().raw().toBuffer();}
 async function backend(page:Page,initialRoom:CollaborationView,png:Buffer,width:number,height:number,mask?:Buffer,participantId='owner') {
- let state=initialRoom,failSave=0,saved:any=null,failSelection=false,failDownload=false;
+ let state=initialRoom,failSave=0,saved:any=null,failSelection=false,failDownload=0;
  const actions:string[]=[];
  let releaseSave:(()=>void)|undefined; let saveGate:Promise<void>|undefined;
  let claims:Array<{regionId:string;participantId:string;nickname:string}>=[];
@@ -49,14 +49,14 @@ async function backend(page:Page,initialRoom:CollaborationView,png:Buffer,width:
   if(path===`${base}/original-detection`)return json({status:'ready',resultUrl:`http://127.0.0.1:3112/api/detection`});
   if(path===`${base}/assets/original/regions`)return json({job:{id:'detection',status:'ready',resultUrl:new URL('/api/detection',request.url()).href}});
   if(path==='/api/detection')return json({width,height,previewPngBase64:'',regions:mask?[{id:'region-1',box:{x:0,y:0,width,height},maskPngBase64:mask.toString('base64')}]:[]});
-  if(path.startsWith(`${base}/assets/`) && failDownload && request.resourceType()==='fetch'){failDownload=false;return route.fulfill({status:503,body:''});}
+  if(path.startsWith(`${base}/assets/`) && failDownload>0 && request.resourceType()==='fetch'){failDownload--;return route.fulfill({status:503,body:''});}
   if(path.startsWith(`${base}/assets/`))return route.fulfill({contentType:'image/png',body:path.endsWith('/mask')&&mask?mask:png});
   if(path===`${base}/uploads/edited`||path===`${base}/uploads/mask`)return json({uploadId:'upload',signedUrl:'http://127.0.0.1:3112/api/test-storage',token:'test',path:'test'});
   if(path==='/api/test-storage')return route.fulfill({status:200,body:''});
   if(path==='/api/uploads/upload/complete')return json({asset:{id:'uploaded'}});
   return json({error:`Unhandled ${path}`},404);
  });
- return {state:()=>state,actions,leave:(id:string)=>{gone.add(id);},failLeave:(status:number)=>{leaveStatus=status;},update:(patch:Partial<CollaborationView>)=>{state={...state,...patch};},failNextDownload:()=>{failDownload=true;},holdSave:()=>{saveGate=new Promise<void>(resolve=>{releaseSave=resolve;});},releaseSave:()=>{releaseSave?.();saveGate=undefined;},failNextSave:()=>{failSave=2;},saved:()=>saved,claim:()=>{claims=[{regionId:'region-1',participantId:'owner',nickname:'민선'}];},failNextSelection:()=>{failSelection=true;}};
+ return {state:()=>state,actions,leave:(id:string)=>{gone.add(id);},failLeave:(status:number)=>{leaveStatus=status;},update:(patch:Partial<CollaborationView>)=>{state={...state,...patch};},failNextDownload:(times=1)=>{failDownload=times;},holdSave:()=>{saveGate=new Promise<void>(resolve=>{releaseSave=resolve;});},releaseSave:()=>{releaseSave?.();saveGate=undefined;},failNextSave:()=>{failSave=2;},saved:()=>saved,claim:()=>{claims=[{regionId:'region-1',participantId:'owner',nickname:'민선'}];},failNextSelection:()=>{failSelection=true;}};
 }
 
 test('whole-photo touch has no face controls, keeps prior pixels on restore, retries save and finalizes',async({page})=>{
@@ -487,16 +487,39 @@ test('the finished photo uses the screen width for wide strips and stays on scre
  }
 });
 
+test('on a phone, saving the finished photo opens the share sheet with the PNG (11/13 phone test)', async ({page}) => {
+ // Pretend to be a touch phone that can share files; record what is shared.
+ await page.addInitScript(()=>{
+  const real=window.matchMedia.bind(window);
+  window.matchMedia=(q:string)=>q==='(pointer: coarse)'?({matches:true,media:q,addEventListener(){},removeEventListener(){}} as any):real(q);
+  (window as any).shared=[];(window as any).shareMode='ok';
+  (navigator as any).canShare=(d:any)=>!!d?.files?.length;
+  (navigator as any).share=async(d:any)=>{if((window as any).shareMode==='cancel')throw new DOMException('cancel','AbortError');(window as any).shared.push(d.files.map((f:File)=>`${f.name}:${f.type}:${f.size}`));};
+ });
+ const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ await backend(page,initial('final'),png,40,40);
+ await page.goto(`/retouch/rooms/${roomId}`);
+ const save=page.getByRole('button',{name:'사진 저장하기',exact:true});await expect(save).toBeVisible();
+ await page.evaluate(()=>{(window as any).shareMode='cancel';});await save.click();
+ await expect(page.getByRole('status').filter({hasText:'사진을 저장했어요'})).toHaveCount(0);
+ await expect(page.getByRole('heading',{name:/사진을 길게 눌러/})).toHaveCount(0); // cancelling stays on the result
+ await page.evaluate(()=>{(window as any).shareMode='ok';});await save.click();
+ await expect(page.getByRole('status').filter({hasText:'사진을 저장했어요'})).toBeVisible();
+ expect(await page.evaluate(()=>(window as any).shared)).toEqual([[`moira-final.png:image/png:${png.length}`]]);
+});
+
 test('participant waits for owner finalization and retries the same final PNG', async ({page,context}) => {
  const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  const server=await backend(page,initial('review'),png,40,40,undefined,'friend');
  await page.goto(`/retouch/rooms/${roomId}`);
  await expect(page.getByRole('heading',{name:'대표자의 최종 완료를 기다려요'})).toBeVisible();
  await expect(page.getByRole('button',{name:'최종 완료',exact:true})).toHaveCount(0);
+ // The photo is fetched in advance for the phone share sheet; fail that and the tap's own fetch.
+ server.failNextDownload(2);
  server.update({phase:'final'});await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await expect(page.getByRole('heading',{name:/최종 보정본을/})).toBeVisible(); // friends see the owner's saving screen for a moment
  const save=page.getByRole('button',{name:'사진 저장하기',exact:true});await expect(save).toBeVisible();
- server.failNextDownload();await save.click();await expect(page.getByRole('status').filter({hasText:'사진 저장에 실패'})).toBeVisible();
+ await save.click();await expect(page.getByRole('status').filter({hasText:'사진 저장에 실패'})).toBeVisible();
  const getPNG=async(p:Page)=>{const download=p.waitForEvent('download');await p.getByRole('button',{name:'사진 저장하기',exact:true}).click();const file=await download;expect(file.suggestedFilename()).toBe('moira-final.png');return readFile((await file.path())!);};
  expect((await getPNG(page)).equals(png)).toBeTruthy();
  const owner=await context.newPage();await backend(owner,initial('final'),png,40,40);await owner.goto(`/retouch/rooms/${roomId}`);
