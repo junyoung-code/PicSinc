@@ -69,7 +69,8 @@
 .compactRoster[data-count="3"] .person { grid-template-columns:20px minmax(0,1fr); column-gap:5px; padding:5px 6px; }
 .compactRoster[data-count="3"] .person img { width:20px; height:20px; }
 .compactRoster[data-count="3"] .person > span { font-size:11px; white-space:nowrap; letter-spacing:-0.2px; }
-.result { display:block; width:258px; max-width:100%; height:auto; object-fit:contain; margin:0 auto; padding:10px; border:3px solid var(--moira-ink); border-radius:0; background:white; box-shadow:7px 7px 0 var(--moira-ink); }
+/* Wide strips looked tiny at a fixed 258px (11/13 phone test): use the full width, and cap tall photos by height. */
+.result { display:block; width:auto; max-width:100%; max-height:max(240px,min(calc(100dvh - 400px),560px)); height:auto; object-fit:contain; margin:0 auto; padding:10px; border:3px solid var(--moira-ink); border-radius:0; background:white; box-shadow:7px 7px 0 var(--moira-ink); }
 .previewPhoto { display:block; width:292px; max-width:100%; max-height:440px; object-fit:contain; margin:auto; }
 .photoStage { background:linear-gradient(white,var(--moira-accent) 45%,white); margin:0 -24px; padding:0 24px; }
 .centered { align-items:center; text-align:center; }
@@ -116,7 +117,7 @@
 .failureCharacter { width:96px; height:96px; object-fit:contain; }
 .processingCharacters { width:calc(100% + 48px); max-width:402px; height:auto; object-fit:contain; margin-bottom:-48px; }
 .content .processingNote { font-size:12px; line-height:20px; color:var(--moira-muted); }
-.savePhoto { width:auto; max-width:min(258px,100%); max-height:55dvh; align-self:center; }
+.savePhoto { width:auto; max-width:100%; max-height:55dvh; align-self:center; }
 /* Until the photo arrives: keep the frame's size and show a soft moving shimmer. */
 .photoLoading { min-height:120px; background:linear-gradient(100deg, white 35%, var(--moira-accent) 50%, white 65%) 0 0/250% 100%; animation:photoShimmer 1.4s linear infinite; }
 .result.photoLoading { width:min(258px,100%); }

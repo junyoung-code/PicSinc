@@ -470,6 +470,23 @@ test('a photo with no people offers the owner a new room instead of endless retr
  await friend.close();
 });
 
+test('the finished photo uses the screen width for wide strips and stays on screen for tall ones (11/13 phone test)', async ({page}) => {
+ await page.setViewportSize({width:393,height:852});
+ for(const [width,height] of [[2000,672],[1472,2616]]){
+  const png=await sharp({create:{width,height,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+  await page.unrouteAll({behavior:'ignoreErrors'});await backend(page,initial('final'),png,width,height);
+  await page.goto(`/retouch/rooms/${roomId}`);
+  const photo=page.getByRole('img',{name:'확정된 최종 사진'});await expect(photo).toBeVisible();
+  await expect.poll(()=>photo.evaluate(img=>(img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  const box=(await photo.boundingBox())!;
+  await page.screenshot({path:`private/retouch-e2e/final-${width}x${height}.png`});
+  if(width>height) expect(box.width).toBeGreaterThan(330); // was 258 → about 87px tall
+  else expect(box.width).toBeGreaterThan(220);
+  // Both buttons stay on the first screen.
+  expect((await page.getByRole('button',{name:'사진 저장하기',exact:true}).boundingBox())!.y+56).toBeLessThanOrEqual(852);
+ }
+});
+
 test('participant waits for owner finalization and retries the same final PNG', async ({page,context}) => {
  const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
  const server=await backend(page,initial('review'),png,40,40,undefined,'friend');
