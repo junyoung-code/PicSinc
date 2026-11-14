@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MOIRA — Together in color</title>
+<script src="assets/gsap.min.js"></script>
+<style>
+:root { --paper:#FFFDF7; --pink:#F995C9; --peach:#FFC39A; --sky:#81C7F4; --lilac:#C7A3EC; --mint:#8BDCAD; }
+* { box-sizing:border-box; }
+html,body { margin:0; width:1920px; height:1080px; overflow:hidden; background:var(--paper); }
+#stage { position:relative; width:1920px; height:1080px; overflow:hidden; }
+#paper { position:absolute; inset:0; background:var(--paper); }
+#splash { position:absolute; inset:0; display:grid; place-items:center; }
+.artboard { position:relative; width:938.6px; height:403px; grid-area:1 / 1; }
+#characters { position:absolute; inset:0; width:722px; height:310px; transform:scale(1.3); transform-origin:0 0; }
+.mascot { position:absolute; transform-origin:50% 100%; }
+.mascot img { position:absolute; display:block; }
+.body-halo { left:-13.6px; top:-13.6px; width:calc(100% + 27.2px); height:calc(100% + 27.2px); }
+.body-color { inset:0; width:100%; height:100%; mask-image:var(--mask); mask-size:100% 100%; -webkit-mask-image:var(--mask); -webkit-mask-size:100% 100%; }
+.face { object-fit:fill; }
+#liquid { position:relative; width:820px; height:210px; grid-area:1 / 1; opacity:0; }
+.liquid-goo { position:absolute; inset:0; filter:url(#moira-goo); }
+.color-drop { position:absolute; width:250px; height:190px; top:10px; border-radius:48% 52% 51% 49%; }
+.drop-pink { left:0; background:radial-gradient(ellipse at 42% 18%, #FFCEE6, var(--pink) 52%, #F45B9A); }
+.drop-peach { left:142px; background:radial-gradient(ellipse at 40% 17%, #FFE6CA, var(--peach) 56%, #F3A167); }
+.drop-sky { left:284px; background:radial-gradient(ellipse at 40% 14%, #B9ECFF, var(--sky) 58%, #699DE8); }
+.drop-lilac { left:426px; background:radial-gradient(ellipse at 39% 16%, #E9D8FD, var(--lilac) 56%, #AD8FD8); }
+.drop-mint { left:568px; background:radial-gradient(ellipse at 42% 12%, #C7F3C7, var(--mint) 58%, #56C4A4); }
+#wordmark { position:relative; width:850px; height:199.0957px; grid-area:1 / 1; opacity:0; }
+.logo-ink { position:absolute; inset:0; mask:url('assets/logo.svg') center / 100% 100% no-repeat; -webkit-mask:url('assets/logo.svg') center / 100% 100% no-repeat;
+ background:linear-gradient(180deg,rgba(255,255,255,.31),rgba(255,255,255,0) 48%,rgba(70,50,70,.07)),linear-gradient(100deg,var(--pink) 0%,var(--pink) 15%,var(--peach) 28%,var(--peach) 35%,var(--sky) 46%,var(--sky) 54%,var(--lilac) 65%,var(--lilac) 72%,var(--mint) 87%,var(--mint) 100%); }
+</style>
+</head>
+<body>
+<div id="stage" data-composition-id="main" data-start="0" data-duration="2" data-fps="60" data-width="1920" data-height="1080">
+<div id="paper" aria-hidden="true"></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<!-- Adapted from registry gooey-split: blur + alpha threshold. Preserve RGB for the five source hues. -->
+<filter id="moira-goo" x="-15%" y="-45%" width="130%" height="190%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="15"/><feColorMatrix values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 24 -8.9"/></filter>
+</defs></svg>
+<div id="splash" class="clip" data-start="0" data-duration="2" data-track-index="0">
+<div id="wordmark" role="img" aria-label="MOIRA in all five mascot colors"><div class="logo-ink"></div></div>
+<div id="liquid"><div class="liquid-goo"><div class="color-drop drop-pink"></div><div class="color-drop drop-peach"></div><div class="color-drop drop-sky"></div><div class="color-drop drop-lilac"></div><div class="color-drop drop-mint"></div></div></div>
+<div class="artboard"><div id="characters"><div class="mascot" id="peach" style="left:144.5948px;top:26.296px;width:204.9949px;height:230.7936px;--mask:url('assets/peach-mask.svg')">
+  <img class="body-halo" src="assets/peach-body.svg" alt="" width="232.1949" height="257.9936">
+  <img class="body-color" src="assets/peach-color.svg" alt="Original peach MOIRA mascot" width="204.9949" height="230.7936">
+  <img class="face" src="assets/peach-face.svg" alt="" style="left:70.99440000000001px;top:42.461999999999996px;width:60.1265px;height:45.8222px" width="60.1265" height="45.8222">
+</div>
+<div class="mascot" id="lilac" style="left:345.7839px;top:29.5456px;width:181.1979px;height:240.6978px;--mask:url('assets/lilac-mask.svg')">
+  <img class="body-halo" src="assets/lilac-body.svg" alt="" width="208.3979" height="267.8978">
+  <img class="body-color" src="assets/lilac-color.svg" alt="Original lilac MOIRA mascot" width="181.1979" height="240.6978">
+  <img class="face" src="assets/lilac-face.svg" alt="" style="left:79.54589999999996px;top:54.281699999999994px;width:57.0681px;height:31.1058px" width="57.0681" height="31.1058">
+</div>
+<div class="mascot" id="mint" style="left:454.4074px;top:77.501px;width:248.2785px;height:194.5495px;--mask:url('assets/mint-mask.svg')">
+  <img class="body-halo" src="assets/mint-body.svg" alt="" width="275.4785" height="221.74949999999998">
+  <img class="body-color" src="assets/mint-color.svg" alt="Original mint MOIRA mascot" width="248.2785" height="194.5495">
+  <img class="face" src="assets/mint-face.svg" alt="" style="left:99.00560000000002px;top:48.173px;width:48.2917px;height:39.605px" width="48.2917" height="39.605">
+</div>
+<div class="mascot" id="pink" style="left:21.4357px;top:117.0773px;width:214.256px;height:154.4495px;--mask:url('assets/pink-mask.svg')">
+  <img class="body-halo" src="assets/pink-body.svg" alt="" width="241.456" height="181.6495">
+  <img class="body-color" src="assets/pink-color.svg" alt="Original pink MOIRA mascot" width="214.256" height="154.4495">
+  <img class="face" src="assets/pink-face.svg" alt="" style="left:84.84270000000001px;top:31.753699999999995px;width:51.0685px;height:36.9304px" width="51.0685" height="36.9304">
+</div>
+<div class="mascot" id="sky" style="left:214.1969px;top:111.4901px;width:241.6299px;height:162.3923px;--mask:url('assets/sky-mask.svg')">
+  <img class="body-halo" src="assets/sky-body.svg" alt="" width="268.8299" height="189.5923">
+  <img class="body-color" src="assets/sky-color.svg" alt="Original sky MOIRA mascot" width="241.6299" height="162.3923">
+  <img class="face" src="assets/sky-face.svg" alt="" style="left:90.23819999999998px;top:45.4293px;width:70.4005px;height:34.5438px" width="70.4005" height="34.5438">
+</div></div></div>
+</div>
+</div>
+<script>
+(() => {
+ const tl = gsap.timeline({paused:true});
+ const cast = [{"name": "peach", "x": 144.5948, "y": 26.296, "w": 204.9949, "h": 230.7936, "target": -62, "delay": 0.0, "lift": 46, "rot": -3}, {"name": "lilac", "x": 345.7839, "y": 29.5456, "w": 181.1979, "h": 240.6978, "target": 62, "delay": 0.045, "lift": 52, "rot": 3}, {"name": "mint", "x": 454.4074, "y": 77.501, "w": 248.2785, "h": 194.5495, "target": 124, "delay": 0.11, "lift": 37, "rot": 3}, {"name": "pink", "x": 21.4357, "y": 117.0773, "w": 214.256, "h": 154.4495, "target": -124, "delay": 0.075, "lift": 39, "rot": -3}, {"name": "sky", "x": 214.1969, "y": 111.4901, "w": 241.6299, "h": 162.3923, "target": 0, "delay": 0.14, "lift": 50, "rot": 1}];
+ tl.set('.mascot', {x:0,y:0,scaleX:1,scaleY:1,rotation:0,opacity:1}, 0);
+ tl.set('.face', {opacity:1}, 0);
+ tl.set('#liquid', {opacity:0,scaleX:.52,scaleY:.82,y:14},0);
+ tl.set('#wordmark', {opacity:0,scaleX:.43,scaleY:.68,y:14},0);
+ cast.forEach(p => {
+  const id='#'+p.name, t=.1+p.delay*.55;
+  // Anticipation, first airborne stretch, soft landing, then a smaller rebound.
+  tl.to(id,{scaleX:1.075,scaleY:.91,y:0,rotation:-p.rot*.25,duration:.075,ease:'sine.inOut'},t);
+  tl.to(id,{y:-p.lift,scaleX:.94,scaleY:1.08,rotation:p.rot,duration:.14,ease:'power2.out'},t+.075);
+  tl.to(id,{y:0,scaleX:1.1,scaleY:.88,rotation:0,duration:.145,ease:'power2.in'},t+.215);
+  tl.to(id,{y:-p.lift*.43,scaleX:.97,scaleY:1.035,rotation:-p.rot*.45,duration:.10,ease:'sine.out'},t+.36);
+  tl.to(id,{y:0,scaleX:1.035,scaleY:.96,rotation:0,duration:.11,ease:'sine.in'},t+.46);
+  tl.to(id,{scaleX:1,scaleY:1,duration:.06,ease:'sine.out'},t+.57);
+  // Bottom-center anchors travel inward while bodies retain their source shapes.
+  const dx=361+p.target-(p.x+p.w/2), dy=218-(p.y+p.h);
+  tl.to(id,{x:dx*.45,y:dy*.3-24,scaleX:.94,scaleY:1.06,rotation:-p.rot,duration:.16,ease:'power1.inOut'},.81);
+  tl.to(id,{x:dx,y:dy,scaleX:.9,scaleY:.63,rotation:0,duration:.20,ease:'power3.inOut'},.97);
+  tl.to(id,{scaleX:1.15,scaleY:.3,y:dy-22,opacity:0,duration:.17,ease:'power2.in'},1.17);
+ });
+ // Faces recede only once the five bodies overlap substantially.
+ tl.to('.face',{opacity:0,duration:.12,ease:'sine.in'},1.06);
+ // The original bodies feed the shared connected color mass; no empty frame.
+ tl.to('#liquid',{opacity:1,scaleX:.67,scaleY:.9,duration:.15,ease:'sine.inOut'},1.04);
+ tl.to('#liquid',{scaleX:1,scaleY:.82,y:0,duration:.16,ease:'power2.inOut'},1.19);
+ // Silhouette grows out from the same mass while the puddle contracts into it.
+ tl.to('#wordmark',{opacity:1,scaleX:1.028,scaleY:1.045,y:0,duration:.27,ease:'power3.out'},1.25);
+ tl.to('#liquid',{scaleX:.82,scaleY:.06,opacity:0,duration:.18,ease:'power2.in'},1.35);
+ tl.to('#wordmark',{scaleX:1,scaleY:1,duration:.08,ease:'sine.inOut'},1.52);
+ window.__timelines=window.__timelines||{};
+ window.__timelines.main=tl;
+ tl.seek(0);
+})();
+</script>
+</body>
+</html>
