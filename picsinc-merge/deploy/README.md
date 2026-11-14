@@ -2,6 +2,9 @@
 
 동작·권한·보관 규칙은 [MASTER_SPEC](../MASTER_SPEC.md), 현재 확인 결과는 [STATE](../STATE.md)를 따릅니다.
 
+축제 B의 분리 환경·부하·비용 리허설은 [festival-b](festival-b.md)를 따릅니다.
+Windows 상시 워커의 준비·화질 검증은 [windows-worker](windows-worker.md)를 따릅니다.
+
 공개 앱: https://picsinc-merge.vercel.app
 Vercel 프로젝트: `junyoung-codes-projects/picsinc-merge`
 Supabase 프로젝트: `picsinc-merge` (`zogtpmolcmpiipwbysck`)
@@ -20,6 +23,8 @@ Supabase 프로젝트: `picsinc-merge` (`zogtpmolcmpiipwbysck`)
 
 서버 환경변수: `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_STORAGE_BUCKET`, `UPLOAD_SIGNING_SECRET`, `WORKER_TOKEN`.
 마지막 두 값은 각각 별도의 32자 이상 난수입니다. `NEXT_PUBLIC_`로 등록하지 않습니다. `UPLOAD_SIGNING_SECRET` 변경은 진행 중 업로드의 재완료에 영향을 줍니다. 워커 토큰을 바꾸면 Mac도 함께 갱신합니다.
+
+초대 링크를 받은 사람은 방에 참여해 사진·결과를 볼 수 있습니다. 개인 복구 링크는 해당 참여자의 수정 권한을 되찾으므로 초대 링크와 구분해 다룹니다. 공용 기기에서는 작업 후 해당 브라우저의 PicSync 사이트 데이터(쿠키와 세션 저장소)를 지우고 탭을 닫습니다. 링크나 복구 정보를 공용 기기의 클립보드에 남기지 않습니다.
 
 Vercel 프로젝트는 GitHub `junyoung-code/PicSinc` 저장소에 연결되어 있습니다. Production 브랜치는 `main`, Root Directory는 `picsinc-merge`입니다. `main`에 push하면 앱이 자동 배포되고, 다른 브랜치의 변경은 Preview 배포로 확인합니다. 배포 결과는 Vercel Deployments에서 확인합니다.
 

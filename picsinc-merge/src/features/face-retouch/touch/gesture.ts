@@ -1,5 +1,6 @@
 import { restoreTouch, type EditState, type Point } from "../state/model";
 import { splitDrag } from "./coordinates";
+import { MAX_IMAGE_SIDE } from "../image-io/headers";
 
 export type TouchMode = "touch" | "restore";
 type TouchSnapshot = Pick<EditState, "strokes" | "restores">;
@@ -20,25 +21,23 @@ export class TouchGesture {
       start: point, last: point, radius, strength, changed: false };
   }
 
-  move(state: EditState, point: Point, allowed = true): { state: EditState; full: boolean } {
+  move(state: EditState, point: Point, allowed = true): EditState {
     const g = this.current;
-    if (!g) return { state, full: false };
+    if (!g) return state;
     const from = g.last;
-    g.last = point; // Never bridge across a rejected segment or a full buffer.
-    if (!allowed) return { state, full: false };
+    g.last = point; // Never bridge across a rejected segment.
+    if (!allowed) return state;
+    const distance = Math.hypot(point.x - from.x, point.y - from.y);
+    if (!Number.isFinite(distance) || distance > Math.SQRT2 * MAX_IMAGE_SIDE) return state;
     let next = state;
     if (g.mode === "touch") {
-      // Reject oversized input before allocating a potentially huge stroke array.
-      const count = Math.ceil(Math.hypot(point.x-from.x, point.y-from.y) / (g.radius*.20));
-      if (state.strokes.length + count > 600) return { state, full: true };
       const strokes = splitDrag(g.owner, from, point, g.radius, g.strength);
       if (strokes.length) next = { ...state, strokes: [...state.strokes, ...strokes] };
     } else {
-      if (state.restores.length >= 600) return { state, full: true };
       next = restoreTouch(state, g.owner, point, g.radius, from);
     }
     g.changed ||= next !== state;
-    return { state: next, full: false };
+    return next;
   }
 
   finish(state: EditState, cancel = false): EditState {

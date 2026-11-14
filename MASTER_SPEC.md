@@ -2,19 +2,19 @@
 
 ## Goal
 
-Each participant selects their own face in a group photo, edits only that face/head region, and the server combines every accepted result over the immutable original.
+Each participant selects one or more faces in a group photo, edits only their claimed face/head regions, and the server combines every accepted result over the immutable original.
 
 ## MVP boundaries
 
 - Include face, skin, hair/head, makeup, and local facial-shape edits.
 - Exclude body reshaping because it can warp shared background and nearby people.
 - Use Meitu for detection, segmentation, and beautification behind server adapters.
-- Do not infer identity: a signed-in user manually claims a detected face.
+- Do not infer identity: a signed-in user manually claims one or more detected faces.
 - Keep API keys, source images, masks, patches, and biometric data off the client where possible.
 
 ## Flow
 
-`upload original -> detect faces/masks -> create PersonLayer -> claim face -> create EditRevision -> accept revision -> compose patches -> download result`
+`upload original -> detect faces -> create PersonLayer -> claim faces -> prepare each mask on first edit -> create EditRevision -> accept revision -> compose patches -> download result`
 
 ## Shared contracts
 
@@ -26,7 +26,19 @@ type PersonLayer = {
   personId: string;
   faceBox: Box;
   roi: Box;
-  maskKey: string;
+  maskKey: string | null;
+};
+
+// Server-only authorization record. Never expose userId in the people list.
+type PersonClaim = {
+  sessionId: string;
+  personId: string;
+  userId: string;
+  claimedAt: string;
+};
+
+type PersonLayerView = PersonLayer & {
+  claimState: "available" | "mine" | "claimed";
 };
 
 type EditRevision = {
@@ -49,7 +61,8 @@ type CompositeResult = {
 ```text
 POST /photo-sessions                 upload original
 GET  /photo-sessions/{id}/people     list detected layers
-POST /people/{personId}/claim        bind user to layer
+POST /photo-sessions/{id}/claims     atomically bind user to one or more layers
+DELETE /people/{personId}/claim      release an unedited owned layer
 POST /people/{personId}/edits        request beautification
 POST /edits/{revisionId}/accept      accept preview
 POST /photo-sessions/{id}/compose    compose accepted revisions
@@ -58,7 +71,10 @@ GET  /photo-sessions/{id}/result     fetch final result
 
 ## Invariants
 
-- A user can read the shared preview but mutate only their claimed `personId`.
+- A user can claim any number of layers in a session and mutate only their claimed `personId` values.
+- Each `personId` has at most one claim owner; a multi-claim request succeeds completely or makes no changes.
+- A claim can be released by its owner only before the first `EditRevision` exists for that person.
+- People-list responses expose only `claimState`, never another participant's `userId`.
 - A patch is derived from the original ROI and blended through a soft mask.
 - Pixels outside allowed masks remain unchanged.
 - Composition uses explicit accepted revision IDs and is deterministic.
@@ -68,7 +84,8 @@ GET  /photo-sessions/{id}/result     fetch final result
 ## Acceptance
 
 - Detect and align layers for representative 1, 3, and 10-person fixtures.
-- Reject edits for unowned people and preserve concurrent revisions.
+- Atomically claim multiple faces, reject cross-user conflicts, and reject edits for unowned people.
+- Preserve concurrent revisions for every independently edited person.
 - Produce seam-free hair/face boundaries and stable overlap handling.
 - Recover from Meitu timeout/error without data loss.
 - Pass the complete upload-to-download integration scenario.

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Picsinc 편집 흐름을 로컬에서 확인하는 기능 테스트 화면" />
+    <title>Picsinc 편집 기능 테스트</title>
+    <style>
+      #faceOverlayButtons button:focus-visible { outline: 3px solid #111; outline-offset: -3px; }
+    </style>
+  </head>
+  <body>
+    <h1>Picsinc 편집 기능 테스트</h1>
+    <p>로컬 테스트용 화면입니다. 사진은 브라우저 미리보기에만 사용되고, 이 화면의 보정 요청은 가짜 어댑터로 처리됩니다. 실제 Meitu API는 호출하지 않습니다.</p>
+    <button id="resetButton" type="button">테스트 초기화</button>
+
+    <hr />
+
+    <section aria-labelledby="photo-heading">
+      <h2 id="photo-heading">1. 사진 미리보기</h2>
+      <label>사진 선택 <input id="photoInput" type="file" accept="image/*" /></label>
+      <p id="photoHint">사진을 선택하지 않아도 얼굴 등록·보정 요청 흐름은 테스트할 수 있습니다.</p>
+      <div id="photoStage" hidden style="position: relative; display: inline-block; max-width: 100%; line-height: 0;">
+        <canvas id="photoCanvas" aria-label="선택한 사진의 로컬 미리보기" style="display: block; max-width: 100%; height: auto;"></canvas>
+        <svg id="faceBracketLayer" aria-hidden="true" style="position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none;"></svg>
+        <div id="faceOverlayButtons" aria-label="사진 위 감지된 얼굴" style="position: absolute; inset: 0;"></div>
+      </div>
+    </section>
+
+    <hr />
+
+    <section aria-labelledby="claim-heading">
+      <h2 id="claim-heading">2. 얼굴 선택 및 등록</h2>
+      <p>아래 버튼은 감지된 얼굴 fixture입니다. 여러 개를 선택한 후 한 번에 등록할 수 있습니다.</p>
+      <div id="faceMarkers" aria-label="감지된 얼굴 목록"></div>
+      <p id="selectionCount">얼굴을 선택해 주세요</p>
+      <button id="claimButton" type="button" disabled>선택한 얼굴 등록</button>
+      <h3>내 얼굴 작업 목록</h3>
+      <ul id="workList" aria-label="내 얼굴 작업 상태"></ul>
+    </section>
+
+    <hr />
+
+    <section aria-labelledby="edit-heading">
+      <h2 id="edit-heading">3. 얼굴별 보정 요청</h2>
+      <p id="activeFaceLabel">얼굴 미선택</p>
+      <p id="emptyControls">등록한 얼굴 버튼을 누르면 보정 입력 항목이 표시됩니다.</p>
+
+      <form id="controlForm" hidden>
+        <p><strong>가짜 미리보기</strong>: 선택한 값만 서버의 가짜 보정 어댑터에 전달합니다.</p>
+        <p>
+          <label><input type="checkbox" data-control="skinSmoothing" /> 피부결 사용</label>
+          <input name="skinSmoothing" type="range" min="0" max="100" value="0" disabled />
+          <output id="skinSmoothingValue">선택 안 함</output>
+        </p>
+        <p>
+          <label><input type="checkbox" data-control="skinTone" /> 피부 톤 사용</label>
+          <input name="skinTone" type="range" min="-100" max="100" value="0" disabled />
+          <output id="skinToneValue">선택 안 함</output>
+        </p>
+        <p>
+          <label><input type="checkbox" data-control="faceSlimming" /> 얼굴형 사용</label>
+          <input name="faceSlimming" type="range" min="-100" max="100" value="0" disabled />
+          <output id="faceSlimmingValue">선택 안 함</output>
+        </p>
+        <p>
+          <label><input type="checkbox" data-control="hairEnhancement" /> 헤어 정돈 사용</label>
+          <input name="hairEnhancement" type="range" min="0" max="100" value="0" disabled />
+          <output id="hairEnhancementValue">선택 안 함</output>
+        </p>
+        <fieldset>
+          <legend>메이크업</legend>
+          <label><input type="radio" name="makeupStyle" value="none" /> 없음</label>
+          <label><input type="radio" name="makeupStyle" value="natural" /> 내추럴 30</label>
+          <label><input type="radio" name="makeupStyle" value="glam" /> 글램 70</label>
+        </fieldset>
+        <p><button id="previewButton" type="button" disabled>보정값을 직접 선택해 주세요</button></p>
+        <p><button id="releaseButton" type="button" hidden>이 얼굴 등록 해제</button></p>
+      </form>
+    </section>
+
+    <section id="decisionCard" hidden aria-labelledby="decision-heading">
+      <h2 id="decision-heading">4. 미리보기 결정</h2>
+      <p>미리보기가 준비됐습니다. 아직 확정되지 않았습니다.</p>
+      <button id="acceptButton" type="button">이 결과 확정</button>
+      <button id="cancelButton" type="button">미리보기 취소</button>
+    </section>
+
+    <hr />
+
+    <section aria-labelledby="state-heading">
+      <h2 id="state-heading">테스트 상태</h2>
+      <p id="status" role="status" aria-live="polite">초기화 중입니다.</p>
+      <pre id="stateOutput"></pre>
+    </section>
+
+    <script type="module" src="/demo.js"></script>
+  </body>
+</html>

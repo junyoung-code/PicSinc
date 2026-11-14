@@ -21,10 +21,10 @@ export const controls = [
   ["lipSize", "크기", "입술", "입술의 전체 비율"],
   ["lipWidth", "너비", "입술", "입술의 가로 폭"],
   ["lipPosition", "상하 위치", "입술", "얼굴 기울기에 맞춰 상하 이동"],
-  ["lipFullness", "도톰함", "입술", "위아래 입술을 같은 비율로"],
+  ["lipFullness", "도톰함", "입술", "위아래 입술의 세로 두께 조절"],
   ["noseSize", "크기", "코", "세로 길이를 유지하며 코 전체의 좌우 너비 조절"],
-  ["noseLength", "길이", "코", "코의 상하 길이"],
-  ["noseAlar", "콧망울", "코", "콧구멍을 고정하고 양옆 콧망울을 좌우로"],
+  ["noseLength", "길이", "코", "코끝과 콧구멍을 함께 위아래로 이동"],
+  ["noseAlar", "콧망울", "코", "아래쪽 콧망울을 좌우로 움직이고 콧구멍 가장자리는 살짝 따라와요"],
   ["noseBridge", "콧대", "코", "눈 사이 위쪽 구간의 너비"],
   ["noseDorsum", "콧등", "코", "콧대 아래부터 코끝 바로 위까지의 너비"],
   ["noseTip", "코끝", "코", "세로 높이를 유지하며 코끝의 좌우 너비 조절"],
@@ -46,7 +46,7 @@ const endpoints: Record<ControlId, [string,string,number?]> = {
  faceWidth:["넓게","좁게",-1],lowerFace:["하안부 늘리기","하안부 줄이기"],cheekbone:["돌출 크게","돌출 작게",-1],chinLength:["길게","짧게",-1],jawAngle:["각지게","부드럽게",-1],
  eyeSize:["작게","크게"],eyeHeight:["아래로","위로"],eyeThickness:["얇게","두껍게"],eyeLength:["짧게","길게"],eyeSpacing:["가깝게","멀게"],eyeLower:["닫기","아래로 트기"],eyeAngle:["눈꼬리 위로","눈꼬리 아래로"],eyeRedness:["원본","충혈 완화"],eyeInner:["닫기","앞으로 트기"],eyeOuter:["닫기","뒤로 트기"],
  lipSize:["작게","크게"],lipWidth:["좁게","넓게"],lipPosition:["아래로","위로"],lipFullness:["얇게","도톰하게"],
- noseSize:["넓게","좁게",-1],noseLength:["짧게","길게"],noseAlar:["바깥으로","안쪽으로",-1],noseBridge:["넓게","좁게",-1],noseDorsum:["넓게","좁게",-1],noseTip:["넓게","좁게",-1],
+ noseSize:["넓게","좁게",-1],noseLength:["길게","짧게"],noseAlar:["바깥으로","안쪽으로",-1],noseBridge:["넓게","좁게",-1],noseDorsum:["넓게","좁게",-1],noseTip:["넓게","좁게",-1],
  browHeight:["아래로","위로"],browHeadSpacing:["앞머리 가깝게","앞머리 멀게"],browThickness:["가늘게","굵게"],browSpacing:["가깝게","멀게"],browAngle:["꼬리 위로","꼬리 아래로"],
 };
 export const controlDefinitions=Object.fromEntries(controls.map(([id])=>[id,{min:id==="eyeRedness"?0:-100,max:100,direction:endpoints[id][2]??1,left:endpoints[id][0],right:endpoints[id][1]}])) as Record<ControlId,ControlDefinition>;
@@ -76,7 +76,7 @@ export function resetFace(state: EditState, owner: string): EditState {
   return { ...touchReset, settings: { ...state.settings, [owner]: neutral() }, revisions:{...state.revisions,[owner]:neutral()},restores:touchReset.restores.filter(r=>r.owner!==owner) };
 }
 export function restoreTouch(state: EditState, owner: string, center: Point, radius: number, from:Point=center): EditState {
-  if(!state.settings[owner]||state.restores.length>=600)return state;
+  if(!state.settings[owner])return state;
   return { ...state, restores: [...state.restores, { owner, center, from, radius, through: state.strokes.length, revisions:{...state.revisions[owner]} }] };
 }
 export function hasEdits(state: EditState): boolean {

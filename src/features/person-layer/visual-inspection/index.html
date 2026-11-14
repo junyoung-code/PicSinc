@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ko">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>얼굴 레이어 시각 검증</title><link rel="stylesheet" href="/visual-inspection.css"></head>
+  <body>
+    <main>
+      <h1>얼굴 레이어 시각 검증</h1>
+      <p>원본은 이 요청이 처리되는 동안에만 서버에서 사용됩니다. 아래 동의 후 얼굴 감지 1회와 얼굴별 ROI matting 1회씩만 Meitu로 전송합니다.</p>
+      <label>사진 <input id="photo" type="file" accept="image/jpeg,image/png"></label>
+      <label class="consent"><input id="consent" type="checkbox"> 이 사진의 얼굴 감지와 얼굴별 ROI segmentation을 Meitu에 전송하는 데 동의합니다.</label>
+      <button id="run" type="button">ROI와 mask 검증 시작</button>
+      <p id="summary" role="status">동의 필요 · Meitu 호출 0회</p>
+      <ol id="stages"><li>ROI 준비</li><li>Meitu 전송 대기 / 동의 필요</li><li>QPS 대기 / 재시도</li><li>segmentation 처리</li><li>원본 mask 준비</li><li>상대 mask 겹침 제거</li><li>feathering</li><li>최종 mask 준비</li></ol>
+      <section id="people" aria-live="polite"></section>
+    </main>
+    <template id="person-template"><article><h2></h2><p class="meta"></p><p class="state"></p><div class="media"><figure><figcaption>ROI crop</figcaption><img class="crop"></figure><figure><figcaption>Meitu 원본 mask</figcaption><img class="original-mask"></figure><figure><figcaption>최종 허용 mask</figcaption><img class="final-mask"></figure></div><figure class="overlay"><figcaption>ROI 위 최종 mask 오버레이</figcaption><div><img class="overlay-crop"><img class="overlay-mask"></div></figure></article></template>
+    <script type="module" src="/visual-inspection.js"></script>
+  </body>
+</html>

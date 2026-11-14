@@ -1,7 +1,7 @@
-import { lipWeight, lipPositionShift } from "../effects/lips";
+import { lipFullnessShift, lipPositionShift, lipScaleSource } from "../effects/lips";
 import {contourShift,lowerFaceSource} from '../effects/face-shape';
-import {eyeAreaWeight,eyeProtection} from '../effects/eyes';
-import {noseBandShift,noseProtection} from '../effects/nose';
+import {eyeAreaWeight,eyeHeightWeight,eyeProtection,eyeThicknessShift} from '../effects/eyes';
+import {noseBandShift,noseLengthShift,noseProtection} from '../effects/nose';
 import { TOUCH_SUPPORT } from "../touch/coordinates";
 import { unsafeCells, type FieldWindow } from "./limits";
 import { bounds, frame, oval, smooth } from "../effects/geometry";
@@ -32,8 +32,9 @@ export function prepare(faces:Face[],state:EditState,width:number,height:number,
  const areas=Object.fromEntries(faces.map(f=>[f.id,cachedArea(f,width,height)]));
  if(touchScope)areas["__touch"]={center:{x:width/2,y:height/2},rx:width,ry:height,angle:0,box:true};
  const ops=faces.flatMap(f=>state.settings[f.id]?operations(f,state.settings[f.id],width,height):[]);
- const limited=ops.some(o=>Object.entries(areas).some(([id,r])=>id!=="__touch" && id!==o.owner && Math.hypot(o.center.x-r.center.x,o.center.y-r.center.y)<supportRadius(o)+Math.max(r.rx,r.ry))) || state.strokes.some(o=>o.owner!=="__touch"&&Object.entries(areas).some(([id,r])=>id!=="__touch" && id!==o.owner && regionDistance(o.from,r)<1.5));
- return {operations:ops,areas,state,width,height,limited:touchScope==="global"?false:limited,touchScope};
+ const plan:Prepared={operations:ops,areas,state,width,height,limited:false,touchScope};
+ if(touchScope!=="global")plan.limited=ops.some(o=>Object.entries(areas).some(([id,r])=>id!=="__touch" && id!==o.owner && Math.hypot(o.center.x-r.center.x,o.center.y-r.center.y)<supportRadius(o,plan)+Math.max(r.rx,r.ry))) || state.strokes.some(o=>o.owner!=="__touch"&&Object.entries(areas).some(([id,r])=>id!=="__touch" && id!==o.owner && regionDistance(o.from,r)<1.5));
+ return plan;
 }
 const areaEntries=new WeakMap<Prepared["areas"],Array<[string,Region]>>();
 function protection(p:Point,owner:string,plan:Prepared):number {
@@ -77,23 +78,55 @@ function contourInverse(p:Point,o:Operation,scale:number,projection:Projection):
  const delta={x:a.delta.x+(b.delta.x-a.delta.x)*t,y:a.delta.y+(b.delta.y-a.delta.y)*t};
  return{q:{x:p.x-delta.x*scale,y:p.y-delta.y*scale},weight:1-smooth(projection.distance/o.feather)};
 }
-export function supportRadius(o:Operation):number{
- return Math.hypot(o.rx,o.ry)*Math.max(1,o.sx,o.sy)+o.feather+Math.hypot(o.dx,o.dy);
+function lipScaleFeather(o:Operation):number{
+ // Small faces also need room to blend the strongest inward displacement without folding.
+ const inward=Math.hypot(o.rx*Math.max(0,1-o.sx),o.ry*Math.max(0,1-o.sy));
+ return Math.max(o.feather,2.6*inward);
 }
-type Compiled={opRestores:number[][];touchRestores:number[][];redness:Record<string,number[]>;opKeys:string[];radii:number[];restoreBins:Map<string,number[]>};
+function supportRadius(o:Operation,plan:Prepared):number{
+ const extent=Math.max(1,o.sx,o.sy);
+ const collar=o.lipScaleOutline?(lipScaleFeather(o)+gridGeometry(plan).guard)*extent:o.feather;
+ return Math.hypot(o.rx,o.ry)*extent+collar+Math.hypot(o.dx,o.dy);
+}
+type Bins = Map<string, number[]>;
+const binSize = 64;
+function binKey(point: Point): string {
+ return `${Math.floor(point.x / binSize)}:${Math.floor(point.y / binSize)}`;
+}
+function indexBounds(bins: Bins, index: number, from: Point, to: Point, radius: number) {
+ const left = Math.floor((Math.min(from.x, to.x) - radius) / binSize);
+ const right = Math.floor((Math.max(from.x, to.x) + radius) / binSize);
+ const top = Math.floor((Math.min(from.y, to.y) - radius) / binSize);
+ const bottom = Math.floor((Math.max(from.y, to.y) + radius) / binSize);
+ for (let y = top; y <= bottom; y++) {
+  for (let x = left; x <= right; x++) {
+   const key = `${x}:${y}`;
+   const entries = bins.get(key);
+   if (entries) entries.push(index);
+   else bins.set(key, [index]);
+  }
+ }
+}
+type Compiled={opRestores:number[][];redness:Record<string,number[]>;opKeys:string[];radii:number[];restoreBins:Bins;strokeBins:Bins};
 const compiledCache=new WeakMap<Prepared,Compiled>();
 function compiled(plan:Prepared):Compiled{
  let c=compiledCache.get(plan);if(c)return c;
  const indices=(items:Restore[])=>items.map(r=>plan.state.restores.indexOf(r));
- const restoreBins=new Map<string,number[]>();
- plan.state.restores.forEach((r,i)=>{for(let y=Math.floor((Math.min(r.from.y,r.center.y)-r.radius)/64);y<=Math.floor((Math.max(r.from.y,r.center.y)+r.radius)/64);y++)for(let x=Math.floor((Math.min(r.from.x,r.center.x)-r.radius)/64);x<=Math.floor((Math.max(r.from.x,r.center.x)+r.radius)/64);x++){const key=`${x}:${y}`,list=restoreBins.get(key)??[];list.push(i);restoreBins.set(key,list);}});
- c={restoreBins,opKeys:plan.operations.map(o=>`${o.owner}:${o.control}`),radii:plan.operations.map(supportRadius),opRestores:plan.operations.map(o=>indices(currentRestores(plan.state,o.owner,o.control))),touchRestores:plan.state.strokes.map((s,i)=>indices(plan.state.restores.filter(r=>r.owner===s.owner&&i<r.through))),redness:Object.fromEntries(Object.keys(plan.state.settings).map(id=>[id,indices(currentRestores(plan.state,id,'eyeRedness'))]))};
+ const restoreBins: Bins = new Map(), strokeBins: Bins = new Map();
+ plan.state.restores.forEach((restore, i) => indexBounds(restoreBins, i, restore.from, restore.center, restore.radius));
+ for (const restores of restoreBins.values()) {
+  restores.sort((a, b) => plan.state.restores[b].through - plan.state.restores[a].through);
+ }
+ plan.state.strokes.forEach((stroke, i) => {
+  if (plan.areas[stroke.owner]) indexBounds(strokeBins, i, stroke.from, stroke.from, stroke.radius * TOUCH_SUPPORT);
+ });
+ c={restoreBins,strokeBins,opKeys:plan.operations.map(o=>`${o.owner}:${o.control}`),radii:plan.operations.map(o=>supportRadius(o,plan)),opRestores:plan.operations.map(o=>indices(currentRestores(plan.state,o.owner,o.control))),redness:Object.fromEntries(Object.keys(plan.state.settings).map(id=>[id,indices(currentRestores(plan.state,id,'eyeRedness'))]))};
  compiledCache.set(plan,c);return c;
 }
 function pointWeights(point:Point,plan:Prepared,sample?:(i:number)=>number){
  if(!plan.state.restores.length)return [];
  const weights:number[]=[];
- for(const i of compiled(plan).restoreBins.get(`${Math.floor(point.x/64)}:${Math.floor(point.y/64)}`)??[])weights[i]=sample?sample(i):restoreWeight(point,plan.state.restores[i]);
+ for(const i of compiled(plan).restoreBins.get(binKey(point))??[])weights[i]=sample?sample(i):restoreWeight(point,plan.state.restores[i]);
  return weights;
 }
 function minimum(indices:number[],weights:number[]){let v=1;for(const i of indices)v=Math.min(v,weights[i]??1);return v;}
@@ -101,15 +134,35 @@ export function colorSuppression(point:Point,plan:Prepared,weights=pointWeights(
  let amount=0;for(const [owner,list] of Object.entries(compiled(plan).redness))if(plan.state.settings[owner].eyeRedness&&regionDistance(point,plan.areas[owner])<1.25)amount=Math.max(amount,(1-minimum(list,weights))*protection(point,owner,plan));return amount;
 }
 export type Strengths=Record<string,number>;
+const touchStrengthKey = (index: number) => `touch:${index}`;
 export function mapPoint(point:Point,plan:Prepared,strengths:Strengths={},weights=pointWeights(point,plan),pointProtection?:Record<string,number>,contourSamples?:Record<string,Projection>):Point {
  let p={...point};const contourReferences:Record<string,Point>={},noseReferences:Record<string,Point>={},projections:Record<string,Projection>={};const cache=compiled(plan),protectedWeights:Record<string,number>=pointProtection??{};
  const protect=(owner:string)=>owner==="__touch"?1:protectedWeights[owner]??(protectedWeights[owner]=protection(point,owner,plan));
- for(let i=plan.state.strokes.length-1;i>=0;i--){
+ const key = binKey(point);
+ const strokes = cache.strokeBins.get(key) ?? [];
+ const restores = cache.restoreBins.get(key) ?? [];
+ const restoreWeights = restores.length ? new Map<string, number>() : undefined;
+ let nextRestore = 0;
+ for(let index=strokes.length-1;index>=0;index--){
+  const i = strokes[index];
   const stroke=plan.state.strokes[i],area=plan.areas[stroke.owner],outer=stroke.radius*TOUCH_SUPPORT;if(!area)continue;
   if(Math.abs(point.x-stroke.from.x)>=outer||Math.abs(point.y-stroke.from.y)>=outer)continue;
   const d=Math.hypot(point.x-stroke.from.x,point.y-stroke.from.y)/outer;if(d>=1)continue;
-  let weight=(1-smooth(d))*stroke.strength*(strengths[`${stroke.owner}:touch`]??1)*(1-smooth((regionDistance(point,area)-1)/.35));
-  weight*=protect(stroke.owner)*minimum(cache.touchRestores[i],weights);if(!weight)continue;
+  let weight=(1-smooth(d))*stroke.strength*(strengths[touchStrengthKey(i)]??1)*(1-smooth((regionDistance(point,area)-1)/.35));
+  weight *= protect(stroke.owner);
+  if (!weight) continue;
+  // Traversing backward makes a restore eligible as soon as we reach an
+  // older stroke. Keep the strongest eligible restore weight for each owner.
+  while (restoreWeights && nextRestore < restores.length) {
+   const restoreIndex = restores[nextRestore];
+   const restore = plan.state.restores[restoreIndex];
+   if (i >= restore.through) break;
+   const remaining = Math.min(restoreWeights.get(restore.owner) ?? 1, weights[restoreIndex] ?? 1);
+   restoreWeights.set(restore.owner, remaining);
+   nextRestore++;
+  }
+  weight *= restoreWeights?.get(stroke.owner) ?? 1;
+  if (!weight) continue;
   const q={x:p.x-(stroke.to.x-stroke.from.x)*weight,y:p.y-(stroke.to.y-stroke.from.y)*weight},safe=stroke.owner==="__touch"?1:protection(q,stroke.owner,plan);
   p={x:p.x+(q.x-p.x)*safe,y:p.y+(q.y-p.y)*safe};
  }
@@ -133,25 +186,71 @@ export function mapPoint(point:Point,plan:Prepared,strengths:Strengths={},weight
    const projection=projections[o.owner]??(projections[o.owner]=reference.x===point.x&&reference.y===point.y&&contourSamples?.[o.owner]?contourSamples[o.owner]:contourProjection(reference,o.contour));
    const result=contourInverse(reference,o,scale,projection);q={x:p.x+result.q.x-reference.x,y:p.y+result.q.y-reference.y};weight*=result.weight;
   }
-  else if(o.lip){q=inverse(p,o,scale);weight*=lipWeight(point,o.lip,gridGeometry(plan).guard);}
+  else if(o.lipFullness){
+   const {guard}=gridGeometry(plan),{c,s}=trig(o);
+   const noseGuard=guard+Math.SQRT2;
+   // Protect output nose pixels even if an earlier operation remapped their source.
+   if(local(point,o).y<=o.lipFullness.nose+noseGuard)continue;
+   const shift=lipFullnessShift(local(p,o),o.lipFullness,o.lipFullness.amount*scale,guard,noseGuard);
+   q={x:p.x-shift*s,y:p.y+shift*c};
+  }
   else if(o.lipPosition){
    const shift=lipPositionShift(local(p,o),o.lipPosition,o.dy*scale,gridGeometry(plan).guard+Math.SQRT2),{c,s}=trig(o);
    q={x:p.x-shift*s,y:p.y+shift*c};
+  }
+  else if (o.noseLength) {
+   const {c, s} = trig(o);
+   const guard = gridGeometry(plan).guard + Math.SQRT2;
+   const shift = noseLengthShift(local(p, o), o.noseLength, o.dy * scale, guard, o.rx, o.feather);
+   q = { x: p.x - shift * s, y: p.y + shift * c };
   }
   else if(o.noseBand){
    const reference=noseReferences[o.owner]??(noseReferences[o.owner]={...p});
    const shift=noseBandShift(local(reference,o),o.noseBand,1+(o.sx-1)*scale),{c,s}=trig(o);
    q={x:p.x+shift*c,y:p.y+shift*s};
   }
+  else if(o.eyeThickness){
+   const shift=eyeThicknessShift(local(p,o),o.eyeThickness,1+(o.sy-1)*scale),{c,s}=trig(o);
+   q={x:p.x-shift*s,y:p.y+shift*c};
+   const {brow}=o.eyeThickness,guard=gridGeometry(plan).guard+Math.SQRT2;
+   const browDistance=Math.min(outside(point,brow),outside(p,brow),outside(q,brow));
+   weight*=smooth((browDistance-guard)/Math.max(2,Math.min(brow.ry*.5,o.rx*.08)));
+  }
+  else if(o.eyeHeight){
+   q=inverse(p,o,scale);
+   weight*=eyeHeightWeight(local(p,o),o.eyeHeight,o.dy*scale,gridGeometry(plan).guard);
+  }
   else if(o.eye){
    q=inverse(p,o,scale);
    weight*=Math.max(eyeAreaWeight(p,o.eye,gridGeometry(plan).guard),eyeAreaWeight(q,o.eye,gridGeometry(plan).guard));
   }
+  else if(o.lipScaleOutline){
+   const lipPoint=local(p,o),{c,s}=trig(o);
+   const sx=1+(o.sx-1)*scale,sy=1+(o.sy-1)*scale;
+   const source=lipScaleSource(lipPoint,o.lipScaleOutline,sx,sy,gridGeometry(plan).guard,lipScaleFeather(o));
+   const dx=source.x-lipPoint.x,dy=source.y-lipPoint.y;
+   q={x:p.x+dx*c-dy*s,y:p.y+dx*s+dy*c};
+  }
   else{q=inverse(p,o,scale);weight*=1-smooth(Math.min(outside(p,o),outside(q,o))/o.feather);}
-  if(o.eye){const guard=gridGeometry(plan).guard*1.25+Math.SQRT2;weight*=Math.min(eyeProtection(p,o.eye,guard),eyeProtection(q,o.eye,guard));}
+  if(o.eye){
+   const guard=gridGeometry(plan).guard*1.25+Math.SQRT2;
+   weight*=Math.min(eyeProtection(p,o.eye,guard),eyeProtection(q,o.eye,guard));
+  }
   if(o.nose){const guard=gridGeometry(plan).guard*1.25+Math.SQRT2;weight*=Math.min(noseProtection(local(p,o),o.nose,guard),noseProtection(local(q,o),o.nose,guard));}
   if(!weight)continue;
   for(const r of o.exclusions){const collar=Math.max(2,Math.min(r.rx,r.ry)*.65);weight*=smooth(Math.min(outside(point,r),outside(q,r))/collar);}
+  if(o.protectedRegions){
+   // Reserve every grid vertex that can contribute to a protected feature pixel.
+   const guard=gridGeometry(plan).guard+Math.SQRT2;
+   // Downward eye movement needs room to ease away from the fixed brow.
+   const eyeHeightCollar=o.eyeHeight?Math.max(0,o.dy*scale)*2.5:0;
+   for(const r of o.protectedRegions){
+    const distance=o.lipScaleOutline
+     ? Math.min(outside(point,r),outside(p,r),outside(q,r))
+     : Math.min(outside(p,r),outside(q,r));
+    weight*=smooth((distance-guard)/Math.max(2,Math.min(r.rx,r.ry)*.65,eyeHeightCollar));
+   }
+  }
   weight*=protection(q,o.owner,plan);
   p={x:p.x+(q.x-p.x)*weight,y:p.y+(q.y-p.y)*weight};
  }
@@ -174,14 +273,45 @@ function yieldCalculation():Promise<void>{
   channel.port2.postMessage(null);
  });
 }
+// Keep only the last facial safety result. Touch frames reuse it without
+// retaining a second displacement grid or keying it on the edit history.
+let facialSafety: {key: string; strengths: Strengths; strained: boolean} | undefined;
+
 export async function buildField(plan:Prepared,isCurrent:()=>boolean=()=>true):Promise<Field|null> {
  if(!isCurrent())return null;
  const colorOwners=Object.keys(plan.state.settings).filter(id=>plan.state.settings[id].eyeRedness&&compiled(plan).redness[id].length);
  if(!plan.operations.length&&!plan.state.strokes.length&&!colorOwners.length)return {data:new Float32Array(16),columns:2,rows:2,limited:plan.limited,strained:false};
- const {columns,rows}=gridGeometry(plan),data=new Float32Array(columns*rows*4);
- const supports=[...plan.operations.map(o=>({x:o.center.x,y:o.center.y,r:supportRadius(o),key:`${o.owner}:${o.control}`})),...plan.state.strokes.filter(s=>plan.areas[s.owner]).map(s=>({x:s.from.x,y:s.from.y,r:s.radius*TOUCH_SUPPORT,key:`${s.owner}:touch`})),...colorOwners.map(id=>({x:plan.areas[id].center.x,y:plan.areas[id].center.y,r:Math.max(plan.areas[id].rx,plan.areas[id].ry)*1.25,key:''}))];
+ const {columns,rows}=gridGeometry(plan);
+ const facialSupports=plan.operations.map(o=>({x:o.center.x,y:o.center.y,r:supportRadius(o,plan),key:`${o.owner}:${o.control}`}));
+ const touchSupports=plan.state.strokes.map(s=>plan.areas[s.owner]?{x:s.from.x,y:s.from.y,r:s.radius*TOUCH_SUPPORT}:null);
+ const hasTouch=touchSupports.some(Boolean);
+ const supports=[...facialSupports,...touchSupports.filter(s=>s!==null),...colorOwners.map(id=>({x:plan.areas[id].center.x,y:plan.areas[id].center.y,r:Math.max(plan.areas[id].rx,plan.areas[id].ry)*1.25}))];
  if(!supports.length)return {data:new Float32Array(16),columns:2,rows:2,limited:plan.limited,strained:false};
- const window:FieldWindow={x0:Math.max(0,Math.floor(Math.min(...supports.map(s=>s.x-s.r))/plan.width*(columns-1))-1),y0:Math.max(0,Math.floor(Math.min(...supports.map(s=>s.y-s.r))/plan.height*(rows-1))-1),x1:Math.min(columns-1,Math.ceil(Math.max(...supports.map(s=>s.x+s.r))/plan.width*(columns-1))+1),y1:Math.min(rows-1,Math.ceil(Math.max(...supports.map(s=>s.y+s.r))/plan.height*(rows-1))+1)};
+ const facialKey=facialSupports.length?JSON.stringify([plan.width,plan.height,plan.areas,plan.operations]):"";
+ let strengths: Strengths = {}, strained = false;
+ if (hasTouch && facialKey) {
+  if (facialSafety?.key !== facialKey) {
+   const facial = await buildField({...plan, state:{...plan.state, strokes:[], restores:[]}}, isCurrent);
+   if (!facial || !isCurrent()) return null;
+   strengths = {...facial.strengths};
+   strained = facial.strained;
+  } else {
+   strengths = {...facialSafety.strengths};
+   strained = facialSafety.strained;
+  }
+ }
+ const data=new Float32Array(columns*rows*4);
+ let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+ for (const {x, y, r} of supports) {
+  left = Math.min(left, x - r); top = Math.min(top, y - r);
+  right = Math.max(right, x + r); bottom = Math.max(bottom, y + r);
+ }
+ const window:FieldWindow={
+  x0:Math.max(0,Math.floor(left/plan.width*(columns-1))-1),
+  y0:Math.max(0,Math.floor(top/plan.height*(rows-1))-1),
+  x1:Math.min(columns-1,Math.ceil(right/plan.width*(columns-1))+1),
+  y1:Math.min(rows-1,Math.ceil(bottom/plan.height*(rows-1))+1),
+ };
  const gridKey=`${plan.width}:${plan.height}:${columns}:${rows}`;
  const gridPoint=(x:number,y:number)=>({x:x/(columns-1)*plan.width,y:y/(rows-1)*plan.height});
  const maskWindow=(x0:number,y0:number,x1:number,y1:number):FieldWindow=>({x0:Math.max(0,Math.floor(x0/plan.width*(columns-1))),y0:Math.max(0,Math.floor(y0/plan.height*(rows-1))),x1:Math.min(columns-1,Math.ceil(x1/plan.width*(columns-1))),y1:Math.min(rows-1,Math.ceil(y1/plan.height*(rows-1)))});
@@ -209,7 +339,9 @@ export async function buildField(plan:Prepared,isCurrent:()=>boolean=()=>true):P
  const protectionSamplers=owners.map(owner=>({owner,sample:protects[owner]}));
  const contourSamplers=Object.entries(contourMasks);
  const protectionWeights:Record<string,number>={},contourSamples:Record<string,Projection>={};
- const strengths:Strengths={};let strained=false,yielded=performance.now();
+ const {strokeBins}=compiled(plan);
+ const halfWidth=plan.width/(columns-1)/2,halfHeight=plan.height/(rows-1)/2;
+ let yielded=performance.now();
  for(let attempt=0;attempt<32;attempt++){
   for(let y=window.y0;y<=window.y1;y++){
    for(let x=window.x0;x<=window.x1;x++){
@@ -222,13 +354,37 @@ export async function buildField(plan:Prepared,isCurrent:()=>boolean=()=>true):P
    if(performance.now()-yielded>=6){await yieldCalculation();if(!isCurrent())return null;yielded=performance.now();}
   }
   const unsafe=unsafeCells(data,columns,rows,window);
-  if(!unsafe.length)return{data,columns,rows,limited:plan.limited,strained,strengths};
+  if(!unsafe.length){
+   if(!hasTouch&&facialKey)facialSafety={key:facialKey,strengths,strained};
+   return{data,columns,rows,limited:plan.limited,strained,strengths};
+  }
   strained=true;const affected=new Map<string,number>();
-  for(const cell of unsafe){const p={x:(cell.x+.5)/(columns-1)*plan.width,y:(cell.y+.5)/(rows-1)*plan.height};for(const s of supports)if(s.key&&Math.abs(p.x-s.x)<s.r&&Math.abs(p.y-s.y)<s.r)affected.set(s.key,Math.min(affected.get(s.key)??1,cell.strength));}
+  for(const cell of unsafe){
+   const p=gridPoint(cell.x+.5,cell.y+.5);
+   if(!hasTouch){
+    for(const s of facialSupports)if(Math.abs(p.x-s.x)<s.r&&Math.abs(p.y-s.y)<s.r)affected.set(s.key,Math.min(affected.get(s.key)??1,cell.strength));
+    continue;
+   }
+   // Only a stroke whose support reaches this cell can alter its transform.
+   // Check all bins touching the cell, including across a bin boundary.
+   for(let y=Math.floor((p.y-halfHeight)/binSize);y<=Math.floor((p.y+halfHeight)/binSize);y++){
+    for(let x=Math.floor((p.x-halfWidth)/binSize);x<=Math.floor((p.x+halfWidth)/binSize);x++){
+     for(const index of strokeBins.get(`${x}:${y}`)??[]){
+      const s=touchSupports[index]!;
+      if(Math.abs(p.x-s.x)>s.r+halfWidth||Math.abs(p.y-s.y)>s.r+halfHeight)continue;
+      const key=touchStrengthKey(index);
+      if(strengths[key]!==0)affected.set(key,Math.min(affected.get(key)??1,cell.strength));
+     }
+    }
+   }
+  }
   if(!affected.size)break;
-  // Recompute the same continuous transform at a lower shared strength. Never
-  // damp individual vertices inside an eye or eyebrow differently.
-  for(const [key,factor] of affected)strengths[key]=(strengths[key]??1)*factor;
+  // Reduce a complete effect or touch segment, preserving its smooth falloff.
+  // The facial baseline is already safe, so only touch can change in this pass.
+  for(const [key,factor] of affected){
+   const next=(strengths[key]??1)*factor;
+   strengths[key]=hasTouch&&next<.002?0:next;
+  }
  }
  throw new Error("이 조합의 변형을 안전하게 계산하지 못했어요. 원본과 설정을 유지했어요. 강도를 낮춰 다시 시도해주세요.");
 }

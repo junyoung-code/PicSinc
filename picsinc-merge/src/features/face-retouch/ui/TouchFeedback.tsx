@@ -3,18 +3,20 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
 import type { Point } from "../state/model";
 import styles from "./retouch.module.css";
 
-export function TouchGuide({ point, start, radius, width, height }: {
-  point: Point; start: Point | null; radius: number; width: number; height: number;
+export const BRUSH_GUIDE_STROKE_RATIO = .08;
+
+export function TouchGuide({ point, start, radius }: {
+  point: Point; start: Point | null; radius: number;
 }) {
   const dx = start ? point.x-start.x : 0, dy = start ? point.y-start.y : 0;
   const length = Math.hypot(dx,dy), head = Math.min(radius*.3,length*.3);
   const ux = length ? dx/length : 0, uy = length ? dy/length : 0;
   const cross = (p: Point) => <path d={`M${p.x-radius*.65} ${p.y}h${radius*.25} M${p.x+radius*.4} ${p.y}h${radius*.25} M${p.x} ${p.y-radius*.65}v${radius*.25} M${p.x} ${p.y+radius*.4}v${radius*.25}`}/>;
-  return <svg className={styles.touchGuide} viewBox={`0 0 ${width} ${height}`} aria-hidden="true" data-testid="touch-guide">
+  return <svg className={styles.touchGuide} fill="none" stroke="white" strokeWidth={2 * radius * BRUSH_GUIDE_STROKE_RATIO} strokeLinecap="round" aria-hidden="true" data-testid="touch-guide">
     {start && length > radius*.15 && <g className={styles.touchOrigin}>
       <circle cx={start.x} cy={start.y} r={radius}/>{cross(start)}
     </g>}
-    {start && length > radius*.15 && <path data-testid="touch-direction" d={`M${start.x} ${start.y}L${point.x} ${point.y}m${-ux*head-uy*head*.5} ${-uy*head+ux*head*.5}L${point.x} ${point.y}l${-ux*head+uy*head*.5} ${-uy*head-ux*head*.5}`}/>}
+    {start && length > radius*.15 && <path data-testid="touch-direction" strokeWidth={1.5} d={`M${start.x} ${start.y}L${point.x} ${point.y}m${-ux*head-uy*head*.5} ${-uy*head+ux*head*.5}L${point.x} ${point.y}l${-ux*head+uy*head*.5} ${-uy*head-ux*head*.5}`}/>}
     <circle cx={point.x} cy={point.y} r={radius}/>{cross(point)}
   </svg>;
 }

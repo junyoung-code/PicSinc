@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {fixture} from './fixture';
-import {frame,insidePolygon} from './geometry';
+import {frame} from './geometry';
 import {lipOuterLoop} from './lips';
 import {eyeContours} from './eyes';
 import {initialState,setControl,type ControlId,type Point} from '../state/model';
@@ -9,7 +9,6 @@ import {prepare,mapPoint,buildField,type Field} from '../engine/field';
 import {jacobianFloor} from '../engine/limits';
 
 const ids=['noseSize','noseAlar','noseBridge','noseDorsum','noseTip'] as const;
-const nostrils=[[98,240,59,44,97,99],[327,460,289,274,326,328]];
 function planFor(face:ReturnType<typeof fixture>,values:Partial<Record<ControlId,number>>,size=1000){
  let state=initialState([face]);for(const [id,v] of Object.entries(values))state=setControl(state,face.id,id as ControlId,v!);
  return prepare([face],state,size,size);
@@ -30,32 +29,31 @@ test('requested nose controls only move horizontally in the face frame',()=>{
  }
 });
 
-test('alar adjustment moves outer wings sideways while fixing complete nostril areas after interpolation',async()=>{
+test('alar adjustment moves the lower outer wings most and the nostril edges slightly',async()=>{
  for(const angle of [0,.35])for(const value of [-100,100]){
   const face=fixture('a',.5,1,angle),size=700,f=frame(face,size,size),plan=planFor(face,{noseAlar:value},size),field=await buildField(plan);assert.ok(field);
-  for(const loop of nostrils){
-   const polygon=loop.map(i=>f.points[i]);
-   for(let y=Math.min(...polygon.map(p=>p.y))-.5;y<Math.max(...polygon.map(p=>p.y))+.5;y+=.7)for(let x=Math.min(...polygon.map(p=>p.x))-.5;x<Math.max(...polygon.map(p=>p.x))+.5;x+=.7){
-    const p={x,y};if(!insidePolygon(p,polygon))continue;
-    assert.deepEqual(mapPoint(p,plan),p);assert.deepEqual(sample(field,p,size),p);
-   }
+  for (const [wing, rim, upper, side] of [[64,98,49,-1],[294,327,279,1]]) {
+   const move = (id: number) => (f.local(sample(field, f.points[id], size)).x - f.lm[id].x) * side * Math.sign(value);
+   const wingMove = move(wing), rimMove = move(rim);
+   assert.ok(wingMove > .1, 'lower wing moves in the requested direction');
+   assert.ok(rimMove > .01 && rimMove < wingMove / 2, 'nostril edge follows by a smaller amount');
+   const upperRatio = move(upper) / wingMove;
+   assert.ok(upperRatio > .3 && upperRatio < .7, 'upper sidewall follows by about half');
   }
-  for(const [id,sign] of [[49,-1],[279,1]]){
-   const source=f.lm[id],target=f.local(destination(f.points[id],plan));
-   assert.ok((target.x-source.x)*sign*value<-.01,'outer wings must move in the requested direction');
-  }
+  for (const id of [1, 2, 4, ...lipOuterLoop]) assert.deepEqual(sample(field, f.points[id], size), f.points[id]);
  }
 });
 
 test('bridge/dorsum overlap has no stationary seam or double strength and follows the nose axis',()=>{
  const face=fixture(),f=frame(face,1000,1000),split=(f.lm[6].y+f.lm[197].y)/2;
- for(const value of [-100,100]){
-  const upper=planFor(face,{noseBridge:value}),lower=planFor(face,{noseDorsum:value}),both=planFor(face,{noseBridge:value,noseDorsum:value});
+ for (const sign of [-1, 1]) {
+  const bridge = sign * 40, dorsum = sign * 90;
+  const upper=planFor(face,{noseBridge:bridge}),lower=planFor(face,{noseDorsum:dorsum}),both=planFor(face,{noseBridge:bridge,noseDorsum:dorsum});
   for(const y of [split-1,split,split+1]){
    const p=f.world({x:10,y}),a=mapPoint(p,upper),b=mapPoint(p,lower),q=mapPoint(p,both);
    assert.ok(Math.abs(a.x-p.x)>.1&&Math.abs(b.x-p.x)>.1,'both bands must contribute through the shared boundary');
    assert.ok(Math.abs(q.x-p.x-(a.x-p.x)-(b.x-p.x))<1e-7,'blend once without sequential scale amplification');
-   assert.ok(Math.abs(q.x-p.x-10*(1/(1-.075*value/100)-1))<1e-7,'equal settings produce a uniform width through the seam');
+   assert.ok(Math.abs(q.x-p.x-10*(1/(1-.135*sign)-1))<1e-7,'equal width strengths produce a uniform width through the seam');
   }
  }
  const curved=fixture();for(const i of [5,51,281])curved.landmarks[i]={...curved.landmarks[i],x:curved.landmarks[i].x+.008};
@@ -84,13 +82,15 @@ test('nose controls preserve eyes and lip pixels, connect smoothly and remain sa
  }
 });
 
-test('alar protection follows other nose edits and resetting preserves those edits',()=>{
+test('alar motion follows other nose edits and resetting preserves those edits',()=>{
  const face=fixture('a',.5,1,.3),f=frame(face,1000,1000);
  for(const value of [-100,100]){
   const values={noseSize:65,noseLength:65,noseBridge:65,noseDorsum:65,noseTip:65},base=planFor(face,values),combined=planFor(face,{...values,noseAlar:value});
-  for(const loop of nostrils)for(const id of loop){
-   const p=f.points[id],target=destination(p,base),q=mapPoint(target,combined);
-   assert.ok(Math.hypot(q.x-p.x,q.y-p.y)<1e-6,'alar adjustment must not add nostril motion');
+  const alarOnly=planFor(face,{noseAlar:value});
+  for(const id of [1,2,4,64,98,294,327]){
+   const target=destination(f.points[id],base),source=mapPoint(target,base);
+   const expected=mapPoint(source,alarOnly),actual=mapPoint(target,combined);
+   assert.ok(Math.hypot(actual.x-expected.x,actual.y-expected.y)<1e-6,'apply alar motion at the source nose');
   }
   const reset=planFor(face,{...values,noseAlar:0});
   for(const p of f.points)assert.deepEqual(mapPoint(p,reset),mapPoint(p,base));

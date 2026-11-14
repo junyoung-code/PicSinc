@@ -100,6 +100,32 @@ async function overview(page: Page, count: number) {
   await expect(previewStage(page)).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
 }
 
+test('personal brush matches the reference proportion after selecting and zooming into a face', async ({ page }) => {
+  await backend(page, detected);
+  await open(page);
+  await faceButton(page, 1).click();
+  await page.getByRole('button', { name: '터치 보정', exact: true }).click();
+  await expect(page.locator('#brush-size')).toHaveValue('4');
+  const stage = previewStage(page);
+  const viewport = stage.locator('..');
+  await viewport.scrollIntoViewIfNeeded();
+  const box = (await viewport.boundingBox())!;
+  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const zoom = () => stage.evaluate(el => new DOMMatrix(getComputedStyle(el).transform).a);
+  await expect.poll(zoom).toBeGreaterThan(2);
+  const measure = () => page.getByTestId('touch-guide').locator(':scope > circle').evaluate((circle: SVGCircleElement) => {
+    const guide = circle.ownerSVGElement!;
+    const strokeWidth = parseFloat(getComputedStyle(circle).strokeWidth);
+    return (circle.getBoundingClientRect().width + strokeWidth) / guide.parentElement!.clientWidth;
+  });
+  await page.mouse.move(point.x, point.y);
+  expect(await measure()).toBeCloseTo(.071, 3);
+  const before = await zoom();
+  await page.mouse.wheel(0, -100);
+  await expect.poll(zoom).toBeGreaterThan(before * 1.5);
+  expect(await measure()).toBeCloseTo(.071, 3);
+});
+
 test('personal overview filters 16 detections to my four faces and saves every face setting', async ({ page }) => {
   const server = await backend(page, detected);
   await open(page); await overview(page, 4);
@@ -204,28 +230,88 @@ test('personal detection scans selected ROIs directly and preserves original coo
 });
 
 for (const failure of [
-  {stage:'model-init',reason:'network',body:'createFromOptions:async()=>{throw new TypeError("Failed to fetch https://private.example/photo?token=secret");}'},
-  {stage:'roi-detect',reason:'memory',body:'createFromOptions:async()=>({detect:()=>{throw new WebAssembly.RuntimeError("memory access out of bounds");},close(){}})'},
-]) test(`detection logging: ${failure.stage} records metadata without changing failure or recovery`, async ({page}) => {
+  {stage:'model-init',reason:'model-download',errorName:'Error',body:'createFromOptions:async()=>{throw new Error("Failed to fetch model: https://private.example/photo?token=secret (404)");}'},
+  {stage:'model-init',reason:'worker-dom',errorName:'ReferenceError',body:`createFromOptions:async()=>{throw new ReferenceError("Can't find variable: document");}`},
+  {stage:'roi-detect',reason:'memory',errorName:'RuntimeError',body:'createFromOptions:async()=>({detect:()=>{throw new WebAssembly.RuntimeError("memory access out of bounds");},close(){}})'},
+]) test(`detection logging: ${failure.reason} records metadata without changing failure or recovery`, async ({page}) => {
   await backend(page,detected,4,true);
   const logs: any[]=[];let fail=true;
   await page.route('**/api/retouch/diagnostics',route=>{logs.push(route.request().postDataJSON());return route.continue();});
-  await page.route('**/retouch/vendor/vision_bundle.js',route=>fail?route.fulfill({contentType:'application/javascript',body:`self.MediaPipe={FilesetResolver:{forVisionTasks:async()=>({})},FaceLandmarker:{${failure.body}}};`}):route.fallback());
+  await page.route('**/retouch/vendor/vision_bundle.js',route=>fail?route.fulfill({contentType:'application/javascript',body:`self.MediaPipe={FilesetResolver:{forVisionTasks:async()=>({wasmBinaryPath:"/retouch/vendor/wasm/vision_wasm_internal.wasm"})},FaceLandmarker:{${failure.body}}};`}):route.fallback());
   const delivery=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/retouch/diagnostics');
   await page.goto(`/retouch/rooms/${roomId}`);
   await page.getByRole('button',{name:'내 영역 보정 이어가기',exact:true}).click();
   expect((await delivery).status()).toBe(204);
-  await expect(page.getByRole('alert').filter({hasText:'얼굴 기준점을 찾지 못했어요'})).toBeVisible();
+  await expect(page.getByRole('status').filter({hasText:'5초 뒤 얼굴 분석을 한 번 더 시도해요.'})).toBeVisible();
   await expect(saveButton(page)).toBeDisabled();
   await expect(page.getByRole('button',{name:/^얼굴 \d+ 보정$/})).toHaveCount(0);
   await expect(page.getByRole('img',{name:'업로드한 원본',exact:true})).toBeVisible();
   await expect.poll(()=>logs.length).toBe(1);
-  expect(logs[0].diagnostic).toMatchObject({stage:failure.stage,reason:failure.reason,width,height,regionCount:4});
-  expect(JSON.stringify(logs)).not.toMatch(/private\.example|secret|landmarks|mask|token|message|stack/);
+  expect(logs[0].diagnostic).toMatchObject({stage:failure.stage,reason:failure.reason,errorName:failure.errorName,wasmVariant:'simd',width,height,regionCount:4});
+  expect(JSON.stringify(logs)).not.toMatch(/private\.example|secret|landmarks|mask|token|message|stack|document/);
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('moira:face-detection-failures')??'[]'))).toEqual(logs);
-  fail=false;await open(page);await overview(page,4);
-  await expect(saveButton(page)).toBeEnabled();expect(logs).toHaveLength(1);
+  fail=false;
+  await expect(saveButton(page)).toBeEnabled({timeout: 15_000});
+  await overview(page,4);
+  expect(logs).toHaveLength(1);
 });
+
+for (const failure of ['empty', 'outside-mask', 'error'] as const) {
+  test(`personal detection retries ${failure} once and lets me save with touch tools`, async ({page}) => {
+    const server = await backend(page, detected, 4, true);
+    const calls: Array<{ started: number; finished: number; regions: number }> = [];
+    await page.exposeFunction('captureFaceAnalysis', (call: typeof calls[number]) => { calls.push(call); });
+    await page.addInitScript(() => {
+      const BrowserWorker = window.Worker;
+      window.Worker = class extends BrowserWorker {
+        constructor(url: string | URL, options?: WorkerOptions) {
+          super(url, options);
+          if (!String(url).endsWith('/retouch/detect.worker.js')) return;
+          const send = this.postMessage.bind(this);
+          this.postMessage = (data, transfer = []) => {
+            const started = performance.now();
+            const regions = data.regions.length;
+            this.addEventListener('message', () => {
+              void (window as unknown as {captureFaceAnalysis: (call: unknown) => Promise<void>}).captureFaceAnalysis({
+                started, finished: performance.now(), regions,
+              });
+            }, { once: true });
+            send(data, transfer as Transferable[]);
+          };
+        }
+      };
+    });
+    const response = failure === 'error' ? { error: '얼굴 기준점을 찾지 못했어요.' } :
+      { landmarks: failure === 'outside-mask' ? [detected[4].landmarks] : [] };
+    await page.route('**/retouch/detect.worker.js', route => route.fulfill({
+      contentType: 'application/javascript',
+      body: `self.onmessage=({data:{bitmap}})=>{bitmap.close();self.postMessage(${JSON.stringify(response)});};`,
+    }));
+    await page.route('**/api/retouch/diagnostics', route => route.fulfill({ status: 204 }));
+    await page.goto(`/retouch/rooms/${roomId}`);
+    await page.getByRole('button',{name:'내 영역 보정 이어가기',exact:true}).click();
+    await expect(page.getByRole('status').filter({hasText:'5초 뒤 얼굴 분석을 한 번 더 시도해요.'})).toBeVisible();
+    await expect(saveButton(page)).toBeDisabled();
+    await expect(page.getByRole('button',{name:'클래식',exact:true})).toBeEnabled({timeout: 15_000});
+    expect(calls.map(call => call.regions)).toEqual([4, 4]);
+    expect(calls[1].started - calls[0].finished).toBeGreaterThanOrEqual(4990);
+    await expect(page.getByRole('button',{name:'복원',exact:true})).toBeEnabled();
+    await expect(page.getByRole('button',{name:'얼굴 보정',exact:true})).toBeDisabled();
+    await expect(page.getByRole('button',{name:/^얼굴 \d+ 보정$/})).toHaveCount(0);
+    const box = await previewStage(page).boundingBox();
+    expect(box).not.toBeNull();
+    const x = box!.x + box!.width * .4, y = box!.y + box!.height * .12;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + box!.width * .08, y, {steps: 4});
+    await page.mouse.up();
+    await expect(saveButton(page)).toBeEnabled();
+    await saveButton(page).click();
+    await page.getByRole('button',{name:'내 보정 저장',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'내 보정이 끝났어요',exact:true})).toBeVisible();
+    expect(server.saved()?.edit.strokes[0]?.owner).toBe('__touch');
+  });
+}
 
 
 test('cut cancel restores face and touch edits; apply and review preserve other cuts', async ({ page }) => {

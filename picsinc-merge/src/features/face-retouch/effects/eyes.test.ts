@@ -11,12 +11,51 @@ function destination(p:Point,plan:ReturnType<typeof prepare>):Point{
  let t={...p};for(let i=0;i<30;i++){const q=mapPoint(t,plan);t={x:t.x+p.x-q.x,y:t.y+p.y-q.y};}return t;
 }
 
-test('eye height translates makeup beyond the old rectangle without stretching it',()=>{
+test('eye thickness moves the crease with the upper lid while tapering below the eye',async()=>{
+ const face=fixture('a',.5,1,.25),f=frame(face,1000,1000);
+ for(const value of [-100,100]){
+  const plan=prepare([face],setControl(initialState([face]),face.id,'eyeThickness',value),1000,1000);
+  for(const [upper,lower] of [[160,144],[158,153],[385,380],[387,373]]){
+   const top=f.local(destination(f.points[upper],plan)),bottom=f.local(destination(f.points[lower],plan));
+   assert.ok((top.y-f.lm[upper].y)*Math.sign(value)<-2);
+   assert.ok((bottom.y-f.lm[lower].y)*Math.sign(value)>2);
+   assert.ok(Math.abs(top.x-f.lm[upper].x)<1e-6 && Math.abs(bottom.x-f.lm[lower].x)<1e-6);
+  }
+  for(const id of [468,473,105,334])assert.deepEqual(mapPoint(f.points[id],plan),f.points[id]);
+  for(const start of [468,473]){
+   const center=f.lm[start],scale=value>0?1.27:.82;
+   for(const dy of [-4,4]){
+    const localScale=dy>0?1+(scale-1)*.8:scale;
+    const source=f.world({x:center.x,y:center.y+dy});
+    const target=f.world({x:center.x,y:center.y+dy*localScale});
+    const mapped=mapPoint(target,plan);
+    assert.ok(Math.hypot(mapped.x-source.x,mapped.y-source.y)<1e-6);
+   }
+   const movement=(dy:number)=>{
+    const point=f.world({x:center.x,y:center.y+dy});
+    return f.local(destination(point,plan)).y-(center.y+dy);
+   };
+   const upperLid=movement(-19),crease=movement(-27);
+   assert.ok(upperLid*Math.sign(value)<0);
+   assert.ok(Math.abs(crease-upperLid)<1);
+   const lowerLid=movement(19),underEye=movement(28),outerSkin=movement(41);
+   assert.ok(lowerLid*Math.sign(value)>0 && underEye*Math.sign(value)>0);
+   assert.ok(Math.abs(underEye)>Math.abs(outerSkin));
+   assert.ok(Math.abs(movement(56))<1e-6);
+  }
+  const field=await buildField(plan);assert.ok(field);
+  assert.ok(jacobianFloor(field.data,field.columns,field.rows)>=.25);
+ }
+});
+
+test('eye height translates the eye and its immediate makeup without stretching them',async()=>{
  for(const angle of [0,.3])for(const value of [-100,100]){
   const face=fixture('a',.5,1,angle),f=frame(face,1000,1000),plan=prepare([face],setControl(initialState([face]),'a','eyeHeight',value),1000,1000);
+  const field=await buildField(plan);
+  assert.ok(field&&!field.strained,'full eye height travel must fit without reducing the slider strength');
   for(const side of [0,1]){
    const ids=eyeLoops[side],width=bounds(ids.map(i=>f.lm[i])).width,outer=f.lm[side===0?33:263];
-   const makeup=[{x:outer.x+(side===0?-1:1)*width*.26,y:outer.y},...ids.slice(1,3).map(i=>({x:f.lm[i].x,y:f.lm[i].y-width*.20})),...ids.slice(4).map(i=>({x:f.lm[i].x,y:f.lm[i].y+width*.18}))];
+   const makeup=[outer,...ids.slice(1,3).map(i=>({x:f.lm[i].x,y:f.lm[i].y-width*.10})),...ids.slice(4).map(i=>({x:f.lm[i].x,y:f.lm[i].y+width*.10}))];
    const op=plan.operations[side];
    for(const point of makeup){
     const source=f.world(point),target=f.world({x:point.x,y:point.y+op.dy}),q=mapPoint(target,plan);

@@ -1,4 +1,4 @@
-import {distance,smooth} from './geometry';
+import {distance,oval,smooth} from './geometry';
 import type {Point} from '../state/model';
 
 export type ContourSample={point:Point;delta:Point;length:number};
@@ -24,20 +24,26 @@ export function contourShift(p:Point,contour:SoftContour):Point{
  return{x:x*fade,y:y*fade};
 }
 
-// Move sharp corners toward the arc-length-weighted neighborhood, preserving
-// the person's own outline instead of imposing one template jaw on every face.
-export function roundedContour(points:Point[],radius:number):Point[]{
- const lengths=contourLengths(points),arcs=[0];
- for(let i=1;i<=points.length;i++)arcs.push(arcs[i-1]+distance(points[i-1],points[i%points.length]));
- return points.map((_,i)=>{
-  let total=0,x=0,y=0;
-  points.forEach((p,j)=>{
-   const arc=Math.abs(arcs[i]-arcs[j]),d=Math.min(arc,arcs[points.length]-arc)/radius;
-   if(d>=1)return;
-   const weight=(1-d*d)**3*lengths[j];total+=weight;x+=p.x*weight;y+=p.y*weight;
-  });
-  return total?{x:x/total,y:y/total}:points[i];
- });
+// Taper by distance along each side so the effect follows tilted or asymmetric jaws.
+export function jawCornerOffsets(points:Point[],width:number):Map<number,Point>{
+ const offsets=new Map<number,Point>();
+ for(const [cheek,corner,side] of [[93,172,-1],[323,397,1]]){
+  const start=oval.indexOf(cheek),end=oval.indexOf(152),step=Math.sign(end-start);
+  const arc=new Map<number,number>([[cheek,0]]);
+  let length=0;
+  for(let i=start+step;i!==end+step;i+=step){
+   length+=distance(points[oval[i-step]],points[oval[i]]);
+   arc.set(oval[i],length);
+  }
+  const peak=arc.get(corner)!;
+  for(const [id,position] of arc){
+   const towardChin=(position-peak)/Math.max(1e-6,length-peak);
+   // Carry the corner through the upper part of the jawline, then taper before the chin.
+   const weight=position<=peak?smooth(position/Math.max(1e-6,peak)):smooth((.74-towardChin)/.40);
+   offsets.set(id,{x:-side*width*.014*weight,y:-width*.022*weight});
+  }
+ }
+ return offsets;
 }
 
 // Inverse vertical map. The nose is fixed; mouth and chin destinations use the
