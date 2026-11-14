@@ -26,6 +26,7 @@ async function backend(page:Page,initialRoom:CollaborationView,png:Buffer,width:
    const body=request.postDataJSON(); actions.push(body.action);
    if(body.action==='start')state={...state,phase:'personal',rosterIds:['owner','friend'],completedIds:[]};
    if(body.action==='compose')state={...state,phase:'composing',job:{id:'composition-job',status:'queued'}};
+   if(body.action==='compose-finished')state={...state,phase:'composing',rosterIds:state.completedIds,job:{id:'composition-job',status:'queued'}};
    if(body.action==='acquire'){state={...state,editorId:participantId,editToken:'global-token',leaseUntil:new Date(Date.now()+90000).toISOString()};}
    if(body.action==='heartbeat')state={...state,leaseUntil:new Date(Date.now()+90000).toISOString()};
    if(body.action==='personal-begin')state={...state,personalToken:'personal-token',personalMaskAssetId:'mask'};
@@ -403,6 +404,52 @@ test('lobby shows short join and copy notices, and leaving asks first', async ({
  await friend.getByRole('button',{name:'나가기',exact:true}).click();
  await expect(friend).toHaveURL(/127\.0\.0\.1:\d+\/$/);
  expect(friendServer.actions.filter(a=>a==='leave')).toHaveLength(2);
+ await friend.close();
+});
+
+test('the owner can compose with only finished friends, and a left-out friend learns why (B-028)', async ({page,context}) => {
+ const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ const room={...initial('personal'),completedIds:['owner']};
+ const server=await backend(page,room,png,40,40);
+ await page.goto(`/retouch/rooms/${roomId}`);
+ await expect(page.getByRole('heading',{name:'내 보정이 끝났어요'})).toBeVisible();
+ await page.getByRole('button',{name:'끝낸 사람만으로 먼저 합치기',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'끝낸 사람만으로 먼저 합칠까요?'});
+ await expect(dialog).toContainText('예솔님 얼굴은 원본 그대로 들어가요.');
+ await dialog.getByRole('button',{name:'더 기다리기',exact:true}).click();
+ expect(server.actions).not.toContain('compose-finished');
+ await page.getByRole('button',{name:'끝낸 사람만으로 먼저 합치기',exact:true}).click();
+ await page.getByRole('button',{name:'먼저 합치기',exact:true}).click();
+ await expect(page.getByRole('heading',{name:/우리 사진을/})).toBeVisible();
+ expect(server.actions).toContain('compose-finished');
+ // A friend who has not finished never sees the button.
+ const friend=await context.newPage();await backend(friend,{...initial('personal'),completedIds:['owner','friend'],rosterIds:['owner','friend','third']},png,40,40,undefined,'friend');
+ await friend.goto(`/retouch/rooms/${roomId}`);
+ await expect(friend.getByRole('heading',{name:'내 보정이 끝났어요'})).toBeVisible();
+ await expect(friend.getByRole('button',{name:'끝낸 사람만으로 먼저 합치기'})).toHaveCount(0);
+ await friend.close();
+ // The left-out friend in the touch step is told their face stayed original.
+ const out=await context.newPage();await backend(out,{...initial('global'),rosterIds:['owner'],completedIds:['owner']},png,40,40,undefined,'friend');
+ await out.goto(`/retouch/rooms/${roomId}`);
+ await expect(out.getByText('대표자가 먼저 사진을 합쳐서 내 얼굴은 원본 그대로예요.',{exact:false})).toBeVisible();
+ await out.close();
+});
+
+test('a photo with no people offers the owner a new room instead of endless retries (B-030)', async ({page,context}) => {
+ const png=await sharp({create:{width:40,height:40,channels:3,background:'#bcbcbc'}}).png().toBuffer();
+ await backend(page,{...initial('personal'),completedIds:[]},png,40,40);
+ await page.goto(`/retouch/rooms/${roomId}`);
+ const card=page.getByRole('alert').filter({hasText:'찾은 얼굴 영역이 없어요'});
+ await expect(card).toBeVisible();
+ await expect(card).toContainText('사람이 잘 보이는 사진으로 새 보정방을 만들어 주세요.');
+ await expect(card).not.toContainText('편집한 영역은 그대로 유지돼요');
+ await card.getByRole('button',{name:'다른 사진으로 새로 만들기',exact:true}).click();
+ await expect(page.getByRole('dialog')).toContainText('삭제');
+ const friend=await context.newPage();await backend(friend,{...initial('personal'),completedIds:[]},png,40,40,undefined,'friend');
+ await friend.goto(`/retouch/rooms/${roomId}`);
+ const friendCard=friend.getByRole('alert').filter({hasText:'찾은 얼굴 영역이 없어요'});
+ await expect(friendCard).toContainText('대표자가 다른 사진으로 새 보정방을 만들 수 있어요.');
+ await expect(friendCard.getByRole('button',{name:'다른 사진으로 새로 만들기'})).toHaveCount(0);
  await friend.close();
 });
 

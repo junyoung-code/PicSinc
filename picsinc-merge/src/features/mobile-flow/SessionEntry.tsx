@@ -10,6 +10,7 @@ import SessionFlow from "./SessionFlow";
 import CollaborativeRoom from "./CollaborativeRoom";
 import { DeletedRoomScreen } from './room-deletion';
 import styles from '@/features/retouch-room-flow/room.module.css';
+import { NICKNAME_MAX_LENGTH } from "@/core/nickname";
 
 export default function SessionEntry({ inviteToken }: { inviteToken: string }) {
   const retouchRoom = usePathname().startsWith("/retouch/rooms/");
@@ -50,7 +51,7 @@ export default function SessionEntry({ inviteToken }: { inviteToken: string }) {
   if (loaded) return loaded.room.enabled ? <CollaborativeRoom inviteToken={inviteToken} initialSnapshot={loaded.snapshot} initialRoom={loaded.room}/> : <SessionFlow inviteToken={inviteToken}/>;
   return <MobileShell title="친구와 함께 보정하기" hideBack showProgress={join} progress={10} footer={join ? <button className="primary-button" disabled={busy || !nickname.trim()} onClick={() => void participate()}>{busy ? "참여하는 중…" : "이 보정방에 참여하기"}</button> : undefined}>
     <div className={styles.heading}><h1>{join ? "함께 찍은 사진,\n내 얼굴은 내가 보정해요." : "보정방을 불러오고 있어요"}</h1>{join && <p className="description">닉네임을 입력하고<br/>친구들과 함께 보정방에 참여해요.</p>}</div>
-    {join && <><div className={styles.inviteCard}><img src="/images/figma-current/character-photo.png" alt="MOIRA 친구들"/><div><strong>초대받은 보정방</strong><p>앱 설치 없이 함께 보정해요.<br/>완성 사진을 함께 저장해요.</p></div></div><form onSubmit={e => { e.preventDefault(); void participate(); }}><label className="name-field">내 닉네임<input value={nickname} onChange={e => setNickname(e.target.value)} maxLength={40} required autoComplete="nickname" placeholder="친구들이 알아볼 이름"/></label><p className={styles.fieldHint}>친구들이 알아볼 수 있는 이름을 사용해 주세요.</p></form></>}
+    {join && <><div className={styles.inviteCard}><img src="/images/figma-current/character-photo.png" alt="MOIRA 친구들"/><div><strong>초대받은 보정방</strong><p>앱 설치 없이 함께 보정해요.<br/>완성 사진을 함께 저장해요.</p></div></div><form onSubmit={e => { e.preventDefault(); void participate(); }}><label className="name-field">내 닉네임<input value={nickname} onChange={e => setNickname(e.target.value)} maxLength={NICKNAME_MAX_LENGTH} required autoComplete="nickname" placeholder="친구들이 알아볼 이름"/></label><p className={styles.fieldHint}>친구들이 알아볼 수 있는 이름을 사용해 주세요.</p></form></>}
     <StatusMessage message={error}/>{error && !join && <button className="secondary-button" onClick={() => void load().catch(report)}>다시 불러오기</button>}
   </MobileShell>;
 }

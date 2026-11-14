@@ -19,7 +19,7 @@ export interface CollaborationView {
   job?: JobView;
 }
 export type CollaborationAction =
-  | { action: 'enable' | 'start' | 'personal-begin' | 'compose' | 'acquire' | 'end-global' | 'finalize' }
+  | { action: 'enable' | 'start' | 'personal-begin' | 'compose' | 'compose-finished' | 'acquire' | 'end-global' | 'finalize' }
   | { action: 'personal-cancel' | 'heartbeat' | 'cancel'; token: string }
   | { action: 'open-global'; resultAssetId: string }
   | { action: 'personal-save'; token: string; editedAssetId: string; state: unknown }

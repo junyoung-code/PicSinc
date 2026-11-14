@@ -12,7 +12,7 @@ import { readCompositionJob } from './collaboration-job';
 export type { CollaborationAction, CollaborationView, CollaborationPhase } from './collaboration-types';
 
 type Auth = { inviteToken: string; participantId: string; sessionToken: string };
-const actions = new Set(['enable','start','personal-begin','personal-cancel','personal-save','compose','open-global','acquire','heartbeat','cancel','save','end-global','finalize','read']);
+const actions = new Set(['enable','start','personal-begin','personal-cancel','personal-save','compose','compose-finished','open-global','acquire','heartbeat','cancel','save','end-global','finalize','read']);
 const uuid = (value: unknown) => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 export function collaborationError(error: { message: string } | null) {
   if (!error) return;
@@ -21,6 +21,7 @@ export function collaborationError(error: { message: string } | null) {
     'Selection required':'자신의 인물 영역을 선택하고 저장해 주세요.', 'Edit token expired':'편집 권한이 만료됐어요. 다시 편집을 시작해 주세요.',
     'All participants required':'모든 참여자가 개인 보정을 완료해야 해요.', 'Composition required':'최신 사진 합치기가 끝난 후 진행해 주세요.',
     'Editor busy':'다른 참여자의 편집이 끝난 후 진행해 주세요.', 'Version changed':'사진이나 선택이 바뀌었어요. 다시 불러와 주세요.',
+    'Nobody finished':'아직 보정을 끝낸 사람이 없어요.',
   };
   if (error.message==='Forbidden') throw new SessionError(403,'이 작업을 수정할 권한이 없습니다.');
   if (error.message==='Session expired') throw new SessionError(410,'이 작업의 보관 기간이 끝났습니다.');
@@ -118,6 +119,11 @@ export async function collaboration(auth: Auth, input: CollaborationAction | { a
       const png=await sharp(edit.buffer).rotate().toColourspace('srgb').png().toBuffer();
       const saved=await rpc(input.action,{...input,asset:await put(png,'result')});
       await removeUnreferenced(); return saved;
+    }
+    if (input.action==='compose-finished') {
+      // Owner only, enforced in the DB: compose now without friends who have not finished (B-028).
+      const {data,error}=await db.rpc('compose_finished_only',{p_session_id:session.id,p_participant_id:auth.participantId});
+      collaborationError(error); return data as CollaborationView;
     }
     return await rpc(input.action,input);
   } catch(error) {

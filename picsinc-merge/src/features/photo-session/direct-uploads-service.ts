@@ -6,6 +6,7 @@ import type { VerifiedImage } from "./image-validation";
 import { createSecretToken, tokenHash } from "./tokens";
 import type { PhotoSessionStore } from "./types";
 import type { PhotoSessionService } from "./service";
+import { NICKNAME_MAX_LENGTH, nicknameLengthMessage } from "@/core/nickname";
 
 export type UploadKind = "original" | "edited" | "mask";
 export type UploadAuth = { inviteToken: string; participantId: string; sessionToken: string };
@@ -74,7 +75,7 @@ export class DirectUploadService {
   async prepareOriginalUpload(nickname: string, metadata: UploadMetadata, bootstrapToken: string, visitId?: string, analyticsContext?: "test" | "festival") {
     validateUploadMetadata(metadata, "original");
     nickname = nickname.trim();
-    if (!nickname || nickname.length > 40) fail(400, "닉네임은 1~40자로 입력하세요.");
+    if (!nickname || nickname.length > NICKNAME_MAX_LENGTH) fail(400, nicknameLengthMessage);
     if (!bootstrapToken) fail(403, "업로드 참여증이 필요합니다.");
     const id = randomUUID(); const secrets = originalUploadSecrets(id, this.secret);
     return this.prepare({ id, kind: "original", session_id: randomUUID(), participant_id: randomUUID(), asset_id: randomUUID(), invite_token: createSecretToken(), nickname, owner_hash: tokenHash(bootstrapToken), session_token_hash: tokenHash(secrets.sessionToken), recovery_token_hash: tokenHash(secrets.recoveryToken), visit_id: visitId ?? null, analytics_context: analyticsContext ?? null }, metadata);

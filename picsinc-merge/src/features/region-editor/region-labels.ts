@@ -12,6 +12,15 @@ export function regionOwnerLabel(regionId: string, claims: RegionClaim[], select
   return selectedIds.includes(regionId) ? { own: true, text: `${nickname || "내 영역"}${nickname ? " (나)" : ""}` } : null;
 }
 
+// Fits a label into maxWidth: the name is shortened with "…", " (나)" always stays (B-017, B-018).
+export function fitRegionLabel(text: string, maxWidth: number, measure: (value: string) => number) {
+  if (measure(text) <= maxWidth) return text;
+  const suffix = text.endsWith(" (나)") ? " (나)" : "";
+  const chars = [...text.slice(0, text.length - suffix.length)];
+  while (chars.length > 1 && measure(`${chars.join("")}…${suffix}`) > maxWidth) chars.pop();
+  return `${chars.join("")}…${suffix}`;
+}
+
 // "로" after a vowel or ㄹ, "으로" after other final consonants, "(으)로" when the last letter is not Hangul.
 export function withRo(name: string) {
   const code = name.trim().codePointAt(name.trim().length - 1) ?? 0;

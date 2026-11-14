@@ -131,6 +131,8 @@
 .cutActions { display:flex; align-items:center; justify-content:space-between; height:48px; margin-top:8px; }
 .editor .cutActions button { width:44px; height:44px; padding:0; border:0; background:transparent; font-size:24px; font-weight:700; line-height:28px; }
 .roomEditor:not(.globalEditor):not(.collapsed) .panel { padding-bottom:6px; }
+/* Short phones (320x568, B-020): the tool panel scrolls under the photo, so the face stays in view while using the slider. */
+@media (max-height:700px) { .roomEditor:not(.globalEditor):not(.collapsed) .viewport { position:sticky; top:env(safe-area-inset-top,0px); z-index:3; } }
 /* Figma 527:10099: reuse the mounted preview and only save after confirmation. */
 .editor.reviewing { background:linear-gradient(180deg,var(--moira-surface) 22%,var(--moira-accent) 50%,var(--moira-surface) 90%); }
 .reviewContents { display:flex; flex-direction:column; min-height:calc(100dvh - 34px); }

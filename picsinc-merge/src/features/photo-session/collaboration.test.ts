@@ -205,3 +205,40 @@ test('direct upload finalization starts merge rooms and explicit collaboration s
   assert.equal(await value(db,'select submitted from participants where id=$1',[owner]),true);
  } finally {await db.close();}
 });
+
+test('the owner can compose with only the finished participants and late saves are refused',async()=>{
+ const db=await currentSchemaDatabase();
+ try {
+  await create(db);
+  await action(db,owner,'enable');
+  const late=id(5);
+  await value(db,`select join_photo_session($1,$2,'Guest','guest-hash','guest-recovery')`,[room,guest]);
+  await value(db,`select join_photo_session($1,$2,'Late','late-hash','late-recovery')`,[room,late]);
+  assert.deepEqual((await action(db,owner,'start')).rosterIds,[owner,guest,late].sort());
+  await value(db,`select cache_original_detection($1,$2)`,[room,JSON.stringify({width:2,height:2,regions:[{id:'a'},{id:'b'}]})]);
+  await assert.rejects(()=>value(db,`select compose_finished_only($1,$2)`,[room,owner]),/Nobody finished/);
+  const own=await selection(db,owner,10,'a');
+  const other=await selection(db,guest,20,'b');
+  await save(db,owner,own.personalToken,30);
+  await assert.rejects(()=>value(db,`select compose_finished_only($1,$2)`,[room,guest]),/Forbidden/);
+  const composed=await value<any>(db,`select compose_finished_only($1,$2)`,[room,owner]);
+  assert.equal(composed.phase,'composing');
+  assert.deepEqual(composed.rosterIds,[owner]);
+  assert.ok(composed.job.id);
+  // The guest who was still editing cannot slip a save into the composed room.
+  await assert.rejects(()=>save(db,guest,other.personalToken,40),/Edit token expired|Collaboration locked/);
+  await assert.rejects(()=>value(db,`select compose_finished_only($1,$2)`,[room,owner]),/Collaboration locked/);
+  assert.equal(await value(db,`select has_function_privilege('anon','compose_finished_only(uuid,uuid)','execute')`),false);
+ } finally {await db.close();}
+});
+
+test('the whole-photo edit lease lasts 45 seconds and keeps service-only access (B-022)',async()=>{
+ const db=await currentSchemaDatabase();
+ try {
+  const source=await value<string>(db,`select prosrc from pg_proc where oid='public.collaboration_action(uuid,uuid,text,jsonb)'::regprocedure`);
+  assert.equal((source.match(/'45 seconds'/g) ?? []).length,2);
+  assert.equal((source.match(/'90 seconds'/g) ?? []).length,0);
+  assert.equal(await value(db,`select has_function_privilege('anon','collaboration_action(uuid,uuid,text,jsonb)','execute')`),false);
+  assert.equal(await value(db,`select has_function_privilege('service_role','collaboration_action(uuid,uuid,text,jsonb)','execute')`),true);
+ } finally {await db.close();}
+});

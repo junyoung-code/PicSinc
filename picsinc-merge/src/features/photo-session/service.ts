@@ -7,6 +7,7 @@ import { fail, RegionClaimConflict } from "./errors";
 import { decodeMask } from "./image-validation";
 import { createSecretToken, tokenHash } from "./tokens";
 import type { CredentialRecord, NewAsset, PhotoSessionStore, PrivateFileStore, SessionRecord, SessionSnapshot } from "./types";
+import { NICKNAME_MAX_LENGTH, nicknameLengthMessage } from "@/core/nickname";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -293,7 +294,7 @@ export class PhotoSessionService {
 
 function normalizeNickname(value: string) {
   const nickname = value.trim();
-  if (nickname.length < 1 || nickname.length > 40) fail(400, "닉네임은 1~40자로 입력하세요.");
+  if (nickname.length < 1 || nickname.length > NICKNAME_MAX_LENGTH) fail(400, nicknameLengthMessage);
   return nickname;
 }
 
