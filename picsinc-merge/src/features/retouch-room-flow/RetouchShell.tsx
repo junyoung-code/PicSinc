@@ -1,15 +1,34 @@
 'use client';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { FlowProgress } from '@/components/FlowProgress';
 import theme from '@/features/home/theme.module.css';
 import RoomDialog from './RoomDialog';
 import styles from './room.module.css';
 
+// iPhone Safari can keep the page shifted up after the keyboard closes: the header is cut off
+// and dragging cannot bring it back (11/13 phone test, iPhone 14 Pro). When the keyboard goes
+// away, put the scroll position back inside the page's real range.
+function useKeyboardScrollReset() {
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const settle = () => {
+      if (document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement) return;
+      const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      if (window.scrollY > max || (viewport && viewport.offsetTop > 0)) window.scrollTo(window.scrollX, Math.min(window.scrollY, max));
+    };
+    const later = () => window.setTimeout(settle, 120);
+    document.addEventListener('focusout', later);
+    viewport?.addEventListener('resize', later);
+    return () => { document.removeEventListener('focusout', later); viewport?.removeEventListener('resize', later); };
+  }, []);
+}
+
 export default function RetouchShell({ title, onBack, backDisabled = false, children, footer, action, progress = 0, showProgress = false, brand = false, hideBack = false, centered = false, showHelp = true }: {
   title: string; onBack?: () => void; backDisabled?: boolean; children: ReactNode; footer?: ReactNode; action?: ReactNode; progress?: number; showProgress?: boolean; brand?: boolean; hideBack?: boolean; centered?: boolean; showHelp?: boolean;
 }) {
   const [help, setHelp] = useState(false);
+  useKeyboardScrollReset();
   return <main className={`${theme.theme} ${styles.shell}`}>
     <header className={`${styles.header} ${brand ? styles.brandHeader : ''}`}>
       {!hideBack && (onBack || backDisabled ? <button aria-label="이전 화면" disabled={backDisabled} onClick={onBack}><img src="/images/retouch-ui/back.svg" alt="" /></button> : <Link href="/" aria-label="홈으로"><img src="/images/retouch-ui/back.svg" alt="" /></Link>)}
